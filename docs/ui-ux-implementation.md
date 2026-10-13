@@ -183,9 +183,10 @@ achievable and section 2 explains why, then substitutes a textual review.
   P0-8. The `BackHandler` now excludes `ONBOARDING` as well as `HOME` (line 107), so Back
   on onboarding dismisses it rather than dropping into Home unseen.
 - **`res/values/themes.xml`.** One style becomes four: `Theme.ZendoLauncher.Base` (4-8),
-  `.Light` (11-15) and `.Dark` (18-22), with bare `Theme.ZendoLauncher` inheriting Light
-  (line 26). `windowLightStatusBar` and `windowLightNavigationBar` are now set per variant
-  instead of hardcoded. Closes P0-9 and the XML half of P0-8.
+  `.Light` (11-18) and `.Dark` (21-25), with bare `Theme.ZendoLauncher` inheriting Light
+  (line 29). `windowLightStatusBar` and `windowLightNavigationBar` are now set per variant
+  instead of hardcoded, and the latter two carry `tools:targetApi="27"` because the
+  attribute is API 27 while the minimum is 26. Closes P0-9 and the XML half of P0-8.
 - **`res/values-night/themes.xml` (new).** Bare `Theme.ZendoLauncher` inherits the Dark
   variant under system night mode, so the manifest default still follows the system.
   Closes the default half of P0-9.

@@ -310,8 +310,8 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   select it before the window exists. `values/themes.xml` defines `Theme.ZendoLauncher.Base`
   (transparent system bars, edge-to-edge, `:4-8`), `Theme.ZendoLauncher.Light`
   (`launcher_window_background_light`, `windowLightStatusBar` and
-  `windowLightNavigationBar` true, `:11-15`) and `Theme.ZendoLauncher.Dark` (the dark
-  background, both flags false, `:18-22`). `values/colors.xml:3-4` defines both colours, so
+  `windowLightNavigationBar` true, `:11-18`) and `Theme.ZendoLauncher.Dark` (the dark
+  background, both flags false, `:21-25`). `values/colors.xml:3-4` defines both colours, so
   neither is night-qualified any more. The new `app/src/main/res/values-night/themes.xml:3`
   makes bare `Theme.ZendoLauncher` inherit the Dark variant, which is what keeps the
   manifest default following the system. `LauncherActivity.kt:47-51` calls `setTheme` with
