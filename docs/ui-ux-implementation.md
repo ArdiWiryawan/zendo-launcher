@@ -147,10 +147,13 @@ achievable and section 2 explains why, then substitutes a textual review.
 
 - **`ui/OnboardingScreen.kt` (new, 129 lines).** A single scrollable page, not a wizard,
   built from primitives. It states what the launcher replaces, that essentials are chosen
-  from the app list, that Android owns the Home app setting, how to restore the previous
-  Home screen, and that Zendo is optional. It has its own `BackHandler` (line 39), a "Set as
+  from the app list by holding a finger on an app, that Android owns the Home app setting,
+  how to restore the previous Home screen, and that Zendo is optional. It has its own
+  `BackHandler` (line 39), a "Set as
   Home app" action that opens `Settings.ACTION_HOME_SETTINGS` when the launcher is not
-  default, and a "Got it" action that dismisses it (lines 86-103). Closes P1-2.
+  default, and a "Got it" action that dismisses it (lines 86-103). Closes P1-2. The page
+  names the long-press explicitly, because the per-row affordance that P0-4 asked for is not
+  shipped (see "Findings still open"); it does not describe a control that is not there.
 - **`data/SettingsStore.kt`.** `onboardingSeen` is added to `LauncherSettings` (line 107),
   read with a default of `false` (line 37) and written with the rest of the settings
   (line 50). Closes the persistence half of P1-2.

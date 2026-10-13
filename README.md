@@ -51,6 +51,11 @@ All apps   Settings
 
 The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing to install.
 
+**Latest debug build:** [Releases → Zendo Launcher 0.2.0 (debug test build)](https://github.com/ArdiWiryawan/zendo-launcher/releases/tag/debug-0.2.0)
+— download `ZendoLauncher-debug.apk` directly, no unzipping.
+
+To build a fresh one yourself:
+
 1. Open the repository's **Actions** tab.
 2. Pick **Build APK** → **Run workflow** → variant `debug` → **Run workflow**.
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
