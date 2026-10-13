@@ -56,7 +56,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
-Pushing a tag like `v0.1.0` builds a signed release APK and attaches it to a GitHub
+Pushing a tag like `v0.2.0` builds a signed release APK and attaches it to a GitHub
 Release, once release signing secrets are configured. See
 [docs/build-and-release.md](docs/build-and-release.md).
 
@@ -134,6 +134,8 @@ on its own, and it can always be changed back.
 | [docs/design-reference-audit.md](docs/design-reference-audit.md) | Visual references inspected, and the design decisions taken from them |
 | [docs/zendo-integration.md](docs/zendo-integration.md) | Verified Zendo data contract, and what a real integration would need |
 | [docs/ui-ux-audit.md](docs/ui-ux-audit.md) | Source-level audit of the shipped UI: the problems found, and what could not be verified |
+| [docs/ui-ux-implementation.md](docs/ui-ux-implementation.md) | What the redesign changed, which finding each change closes, and the before-and-after |
+| [docs/ui-ux-verification.md](docs/ui-ux-verification.md) | What was mechanically verified, the regression checklist, and what remains open |
 | [docs/build-and-release.md](docs/build-and-release.md) | Building, downloading artifacts, signing, troubleshooting |
 
 ## Licence

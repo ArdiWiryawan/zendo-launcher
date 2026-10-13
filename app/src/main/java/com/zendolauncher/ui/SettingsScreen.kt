@@ -195,7 +195,7 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("About")
             Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText("Zendo Launcher 0.1.0, a standalone monochrome home screen.")
+            SecondaryText("Zendo Launcher 0.2.0, a standalone monochrome home screen.")
             Spacer(Modifier.height(LauncherSpace.sm))
             // Onboarding is the only place the app explains what it replaces and how to get
             // back, so it stays reachable after the first run rather than being shown once.
