@@ -45,7 +45,7 @@ achievable and section 2 explains why, then substitutes a textual review.
   while the label keeps its quiet size. The `clip(CircleShape)` is gone, which also removes
   the ripple that was clipped to a circle inside a wide row. Closes P0-5 and P2-4. Effect:
   every action meets the platform minimum, and press feedback spans the whole target.
-- **`AppRow` (lines 118-200).** `onLongClickLabel` states the gesture for assistive
+- **`AppRow` (lines 118-197).** `onLongClickLabel` states the gesture for assistive
   technology (line 141). `stateDescription` reports "In Essentials" or "Not in Essentials"
   (lines 144-146). A `defaultMinSize` of 48dp applies to the row (line 147). The long-press
   menu is anchored to the row's trailing edge through `menuAlignment` (line 190), and the
@@ -59,21 +59,21 @@ achievable and section 2 explains why, then substitutes a textual review.
 - **`ScreenTitle` (lines 76-85).** New. A title level above the rows with a trailing slot
   for the screen's own action, no container. Effect: "All apps" and "Settings" read as
   titles rather than as another row.
-- **`ToggleRow` (lines 245-272).** The Material3 `Switch` is gone. The whole row is
+- **`ToggleRow` (lines 229-256).** The Material3 `Switch` is gone. The whole row is
   `toggleable` with `role = Role.Switch`, and the state is the word "On" or "Off" whose
   weight and tone both change. Closes P1-9 and P1-12. Effect: the settings screen is text
   throughout, and tapping the label changes the setting. The word is used instead of a
   tick glyph because the default font family does not cover U+2713 and a fallback could
   render tofu.
-- **`ChoiceRow` (lines 280-323).** The selected option now differs by a weight change and
+- **`ChoiceRow` (lines 264-307).** The selected option now differs by a weight change and
   a 20dp hairline marker under the label, as well as by colour, and each option is
   `selectable` with `role = Role.RadioButton` and a 48dp minimum height. Closes P0-5 and
   P0-6. Effect: the active theme and layout are legible without relying on colour, and a
   screen reader can name them.
-- **`AppIcon` (lines 220-235).** The icon box is emitted unconditionally at `Modifier.size`
-  (line 225) and only the `Image` inside it is conditional on the bitmap. Closes P1-7.
+- **`AppIcon` (lines 204-219).** The icon box is emitted unconditionally at `Modifier.size`
+  (line 208) and only the `Image` inside it is conditional on the bitmap. Closes P1-7.
   Effect: a resolving icon can no longer shift the label sideways as the list scrolls.
-- **`SecondaryText` (lines 336-343).** The dead `color` parameter is removed; the
+- **`SecondaryText` (lines 320-327).** The dead `color` parameter is removed; the
   composable reads the palette itself. Closes P2-8. Effect: one way to render secondary
   text.
 - **`EmptyNote`.** Now used only for true empty states. The explanatory paragraphs in
@@ -105,23 +105,24 @@ achievable and section 2 explains why, then substitutes a textual review.
   This is the one change in the set that depends on real IME behaviour and could not be
   exercised here.
 - The field requests focus on arrival through a `FocusRequester` and `LaunchedEffect`
-  (lines 52, 57). Closes the first half of P0-3.
+  (lines 59, 104). Closes the first half of P0-3.
 - `KeyboardOptions` sets `capitalization = None`, `autoCorrectEnabled = false` and
-  `ImeAction.Search` (lines 85-89), and `KeyboardActions(onSearch)` hides the keyboard
-  (line 93). Closes the second half of P0-3. Effect: app names are not rewritten, and the
+  `ImeAction.Search` (lines 87-90), and `KeyboardActions(onSearch)` hides the keyboard
+  (line 95). Closes the second half of P0-3. Effect: app names are not rewritten, and the
   IME offers Search.
 - A `Clear` action appears only while the query is non-empty and calls
-  `viewModel.clearQuery()` (lines 104-106, `ui/LauncherViewModel.kt:228`). Closes the third
-  half of P0-3. Effect: the query can be reset without leaving the screen.
+  `viewModel.clearQuery()` (lines 110-112, `ui/LauncherViewModel.kt:228`). Closes the third
+  half of P0-3. The field is also given the accessible name "Search apps" (line 108), since
+  the "Search" placeholder is a sibling `Text` and carries no semantics of its own. Effect: the query can be reset without leaving the screen.
 - The results list draws sticky first-letter headers while the query is empty, derived from
-  the same normalisation the sort uses (`letterOf`, lines 129-137 and 163-166), with a
+  the same normalisation the sort uses (`letterOf`, lines 138-141 and 169-175), with a
   single `#` bucket for digits and symbols. Closes P1-6. Effect: a user can jump to a
   letter instead of scrolling.
-- The per-row hairline is gone (line 168 comment). Closes P1-5. Effect: the drawer reads as
+- The per-row hairline is gone (`AppListRow`, lines 176-187). Closes P1-5. Effect: the drawer reads as
   one product with Home.
 - The empty state distinguishes loading from empty: `state.isLoading` shows "Looking for
   apps…", a blank query shows "No launchable apps found.", and a query shows "Nothing
-  matches …" (lines 117-126). Closes P1-13. Effect: the drawer does not claim there are no
+  matches …" (lines 123-132). Closes P1-13. Effect: the drawer does not claim there are no
   apps while the first scan is still running.
 
 ### Settings: `ui/SettingsScreen.kt`
@@ -144,12 +145,12 @@ achievable and section 2 explains why, then substitutes a textual review.
 
 ### Onboarding
 
-- **`ui/OnboardingScreen.kt` (new, 128 lines).** A single scrollable page, not a wizard,
+- **`ui/OnboardingScreen.kt` (new, 129 lines).** A single scrollable page, not a wizard,
   built from primitives. It states what the launcher replaces, that essentials are chosen
   from the app list, that Android owns the Home app setting, how to restore the previous
   Home screen, and that Zendo is optional. It has its own `BackHandler` (line 39), a "Set as
   Home app" action that opens `Settings.ACTION_HOME_SETTINGS` when the launcher is not
-  default, and a "Got it" action that dismisses it (lines 83-101). Closes P1-2.
+  default, and a "Got it" action that dismisses it (lines 86-103). Closes P1-2.
 - **`data/SettingsStore.kt`.** `onboardingSeen` is added to `LauncherSettings` (line 107),
   read with a default of `false` (line 37) and written with the rest of the settings
   (line 50). Closes the persistence half of P1-2.
@@ -219,7 +220,7 @@ achievable and section 2 explains why, then substitutes a textual review.
 - **P2-10.** The "Show today" toggle still has no observable effect. The wiring is correct
   and the block still requires a Zendo payload that no shipped source produces
   (`ui/LauncherViewModel.kt:82`, `UnavailableZendoSource`). The implementation changed only
-  the copy (lines 109 and 117-120), which is what the audit's recommendation asked for, but
+  the copy (lines 104 and 116-120), which is what the audit's recommendation asked for, but
   the toggle itself remains without a visible result until a source ships.
 - **P0-4.** The announcement half is done (`onLongClickLabel` and `stateDescription` on the
   row, so TalkBack states the favourite and names the gesture), and the onboarding page now
@@ -292,13 +293,13 @@ field was never focused, had no `KeyboardOptions`, no Search action and no clear
 empty list always read "No launchable apps found." (P1-13).
 
 After: the column consumes `.systemBarsPadding()` then `.imePadding()`
-(`ui/AppListScreen.kt:68-69`). The field takes focus on arrival (lines 52, 57), disables
+(`ui/AppListScreen.kt:70-71`). The field takes focus on arrival (lines 59, 104), disables
 autocorrect and auto-capitalisation, requests `ImeAction.Search` and hides the keyboard on
-submit (lines 85-93). A "Clear" action appears while the query is non-empty (lines 104-106).
+submit (lines 87-95). A "Clear" action appears while the query is non-empty (lines 110-112).
 The list is grouped under sticky letter headers when the query is blank, with a `#` bucket
-for digits and symbols (lines 129-137, 163-166), and draws no per-row hairline (line 168).
+for digits and symbols (lines 138-141, 169-175), and draws no per-row hairline.
 The empty state is "Looking for apps…" while the first scan runs, "No launchable apps
-found." when it has finished, and "Nothing matches …" for a query (lines 117-126).
+found." when it has finished, and "Nothing matches …" for a query (lines 123-132).
 
 ### Settings
 
