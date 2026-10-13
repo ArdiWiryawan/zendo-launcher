@@ -46,10 +46,10 @@ achievable and section 2 explains why, then substitutes a textual review.
   the ripple that was clipped to a circle inside a wide row. Closes P0-5 and P2-4. Effect:
   every action meets the platform minimum, and press feedback spans the whole target.
 - **`AppRow` (lines 118-197).** `onLongClickLabel` states the gesture for assistive
-  technology (line 141). `stateDescription` reports "In Essentials" or "Not in Essentials"
-  (lines 144-146). A `defaultMinSize` of 48dp applies to the row (line 147). The long-press
-  menu is anchored to the row's trailing edge through `menuAlignment` (line 190), and the
-  hide item is renamed "Hide and unpin" so the unpin it also performs is stated (line 205).
+  technology (line 140). `stateDescription` reports "In Essentials" or "Not in Essentials"
+  (lines 144-145). A `defaultMinSize` of 48dp applies to the row (line 146). The long-press
+  menu is anchored to the row's trailing edge through `menuAlignment` (line 174), and the
+  hide item is renamed "Hide and unpin" so the unpin it also performs is stated (line 189).
   Closes P1-4, P2-5, and the announcement half of P0-4. A trailing `Add` / `Remove`
   affordance was written behind a `showFavouriteToggle` flag and then **deleted**: no screen
   ever passed it, and shipping an unrendered parameter is the dead flexibility the audit
