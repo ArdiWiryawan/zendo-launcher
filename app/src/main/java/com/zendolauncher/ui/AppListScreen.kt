@@ -27,6 +27,8 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.zendolauncher.core.AppQuery
@@ -99,7 +101,11 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
                 },
                 modifier = Modifier
                     .weight(1f)
-                    .focusRequester(focusRequester),
+                    .focusRequester(focusRequester)
+                    // The "Search" placeholder is a sibling Text in the decoration box, so
+                    // it is not part of this field's semantics and a screen reader would
+                    // announce an unnamed text box. Name it here instead.
+                    .semantics { contentDescription = "Search apps" },
             )
             if (state.query.isNotEmpty()) {
                 QuietAction("Clear", onClick = { viewModel.clearQuery() })

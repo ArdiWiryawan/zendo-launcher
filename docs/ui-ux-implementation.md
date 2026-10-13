@@ -4,10 +4,9 @@ This document records the redesign that followed `docs/ui-ux-audit.md`. It has t
 Section 1 is the implementation summary: what changed, in which file, which audit finding
 it closes, and what the user sees as a result. Section 2 is the before-and-after review.
 
-Scope of section 1 is exactly the set of changes in `git diff HEAD` plus the untracked files
-that are part of the change (`app/src/main/java/com/zendolauncher/ui/OnboardingScreen.kt`,
-`app/src/main/res/values-night/themes.xml`, `docs/ui-ux-audit.md`). Nothing is described that
-the diff does not show. Findings are cited by their id in `docs/ui-ux-audit.md`.
+Scope of section 1 is exactly the set of changes in commit `22273c1` (the diff against its
+parent `2ac913a`). Nothing is described that the diff does not show. Findings are cited by
+their id in `docs/ui-ux-audit.md`.
 
 The register of section 2 is deliberately narrower than the spec asked for. The spec asked
 for before-and-after screenshots under `docs/ui-ux-review/`. That deliverable was not
@@ -20,7 +19,7 @@ achievable and section 2 explains why, then substitutes a textual review.
 - **`LauncherSpace` (lines 62-71).** A named spacing scale now exists: `xs` 4dp, `sm` 8dp,
   `md` 16dp, `lg` 24dp, `xl` 40dp, plus `gutter` 24dp, `hairline` 1dp and `touchTarget`
   48dp. Every screen and component reads from it instead of inline literals. Closes P2-2
-  for the three shipped screens. Effect: one shared vertical rhythm, and no new gap
+  across all four screens. Effect: one shared vertical rhythm, and no new gap
   invented per screen.
 - **`LauncherType` extended (lines 78-96).** `title` (20sp) is new, for screen headers.
   `section` moved from 11sp to 12sp (line 89). `appLabel` and `body` gained explicit
@@ -46,14 +45,15 @@ achievable and section 2 explains why, then substitutes a textual review.
   while the label keeps its quiet size. The `clip(CircleShape)` is gone, which also removes
   the ripple that was clipped to a circle inside a wide row. Closes P0-5 and P2-4. Effect:
   every action meets the platform minimum, and press feedback spans the whole target.
-- **`AppRow` (lines 118-213).** Four additions. `onLongClickLabel` states the gesture for
-  assistive technology (line 141). `stateDescription` reports "In Essentials" or "Not in
-  Essentials" (lines 144-146). A `defaultMinSize` of 48dp applies to the row (line 147). A
-  trailing `Add` / `Remove` affordance is available behind `showFavouriteToggle` (lines
-  169-182) with a per-app `contentDescription`. The long-press menu is anchored to the
-  row's trailing edge through `menuAlignment` (line 190), and the hide item is renamed
-  "Hide and unpin" so the unpin it also performs is stated (line 205). Closes P1-4, P2-5,
-  and the announcement half of P0-4; see "Findings not closed" for the affordance itself.
+- **`AppRow` (lines 118-200).** `onLongClickLabel` states the gesture for assistive
+  technology (line 141). `stateDescription` reports "In Essentials" or "Not in Essentials"
+  (lines 144-146). A `defaultMinSize` of 48dp applies to the row (line 147). The long-press
+  menu is anchored to the row's trailing edge through `menuAlignment` (line 190), and the
+  hide item is renamed "Hide and unpin" so the unpin it also performs is stated (line 205).
+  Closes P1-4, P2-5, and the announcement half of P0-4. A trailing `Add` / `Remove`
+  affordance was written behind a `showFavouriteToggle` flag and then **deleted**: no screen
+  ever passed it, and shipping an unrendered parameter is the dead flexibility the audit
+  raised as P2-8. See "Findings still open" for why the visible affordance is not shipped.
   Effect: pinning state is reportable, the menu opens under the finger, and hiding no
   longer silently drops a pinned entry.
 - **`ScreenTitle` (lines 76-85).** New. A title level above the rows with a trailing slot
@@ -90,7 +90,7 @@ achievable and section 2 explains why, then substitutes a textual review.
   one left.
 - The top offset is `LauncherSpace.xl` (40dp, line 60) with a comment stating it is
   deliberate breathing room rather than a measured offset. P2-3 is only partly addressed;
-  see "Findings not closed".
+  see "Findings still open".
 - The clock takes `clockSizeSp` and `maxLines = 1` (lines 130-137). Closes P0-7 with the
   token change above.
 - The Today block returns early when it has neither an action nor an agenda entry
@@ -138,7 +138,7 @@ achievable and section 2 explains why, then substitutes a textual review.
   the clock, the date and your pinned apps only." (line 109), and the note under "Connect
   Zendo" states that Zendo exposes no planning API, so connecting it fetches nothing and
   the block stays empty (lines 117-120). This is copy only. P2-10 is not closed; see
-  "Findings not closed".
+  "Findings still open".
 - A "Reopen onboarding" action is added under About (line 202). Closes the reachability half
   of P1-2. Effect: the first-run explanation is not a one-time, unrecoverable page.
 
@@ -214,34 +214,39 @@ achievable and section 2 explains why, then substitutes a textual review.
   that no source's rendered UI was retrievable and that the file records principles only.
 - `docs/ui-ux-audit.md` gains P0-9, the cold-start window background finding.
 
-### Findings not closed
+### Findings still open, and one correction
 
 - **P2-10.** The "Show today" toggle still has no observable effect. The wiring is correct
   and the block still requires a Zendo payload that no shipped source produces
   (`ui/LauncherViewModel.kt:82`, `UnavailableZendoSource`). The implementation changed only
   the copy (lines 109 and 117-120), which is what the audit's recommendation asked for, but
   the toggle itself remains without a visible result until a source ships.
-- **P0-4, partly.** The announcement half is done (`onLongClickLabel`, `stateDescription`),
-  but the visible affordance the audit asked for is built and not enabled: `AppRow` exposes
-  `showFavouriteToggle` (line 127) and no screen passes it as true. The Add/Remove control
-  therefore does not appear in the shipped app list. The gesture is still the only way to
-  build Essentials, though the onboarding page now teaches it in words.
-- **P0-3, partly.** Focus, keyboard options, the Search action and the clear affordance all
-  landed, but the field still has no accessible name: the placeholder "Search" remains a
-  sibling `Text` in the `decorationBox` (`ui/AppListScreen.kt:96`) and no
-  `contentDescription` was added, so the audit's accessibility half of this finding is open.
+- **P0-4.** The announcement half is done (`onLongClickLabel` and `stateDescription` on the
+  row, so TalkBack states the favourite and names the gesture), and the onboarding page now
+  teaches the gesture in words. The visible per-row affordance the audit asked for was
+  **deliberately not shipped**. An "Add"/"Remove" action on every row of a list that can run
+  to a hundred entries is the visual noise the design direction rules out, and the audit's
+  own P1-5 recommendation was to take texture *out* of this list. The parameter that would
+  have rendered it (`showFavouriteToggle`) was therefore deleted rather than left as dead
+  flexibility, which is the same defect the audit raised as P2-8 against `SecondaryText`.
+  The gesture remains the only way to build Essentials; this is an accepted, recorded gap.
+- **P0-3, closed.** Focus on arrival, keyboard options, the Search action, the Clear action
+  and the accessible name all landed. The field's accessible name is set through
+  `semantics { contentDescription = "Search apps" }` (`ui/AppListScreen.kt:100-105`), because
+  the "Search" placeholder is a sibling `Text` in the `decorationBox` and is not part of the
+  field's own semantics.
 - **P1-11, partly.** The menu item is renamed "Hide and unpin" so the unpin is stated, but
   there is still no confirmation and no undo. A mis-tap still costs a trip to Settings.
 - **P2-3, not closed.** The Home top offset is now a named constant (`LauncherSpace.xl`,
   40dp) rather than a bare 56dp literal, but it is still a fixed value, not one derived
   from the available height or the inset. The audit's recommendation is unaddressed.
-- **P2-2, closed.** All four screens now use `LauncherSpace`. `ui/OnboardingScreen.kt` was
-  the last holdout: it carried inline `24.dp`, `56.dp`, `28.dp`, `20.dp`, `36.dp`, `40.dp`
-  and `18.dp` literals and its own `TextAction` justified by a comment claiming `QuietAction`
-  was under the minimum touch target, which the P0-5 change had made false. Both were
-  corrected: the spacing is tokenised and the helper's comment now states its real reason
-  (it keeps the label on the row's leading edge, where `QuietAction`'s centring `Box` would
-  float it into the middle of the weight it is given).
+- **Correction: P2-2 is closed, not open.** All four screens now use `LauncherSpace`.
+  `ui/OnboardingScreen.kt` was the last holdout: it carried inline `24.dp`, `56.dp`, `28.dp`,
+  `20.dp`, `36.dp`, `40.dp` and `18.dp` literals and its own `TextAction` justified by a
+  comment claiming `QuietAction` was under the minimum touch target, which the P0-5 change
+  had made false. Both were corrected: the spacing is tokenised and the helper's comment now
+  states its real reason (it keeps the label on the row's leading edge, where `QuietAction`'s
+  centring `Box` would float it into the middle of the weight it is given).
 
 ## 2. Before-and-after review
 

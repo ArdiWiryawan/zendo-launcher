@@ -124,7 +124,6 @@ fun AppRow(
     onToggleFavourite: () -> Unit,
     onToggleHidden: () -> Unit,
     modifier: Modifier = Modifier,
-    showFavouriteToggle: Boolean = false,
     menuAlignment: Alignment.Horizontal = Alignment.End,
 ) {
     val palette = LauncherColors.current
@@ -163,21 +162,6 @@ fun AppRow(
                         .size(6.dp)
                         .clip(CircleShape)
                         .background(palette.secondary),
-                )
-            }
-            // The label keeps weight(1f), so the affordance can never push it off-screen.
-            if (showFavouriteToggle) {
-                Spacer(Modifier.width(LauncherSpace.md))
-                QuietAction(
-                    text = if (isFavourite) "Remove" else "Add",
-                    onClick = onToggleFavourite,
-                    modifier = Modifier.semantics {
-                        contentDescription = if (isFavourite) {
-                            "Remove ${target.label} from Essentials"
-                        } else {
-                            "Add ${target.label} to Essentials"
-                        }
-                    },
                 )
             }
         }
