@@ -3,7 +3,6 @@ package com.zendolauncher.ui
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,25 +12,39 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.theme.LauncherColors
+import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
 
+/**
+ * Settings is a page of text, not a dashboard: sections are grouped by what the user is
+ * trying to change, each control is one row, and nothing is wrapped in a card. The two
+ * things a user cannot discover elsewhere (which Home app they are running, and whether
+ * their pinned shortcuts are readable) are stated in words rather than implied by a
+ * control.
+ */
 @Composable
 fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
     val palette = LauncherColors.current
     val context = LocalContext.current
+
+    // Hidden apps are stored as launch keys. The label comes from the same discovery the
+    // app list uses, so this list reads as app names instead of package ids; a key that no
+    // longer resolves is an uninstalled app and falls back to its package name.
+    val labels = remember(state.allApps) { state.allApps.associate { it.key to it.label } }
 
     Column(
         Modifier
@@ -44,21 +57,17 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = LauncherSpace.gutter),
         ) {
-            Spacer(Modifier.height(28.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Settings", style = LauncherType.appLabel, color = palette.primary)
-                Spacer(Modifier.weight(1f))
-                QuietAction("Home", onClick = { viewModel.goHome() })
-            }
+            Spacer(Modifier.height(LauncherSpace.lg))
+            ScreenTitle("Settings") { QuietAction("Home", onClick = { viewModel.goHome() }) }
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(LauncherSpace.lg))
             Hairline()
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(LauncherSpace.md))
 
             SectionHeading("Appearance")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(LauncherSpace.sm))
             ChoiceRow(
                 label = "Theme",
                 options = listOf(
@@ -69,7 +78,7 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 selected = state.settings.theme,
                 onSelect = { viewModel.setTheme(it) },
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(LauncherSpace.md))
             ChoiceRow(
                 label = "Layout",
                 options = listOf(
@@ -79,43 +88,40 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 selected = state.settings.layout,
                 onSelect = { viewModel.setLayout(it) },
             )
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(LauncherSpace.md))
             ToggleRow(
                 label = "24-hour clock",
                 checked = state.settings.clock24h,
                 onCheckedChange = { viewModel.setClock24h(it) },
             )
 
-            Spacer(Modifier.height(28.dp))
-            SectionHeading("Today section")
-            Spacer(Modifier.height(10.dp))
+            // The Today block and the source that fills it are one intent, so they are one
+            // section rather than two headings over a single feature.
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Today")
+            Spacer(Modifier.height(LauncherSpace.sm))
             ToggleRow(
                 label = "Show today",
                 checked = state.settings.todayEnabled,
                 onCheckedChange = { viewModel.setTodayEnabled(it) },
             )
-            Spacer(Modifier.height(6.dp))
-            EmptyNote(
-                "Turn this off for a fully minimal home screen: clock, date and your pinned apps only.",
-            )
-
-            Spacer(Modifier.height(28.dp))
-            SectionHeading("Zendo")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText("With this off, Home shows the clock, the date and your pinned apps only.")
+            Spacer(Modifier.height(LauncherSpace.md))
             ToggleRow(
                 label = "Connect Zendo",
                 checked = state.settings.zendoEnabled,
                 onCheckedChange = { viewModel.setZendoEnabled(it) },
             )
-            Spacer(Modifier.height(6.dp))
-            EmptyNote(
-                "Zendo currently exposes no planning API, so connecting does not yet fetch anything. " +
-                    "The launcher works fully without it. See docs/zendo-integration.md.",
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText(
+                "Zendo exposes no planning API yet, so connecting it fetches nothing and the " +
+                    "Today block stays empty. The launcher works fully without it.",
             )
 
-            Spacer(Modifier.height(28.dp))
-            SectionHeading("Home screen")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Home app")
+            Spacer(Modifier.height(LauncherSpace.sm))
             SecondaryText(
                 if (state.isDefaultHome) {
                     "This launcher is your default Home app."
@@ -123,13 +129,12 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                     "This launcher is not the default Home app yet."
                 },
             )
-            Spacer(Modifier.height(6.dp))
             QuietAction("Open Home app settings") {
                 val intent = Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 runCatching { context.startActivity(intent) }
             }
-            Spacer(Modifier.height(8.dp))
-            EmptyNote(
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText(
                 if (state.shortcutAccess) {
                     "Pinned shortcuts from other apps are readable, so installed web apps appear in your app list."
                 } else {
@@ -138,115 +143,111 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 },
             )
 
-            Spacer(Modifier.height(28.dp))
-            SectionHeading("Pinned order")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Essentials")
+            Spacer(Modifier.height(LauncherSpace.sm))
             if (state.favourites.isEmpty()) {
                 EmptyNote("No pinned apps.")
             } else {
                 state.favourites.forEachIndexed { index, target ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(target.label, style = LauncherType.body, color = palette.primary, modifier = Modifier.weight(1f))
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            QuietAction("Up") { viewModel.moveFavourite(target.key, -1) }
-                            QuietAction("Down") { viewModel.moveFavourite(target.key, 1) }
-                            QuietAction("Unpin") { viewModel.toggleFavourite(target.key) }
-                        }
-                    }
-                    Hairline()
+                    if (index > 0) Hairline()
+                    PinnedOrderRow(
+                        label = target.label,
+                        onMoveUp = { viewModel.moveFavourite(target.key, -1) },
+                        onMoveDown = { viewModel.moveFavourite(target.key, 1) },
+                        onUnpin = { viewModel.toggleFavourite(target.key) },
+                    )
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("Hidden apps")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(LauncherSpace.sm))
             if (state.settings.hidden.isEmpty()) {
                 EmptyNote("No hidden apps.")
             } else {
-                state.settings.hidden.sorted().forEach { key ->
+                state.settings.hidden.sorted().forEachIndexed { index, key ->
+                    if (index > 0) Hairline()
                     Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
+                        Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
-                            key.substringBefore('/'),
+                            labels[key] ?: key.substringBefore('/'),
                             style = LauncherType.body,
                             color = palette.primary,
                             modifier = Modifier.weight(1f),
                         )
                         QuietAction("Unhide") { viewModel.toggleHidden(key) }
                     }
-                    Hairline()
                 }
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("Privacy")
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(LauncherSpace.sm))
             SecondaryText(
                 "Everything stays on this device. Your app list, pinned apps, hidden apps and theme are stored " +
                     "locally and are never uploaded. The launcher requests no runtime permissions and does not " +
                     "use the internet. App discovery uses the system's LauncherApps service.",
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("About")
-            Spacer(Modifier.height(10.dp))
-            SecondaryText("Zendo Launcher 0.1.0 — a standalone, monochrome home screen.")
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText("Zendo Launcher 0.1.0, a standalone monochrome home screen.")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            // Onboarding is the only place the app explains what it replaces and how to get
+            // back, so it stays reachable after the first run rather than being shown once.
+            QuietAction("Reopen onboarding") { viewModel.showOnboarding() }
+            Spacer(Modifier.height(LauncherSpace.xl))
         }
     }
 }
 
+/**
+ * One pinned app with its two kinds of action kept apart. Up and Down sit together as the
+ * reorder pair; Unpin is destructive and not reversible from this row, so it takes a
+ * deliberate step away from them and the trailing edge of the row. The label keeps
+ * `weight(1f)`, so a long app name wraps instead of pushing the actions off-screen.
+ *
+ * Each action names the app it acts on, because three identical words repeated down the
+ * list are otherwise indistinguishable to a screen reader.
+ */
 @Composable
-private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    val palette = LauncherColors.current
+private fun PinnedOrderRow(
+    label: String,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onUnpin: () -> Unit,
+) {
     Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = 2.dp),
+        Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = LauncherType.body, color = palette.primary, modifier = Modifier.weight(1f))
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = palette.background,
-                checkedTrackColor = palette.primary,
-                checkedBorderColor = palette.primary,
-                uncheckedThumbColor = palette.secondary,
-                uncheckedTrackColor = palette.background,
-                uncheckedBorderColor = palette.separator,
-            ),
+        Text(
+            text = label,
+            style = LauncherType.body,
+            color = LauncherColors.current.primary,
+            modifier = Modifier.weight(1f),
         )
-    }
-}
-
-@Composable
-private fun <T> ChoiceRow(
-    label: String,
-    options: List<Pair<T, String>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-) {
-    val palette = LauncherColors.current
-    Column {
-        Text(label, style = LauncherType.body, color = palette.primary)
-        Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            options.forEach { (value, text) ->
-                Text(
-                    text = text,
-                    style = LauncherType.action,
-                    color = if (value == selected) palette.primary else palette.secondary,
-                    modifier = Modifier
-                        .clickable { onSelect(value) }
-                        .padding(vertical = 6.dp),
-                )
-            }
+        Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.md)) {
+            QuietAction(
+                text = "Up",
+                onClick = onMoveUp,
+                modifier = Modifier.semantics { contentDescription = "Move $label up" },
+            )
+            QuietAction(
+                text = "Down",
+                onClick = onMoveDown,
+                modifier = Modifier.semantics { contentDescription = "Move $label down" },
+            )
         }
+        Spacer(Modifier.width(LauncherSpace.xl))
+        QuietAction(
+            text = "Unpin",
+            onClick = onUnpin,
+            modifier = Modifier.semantics { contentDescription = "Unpin $label" },
+        )
     }
 }

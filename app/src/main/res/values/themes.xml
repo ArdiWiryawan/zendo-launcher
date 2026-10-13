@@ -1,10 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <style name="Theme.ZendoLauncher" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">@color/launcher_window_background</item>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Common to every variant: transparent system bars, edge-to-edge. -->
+    <style name="Theme.ZendoLauncher.Base" parent="android:Theme.Material.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowDrawsSystemBarBackgrounds">true</item>
-        <item name="android:windowLightStatusBar">false</item>
     </style>
+
+    <!-- Near-white window, dark system-bar icons. -->
+    <style name="Theme.ZendoLauncher.Light" parent="Theme.ZendoLauncher.Base">
+        <item name="android:windowBackground">@color/launcher_window_background_light</item>
+        <item name="android:windowLightStatusBar">true</item>
+        <!-- API 27. On 26 the nav icons stay light, which is only wrong for the single
+             pre-Compose frame of a light-themed window; SystemBarIcons corrects it as
+             soon as Compose draws, and WindowCompat handles the level check itself. -->
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">true</item>
+    </style>
+
+    <!-- Near-black window, light system-bar icons. -->
+    <style name="Theme.ZendoLauncher.Dark" parent="Theme.ZendoLauncher.Base">
+        <item name="android:windowBackground">@color/launcher_window_background_dark</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
+    </style>
+
+    <!-- Applied from the manifest. Follows the system by default; LauncherActivity
+         overrides it before super.onCreate() when the user picked an explicit theme. -->
+    <style name="Theme.ZendoLauncher" parent="Theme.ZendoLauncher.Light" />
 </resources>

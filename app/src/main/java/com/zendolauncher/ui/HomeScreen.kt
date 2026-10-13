@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
@@ -20,18 +19,25 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.unit.dp
-import com.zendolauncher.data.LayoutMode
+import androidx.compose.ui.unit.sp
 import com.zendolauncher.model.AgendaItem
 import com.zendolauncher.model.ZendoToday
 import com.zendolauncher.ui.theme.LauncherColors
+import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
+import com.zendolauncher.ui.theme.clockSizeSp
 import kotlinx.coroutines.delay
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+/**
+ * The launcher's most important page, and its job is to let the user act and leave:
+ * clock and date first, optional daily context, the pinned apps, then one route to the
+ * drawer. The clock is the only large element and empty space is left empty, so nothing
+ * is added to fill the screen.
+ */
 @Composable
 fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
     val palette = LauncherColors.current
@@ -47,11 +53,13 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp),
+                .padding(horizontal = LauncherSpace.gutter),
         ) {
-            Spacer(Modifier.height(56.dp))
+            // The status-bar inset is already consumed above, so this is the clock's
+            // deliberate breathing room rather than a measured offset: the largest step.
+            Spacer(Modifier.height(LauncherSpace.xl))
             Clock(state.settings.clock24h)
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(LauncherSpace.xs))
             Text(
                 text = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", currentLocale())),
                 style = LauncherType.date,
@@ -59,18 +67,15 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
             )
 
             if (state.settings.todayEnabled) {
-                state.zendo?.let { today ->
-                    Spacer(Modifier.height(44.dp))
-                    TodayBlock(today)
-                }
+                state.zendo?.takeUnless { it.isEmpty }?.let { TodayBlock(it) }
             }
 
-            Spacer(Modifier.height(44.dp))
+            Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("Essentials")
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(LauncherSpace.sm))
 
             if (state.favourites.isEmpty()) {
-                EmptyNote("Nothing pinned yet. Open All apps and long-press an app to add it here.")
+                EmptyNote("No pinned apps yet.")
             } else {
                 state.favourites.forEach { target ->
                     AppRow(
@@ -85,22 +90,20 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 }
             }
 
-            Spacer(Modifier.height(40.dp))
+            Spacer(Modifier.height(LauncherSpace.xl))
         }
 
+        // One mechanism for the bar's spacing: two actions packed from the same left edge
+        // as everything above, not spread by a weight spacer.
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp, vertical = 18.dp),
-            horizontalArrangement = Arrangement.spacedBy(28.dp),
+                .padding(horizontal = LauncherSpace.gutter, vertical = LauncherSpace.md),
+            horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             QuietAction("All apps", onClick = { viewModel.openApps() })
             QuietAction("Settings", onClick = { viewModel.openSettings() })
-            Spacer(Modifier.weight(1f))
-            if (state.settings.layout == LayoutMode.ICON_TEXT) {
-                QuietAction("Refresh", onClick = { viewModel.refreshApps() })
-            }
         }
     }
 }
@@ -108,6 +111,9 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
 /**
  * Ticks on the minute boundary rather than every second: the display only ever shows
  * minutes, and a home screen that wakes the CPU 86,400 times a day is not calm.
+ *
+ * The size is fitted to the screen instead of fixed, because at a raised system font
+ * scale a 60.sp clock is wider than the text column and clips.
  */
 @Composable
 private fun Clock(use24Hour: Boolean) {
@@ -119,16 +125,23 @@ private fun Clock(use24Hour: Boolean) {
         }
     }
     val locale = currentLocale()
+    // LocalConfiguration is snapshot-backed, so a font-scale or width change re-runs this.
+    val configuration = LocalConfiguration.current
+    val clockStyle = LauncherType.clock.copy(
+        fontSize = clockSizeSp(configuration.screenWidthDp, configuration.fontScale).sp,
+    )
+    val palette = LauncherColors.current
     val pattern = if (use24Hour) "HH:mm" else "h:mm"
     val text = now.format(DateTimeFormatter.ofPattern(pattern, locale))
     Row(verticalAlignment = Alignment.Bottom) {
-        Text(text = text, style = LauncherType.clock, color = LauncherColors.current.primary)
+        Text(text = text, style = clockStyle, color = palette.primary, maxLines = 1)
         if (!use24Hour) {
             Text(
                 text = now.format(DateTimeFormatter.ofPattern("a", locale)),
                 style = LauncherType.secondary,
-                color = LauncherColors.current.secondary,
-                modifier = Modifier.padding(start = 8.dp, bottom = 12.dp),
+                color = palette.secondary,
+                // Lifts the smaller suffix onto the clock's baseline.
+                modifier = Modifier.padding(start = LauncherSpace.sm, bottom = LauncherSpace.md),
             )
         }
     }
@@ -142,37 +155,30 @@ private fun Clock(use24Hour: Boolean) {
 @Composable
 private fun currentLocale(): Locale = LocalConfiguration.current.locales[0]
 
+/**
+ * The day's context, reduced to the two lines that change what the user does next: the
+ * one action, falling back to the day's highlight when there is no action, and what is
+ * coming. The model also carries `practices`, a list to read rather than to glance at,
+ * so it is left to the surface built for planning.
+ */
 @Composable
 private fun TodayBlock(today: ZendoToday) {
+    val action = today.mainAction ?: today.highlight
+    val agenda = today.nextAgenda
+    // A block carrying only `practices` is not `isEmpty`, but it has nothing this screen
+    // shows, and a heading over nothing reads as a broken screen.
+    if (action == null && agenda == null) return
+
     val palette = LauncherColors.current
+    Spacer(Modifier.height(LauncherSpace.xl))
     SectionHeading("Today")
-
-    today.highlight?.let {
-        Spacer(Modifier.height(12.dp))
+    action?.let {
+        Spacer(Modifier.height(LauncherSpace.sm))
         Text(text = it, style = LauncherType.body, color = palette.primary)
     }
-
-    today.mainAction?.let {
-        Spacer(Modifier.height(14.dp))
-        SecondaryText("Main action")
-        Spacer(Modifier.height(2.dp))
-        Text(text = it, style = LauncherType.body, color = palette.primary)
-    }
-
-    today.nextAgenda?.let { agenda ->
-        Spacer(Modifier.height(14.dp))
-        SecondaryText("Next")
-        Spacer(Modifier.height(2.dp))
-        Text(text = agenda.display(), style = LauncherType.body, color = palette.primary)
-    }
-
-    if (today.practices.isNotEmpty()) {
-        Spacer(Modifier.height(14.dp))
-        SecondaryText("Practices")
-        Spacer(Modifier.height(2.dp))
-        today.practices.forEach {
-            Text(text = it, style = LauncherType.body, color = palette.primary)
-        }
+    agenda?.let {
+        Spacer(Modifier.height(LauncherSpace.xs))
+        SecondaryText(it.display())
     }
 }
 

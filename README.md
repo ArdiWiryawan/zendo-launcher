@@ -1,8 +1,7 @@
 # Zendo Launcher
 
 A standalone, monochrome Android home screen. It replaces your launcher with a clock, a
-date, a short list of apps you actually use, and — optionally — one compact block from
-Zendo. Nothing else.
+date, and a short list of apps you actually use. Nothing else.
 
 Built as a real native Android app in Kotlin and Jetpack Compose. It is a separate
 product from Zendo and works fully without it.
@@ -10,11 +9,6 @@ product from Zendo and works fully without it.
 ```
 14:05
 Tuesday, 13 October
-
-Today
-Finish the report
-Main action
-Draft section 2
 
 Essentials
 Phone
@@ -34,12 +28,23 @@ All apps   Settings
 - **Finds installed web apps** that Android exposes as launcher activities (WebAPKs) or
   as pinned shortcuts published by browsers.
 - **Search** across every launchable app, ranked so an exact name beats a prefix beats a
-  word start beats a substring, ignoring case and accents.
+  word start beats a substring, ignoring case and accents. The field takes focus as the
+  drawer opens, is set up for app names rather than sentences (no autocorrect, no
+  auto-capitalisation), and the Search key or a Clear action ends the query without
+  leaving the screen.
+- **All apps**, listed alphabetically under sticky letter headers while the query is
+  empty. While the first scan of installed apps is still running the drawer says so,
+  instead of reporting that no apps were found.
 - **Essentials** — pin apps to the home screen, reorder them, unpin them.
-- **Hide apps** you would rather not see, without uninstalling anything.
-- **Optional Today block** sourced from Zendo. Off by default, hideable entirely, and the
-  home screen never waits for it.
+- **Hide apps** you would rather not see, without uninstalling anything. The hidden list
+  names apps by their real label, not by package name.
+- **A Today block with nothing in it.** The setting exists and the home screen has a place
+  for it, but Zendo publishes no planning API, so connecting it fetches nothing and the
+  block never appears. See [docs/zendo-integration.md](docs/zendo-integration.md) for the
+  verified data contract and the backend change required.
 - **Light and dark**, both monochrome. Text-first by default, optional icon-plus-text.
+  The window background and the status and navigation bar icons follow the theme you
+  chose, not the system's night setting.
 - **Everything is local.** No account, no network use, no runtime permissions.
 
 ## Download the APK
@@ -74,6 +79,19 @@ To build locally instead:
 
 Setting a default Home app is a per-device choice. This launcher does not, and cannot,
 replace your existing home screen setup automatically.
+
+## First run
+
+The first time it opens, the launcher shows a one-page explanation instead of the home
+screen. It says what the launcher replaces, how to choose your essentials from the app
+list, that Android owns the Home app setting, how to get your previous Home screen back,
+and that Zendo is optional.
+
+The same page is reachable afterwards from **Settings → About → Reopen onboarding**.
+
+To get your previous Home screen back, open **Settings → Apps → Default apps → Home app**
+and choose the other launcher. Android owns that setting: this launcher never changes it
+on its own, and it can always be changed back.
 
 ## Known limitations
 
@@ -115,6 +133,7 @@ replace your existing home screen setup automatically.
 | [docs/opensource-review.md](docs/opensource-review.md) | Licence audit of the launcher projects reviewed before writing any code |
 | [docs/design-reference-audit.md](docs/design-reference-audit.md) | Visual references inspected, and the design decisions taken from them |
 | [docs/zendo-integration.md](docs/zendo-integration.md) | Verified Zendo data contract, and what a real integration would need |
+| [docs/ui-ux-audit.md](docs/ui-ux-audit.md) | Source-level audit of the shipped UI: the problems found, and what could not be verified |
 | [docs/build-and-release.md](docs/build-and-release.md) | Building, downloading artifacts, signing, troubleshooting |
 
 ## Licence

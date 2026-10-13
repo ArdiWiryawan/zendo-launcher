@@ -34,6 +34,7 @@ class SettingsStore(context: Context) {
         todayEnabled = prefs.getBoolean(KEY_TODAY, true),
         clock24h = prefs.getBoolean(KEY_CLOCK_24H, true),
         zendoEnabled = prefs.getBoolean(KEY_ZENDO, false),
+        onboardingSeen = prefs.getBoolean(KEY_ONBOARDING_SEEN, false),
     )
 
     fun update(transform: (LauncherSettings) -> LauncherSettings) {
@@ -46,6 +47,7 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_TODAY, next.todayEnabled)
             putBoolean(KEY_CLOCK_24H, next.clock24h)
             putBoolean(KEY_ZENDO, next.zendoEnabled)
+            putBoolean(KEY_ONBOARDING_SEEN, next.onboardingSeen)
         }
         _settings.value = next
     }
@@ -90,6 +92,7 @@ class SettingsStore(context: Context) {
         private const val KEY_TODAY = "today_enabled"
         private const val KEY_CLOCK_24H = "clock_24h"
         private const val KEY_ZENDO = "zendo_enabled"
+        private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
     }
 }
 
@@ -101,4 +104,5 @@ data class LauncherSettings(
     val todayEnabled: Boolean = true,
     val clock24h: Boolean = true,
     val zendoEnabled: Boolean = false,
+    val onboardingSeen: Boolean = false,
 )

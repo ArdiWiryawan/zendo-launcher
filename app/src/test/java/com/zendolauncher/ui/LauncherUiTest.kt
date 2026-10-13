@@ -1,5 +1,6 @@
 package com.zendolauncher.ui
 
+import androidx.activity.compose.setContent
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -17,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.LauncherActivity
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
+import com.zendolauncher.ui.theme.LauncherTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -61,6 +63,16 @@ class LauncherUiTest {
         rule.waitForIdle()
     }
 
+    /**
+     * Waits for the first enumeration to finish. The drawer's definitive empty state is
+     * only true once that has happened (P1-13), so tests that assert it wait for the flag
+     * rather than racing the background scan.
+     */
+    private fun awaitEnumeration() {
+        rule.waitUntil(5_000) { !viewModel.state.value.isLoading }
+        rule.waitForIdle()
+    }
+
     @Before
     fun setUp() = resetSettings()
 
@@ -86,9 +98,7 @@ class LauncherUiTest {
 
     @Test
     fun homeScreen_showsEssentialsEmptyState_andBottomActions() {
-        rule.onNodeWithText(
-            "Nothing pinned yet. Open All apps and long-press an app to add it here.",
-        ).assertIsDisplayed()
+        rule.onNodeWithText("No pinned apps yet.").assertIsDisplayed()
         rule.onNodeWithText("All apps").assertIsDisplayed()
         rule.onNodeWithText("Settings").assertIsDisplayed()
     }
@@ -99,8 +109,11 @@ class LauncherUiTest {
         rule.waitForIdle()
         assertEquals(Screen.APPS, viewModel.state.value.screen)
 
-        // The search field is present with its placeholder.
+        // The screen header, the search field with its placeholder, and the definitive
+        // empty state, which is only true once the enumeration has finished.
+        rule.onNodeWithText("All apps").assertIsDisplayed()
         rule.onNodeWithText("Search").assertIsDisplayed()
+        awaitEnumeration()
         rule.onNodeWithText("No launchable apps found.").assertIsDisplayed()
 
         rule.onNodeWithText("Home").performClick()
@@ -140,6 +153,29 @@ class LauncherUiTest {
         viewModel.goHome()
         rule.waitForIdle()
         assertEquals("", viewModel.state.value.query)
+    }
+
+    /** Clearing must not require leaving the drawer, which goHome() was the only route to. */
+    @Test
+    fun search_clearAction_emptiesQuery_andStaysOnAppList() {
+        viewModel.openApps()
+        rule.waitForIdle()
+        viewModel.setQuery("zzz")
+        rule.waitForIdle()
+        rule.onNodeWithText("Results").assertIsDisplayed()
+
+        rule.onNodeWithText("Clear").performClick()
+        rule.waitForIdle()
+        assertEquals("", viewModel.state.value.query)
+        assertEquals(Screen.APPS, viewModel.state.value.screen)
+    }
+
+    /** The clear affordance has nothing to clear until something is typed. */
+    @Test
+    fun search_clearAction_absentWhileQueryIsEmpty() {
+        viewModel.openApps()
+        rule.waitForIdle()
+        rule.onAllNodesWithText("Clear").assertCountEquals(0)
     }
 
     @Test
@@ -218,12 +254,17 @@ class LauncherUiTest {
         assertFalse(viewModel.state.value.settings.todayEnabled)
     }
 
+    /**
+     * Refresh is not a Home concern: both repositories rescan through
+     * `LauncherApps.Callback` and the one manual control lives on the app list, so its
+     * presence must not depend on the icon layout either.
+     */
     @Test
-    fun homeScreen_rendersRefreshOnlyInIconTextLayout() {
+    fun homeScreen_hasNoRefreshActionInAnyLayout() {
         rule.onAllNodesWithText("Refresh").assertCountEquals(0)
         viewModel.setLayout(LayoutMode.ICON_TEXT)
         rule.waitForIdle()
-        rule.onAllNodesWithText("Refresh").assertCountEquals(1)
+        rule.onAllNodesWithText("Refresh").assertCountEquals(0)
     }
 
     @Test
@@ -233,5 +274,50 @@ class LauncherUiTest {
         rule.onNodeWithText("No pinned apps.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("No hidden apps.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("About").performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * The drawer's headers come from the same normalisation as the sort, so an accented
+     * name files under the base letter it was ordered by. Everything that is not a
+     * letter shares one bucket instead of each getting its own header.
+     */
+    @Test
+    fun appList_letterBuckets_followTheSortsNormalisation() {
+        assertEquals("A", letterOf("Ámbar"))
+        assertEquals("Z", letterOf("Zendo"))
+        assertEquals("#", letterOf("7-Zip"))
+        assertEquals("#", letterOf("!Widget"))
+    }
+
+    /**
+     * P1-13: "No launchable apps found." is a claim about the device, so it must not be
+     * made while the first enumeration is still in flight. That window is a few hundred
+     * milliseconds at launch, which a test cannot reliably observe, so the loading state
+     * is rendered directly instead of raced.
+     */
+    @Test
+    fun appList_whileEnumerationInFlight_showsProgressNotTheEmptyState() {
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    AppListScreen(viewModel, UiState(isLoading = true))
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("Looking for apps…").assertIsDisplayed()
+        rule.onAllNodesWithText("No launchable apps found.").assertCountEquals(0)
+    }
+
+    /**
+     * The other half of P1-13: a loading flag that never clears is a stuck spinner on a
+     * home screen, so the enumeration must always end, including when it throws.
+     */
+    @Test
+    fun appList_loadingFlag_clearsAfterEnumeration() {
+        rule.waitUntil(5_000) { !viewModel.state.value.isLoading }
+        viewModel.openApps()
+        rule.waitForIdle()
+        rule.onNodeWithText("No launchable apps found.").assertIsDisplayed()
     }
 }
