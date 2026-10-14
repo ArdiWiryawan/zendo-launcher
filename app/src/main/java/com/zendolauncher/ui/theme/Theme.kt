@@ -105,6 +105,10 @@ object LauncherType {
  */
 fun clockSizeSp(screenWidthDp: Int, fontScale: Float, base: Float = 60f): Float {
     if (fontScale <= 0f) return base
+    // A caller that measures the window before layout can hand this 0, which would
+    // compute a negative available width and floor the clock at 28sp on a screen
+    // that has plenty of room. Fall back to the requested size instead.
+    if (screenWidthDp <= 0) return base
     val available = screenWidthDp - 2 * LauncherSpace.gutter.value
     // Widest realistic string is "12:59" plus the AM/PM run. The per-character advances
     // are deliberately pessimistic: Roboto's digits advance at roughly 0.60em, and

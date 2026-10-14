@@ -35,9 +35,12 @@ All apps   Settings
 - **All apps**, listed alphabetically under sticky letter headers while the query is
   empty. While the first scan of installed apps is still running the drawer says so,
   instead of reporting that no apps were found.
-- **Essentials** — pin apps to the home screen, reorder them, unpin them.
+- **Essentials** — pin apps to the home screen, reorder them, unpin them. In the app list
+  every row carries a visible **Pin** action, so the feature does not depend on knowing the
+  long press; holding a row still opens the same menu as a shortcut.
 - **Hide apps** you would rather not see, without uninstalling anything. The hidden list
-  names apps by their real label, not by package name.
+  names apps by their real label, not by package name, and hiding offers an **Undo** that
+  stays on screen for a few seconds.
 - **A Today block with nothing in it.** The setting exists and the home screen has a place
   for it, but Zendo publishes no planning API, so connecting it fetches nothing and the
   block never appears. See [docs/zendo-integration.md](docs/zendo-integration.md) for the
@@ -51,7 +54,7 @@ All apps   Settings
 
 The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing to install.
 
-**Latest debug build:** [Releases → Zendo Launcher 0.2.0 (debug test build)](https://github.com/ArdiWiryawan/zendo-launcher/releases/tag/debug-0.2.0)
+**Latest debug build:** [Releases → Zendo Launcher 0.2.1 (debug test build)](https://github.com/ArdiWiryawan/zendo-launcher/releases/tag/debug-0.2.1)
 — download `ZendoLauncher-debug.apk` directly, no unzipping.
 
 To build a fresh one yourself:

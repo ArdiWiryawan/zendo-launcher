@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -18,9 +19,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.LauncherActivity
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
+import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.LauncherTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -319,5 +323,99 @@ class LauncherUiTest {
         viewModel.openApps()
         rule.waitForIdle()
         rule.onNodeWithText("No launchable apps found.").assertIsDisplayed()
+    }
+
+    /**
+     * P1-11: hiding has no confirmation step, so the undo offer is the only way back.
+     * Robolectric discovers no apps, so no row exists to hide through the UI; the view
+     * model is driven directly, which is where the undo state actually lives.
+     */
+    @Test
+    fun hideApp_offersUndo_andUndoPutsTheAppBack() {
+        val key = "com.example.notes/.MainActivity"
+        assertFalse(key in viewModel.state.value.settings.hidden)
+
+        viewModel.toggleHidden(key)
+        rule.waitForIdle()
+        assertTrue(key in viewModel.state.value.settings.hidden)
+        assertEquals(key, viewModel.state.value.undoHidden?.key)
+
+        viewModel.undoHide()
+        rule.waitForIdle()
+        assertFalse(key in viewModel.state.value.settings.hidden)
+        assertNull(viewModel.state.value.undoHidden)
+    }
+
+    /** Unhiding is its own undo, so the offer must not outlive it. */
+    @Test
+    fun unhide_takesDownTheUndoOffer() {
+        val key = "com.example.notes/.MainActivity"
+
+        viewModel.toggleHidden(key)
+        rule.waitForIdle()
+        assertNotNull(viewModel.state.value.undoHidden)
+
+        viewModel.toggleHidden(key)
+        rule.waitForIdle()
+        assertFalse(key in viewModel.state.value.settings.hidden)
+        assertNull(viewModel.state.value.undoHidden)
+    }
+
+    /**
+     * P0-4: pinning must not be reachable only through the long press. The row is built
+     * with the activity's own view model, so this exercises the affordance as the drawer
+     * composes it; the drawer itself is unusable here because Robolectric discovers no
+     * apps. Every callback is a no-op, because the test is about what the row shows.
+     */
+    @Test
+    fun appRow_showsPinAction_whenTheDrawerAsksForIt() {
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    AppRow(
+                        viewModel = viewModel,
+                        target = LaunchTarget("com.example.notes", ".MainActivity", "Notes"),
+                        layout = LayoutMode.TEXT,
+                        isFavourite = false,
+                        onClick = {},
+                        onToggleFavourite = {},
+                        onToggleHidden = {},
+                        showPinAction = true,
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("Pin").assertIsDisplayed()
+        // One repeated word down a list is indistinguishable to a screen reader, so the
+        // action names the app it acts on.
+        rule.onNodeWithContentDescription("Pin Notes").assertIsDisplayed()
+    }
+
+    /**
+     * The other half of P0-4: Home leaves the action off. Every row there is already
+     * pinned, and the dot already reports that, so an action on each row is only noise.
+     */
+    @Test
+    fun appRow_hidesPinAction_onHomeRows() {
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    AppRow(
+                        viewModel = viewModel,
+                        target = LaunchTarget("com.example.notes", ".MainActivity", "Notes"),
+                        layout = LayoutMode.TEXT,
+                        isFavourite = true,
+                        onClick = {},
+                        onToggleFavourite = {},
+                        onToggleHidden = {},
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onAllNodesWithText("Pin").assertCountEquals(0)
+        rule.onAllNodesWithText("Unpin").assertCountEquals(0)
+        rule.onNodeWithText("Notes").assertIsDisplayed()
     }
 }

@@ -112,6 +112,10 @@ fun QuietAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
  * The hide item names the unpin it also performs. Hiding a pinned app drops it from
  * Essentials in the same tap, and a menu that said only "Hide app" would let the user
  * lose an ordered entry without being told.
+ *
+ * `showPinAction` is what makes pinning reachable without knowing the long press, so the
+ * app list turns it on. Home leaves it off: every row there is already pinned, and an
+ * "Unpin" on each one would be a row of noise for a state the dot already reports.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -124,6 +128,7 @@ fun AppRow(
     onToggleFavourite: () -> Unit,
     onToggleHidden: () -> Unit,
     modifier: Modifier = Modifier,
+    showPinAction: Boolean = false,
     menuAlignment: Alignment.Horizontal = Alignment.End,
 ) {
     val palette = LauncherColors.current
@@ -162,6 +167,19 @@ fun AppRow(
                         .size(6.dp)
                         .clip(CircleShape)
                         .background(palette.secondary),
+                )
+            }
+            // The label above keeps `weight(1f)`, so the action can never push it off the
+            // row; a long app name wraps instead. Each action names its own app, because
+            // one repeated word down a list is otherwise indistinguishable to a reader.
+            if (showPinAction) {
+                Spacer(Modifier.width(LauncherSpace.md))
+                QuietAction(
+                    text = if (isFavourite) "Unpin" else "Pin",
+                    onClick = onToggleFavourite,
+                    modifier = Modifier.semantics {
+                        contentDescription = if (isFavourite) "Unpin ${target.label}" else "Pin ${target.label}"
+                    },
                 )
             }
         }
@@ -324,4 +342,22 @@ fun SecondaryText(text: String, modifier: Modifier = Modifier) {
         color = LauncherColors.current.secondary,
         modifier = modifier,
     )
+}
+
+/**
+ * What happened, and the one action that reverses it. No container, background or
+ * border: it is a line of the page, so it costs the screen nothing when it is absent
+ * and reads as a remark rather than as an alert. The weight spacer is what keeps the
+ * action on the trailing edge whatever the note says.
+ */
+@Composable
+fun UndoNote(text: String, actionLabel: String, onAction: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        SecondaryText(text)
+        Spacer(Modifier.weight(1f))
+        QuietAction(text = actionLabel, onClick = onAction)
+    }
 }

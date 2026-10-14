@@ -3,7 +3,7 @@
 Deliverable D for the UI/UX redesign. It records what was mechanically verified after the
 redesign landed, the regression checklist, what could not be verified, and the findings that
 remain open. Finding ids refer to `docs/ui-ux-audit.md`; the changes referred to are the ones
-described in `docs/ui-ux-implementation.md` (commits `22273c1` through `37a6215`).
+described in `docs/ui-ux-implementation.md` (commits `22273c1` through the second pass).
 
 Every claim below is a Gradle task result, a file read, or a CI run. Nothing was observed on
 a device.
@@ -13,20 +13,20 @@ a device.
 Local build, Windows, `./gradlew.bat --no-daemon`, after deleting `app/build/kotlin` and
 `build/kotlin` and stopping stale Gradle daemons:
 
-- `testDebugUnitTest`: BUILD SUCCESSFUL. 33 tests, 0 failures, 0 errors. Counted from
-  `app/build/test-results/testDebugUnitTest/*.xml`: `core/AppQueryTest` 9,
-  `core/TodaySelectorTest` 6, `ui/LauncherUiTest` 18.
+- `testDebugUnitTest`: BUILD SUCCESSFUL. 37 tests, 0 failures, 0 errors, 0 skipped. Counted
+  from `app/build/test-results/testDebugUnitTest/*.xml`: `core/AppQueryTest` 9,
+  `core/TodaySelectorTest` 6, `ui/LauncherUiTest` 22. The UI suite grew from 18 to 22 in the
+  second pass; the four new tests are named in `docs/ui-ux-implementation.md`.
 - `lintDebug`: BUILD SUCCESSFUL. Report at `app/build/reports/lint-results-debug.xml`.
-  5 issues, all `severity="Warning"`, 0 errors: 4 x `GradleDependency` (newer versions of
-  compose-bom, core-ktx, lifecycle-runtime-compose and lifecycle-viewmodel-compose are
-  available) and 1 x `ConfigurationScreenWidthHeight` (advises
-  `LocalWindowInfo.current.containerSize` over `Configuration.screenWidthDp`).
+  4 issues, all `severity="Warning"`, 0 errors: 4 x `GradleDependency`. The
+  `ConfigurationScreenWidthHeight` warning was cleared in the second pass, because
+  `HomeScreen` now reads the measured container size from `LocalWindowInfo`.
   An earlier lint run reported two `NewApi` errors: `android:windowLightNavigationBar`
   requires API 27 and the minimum is 26. They were fixed by adding `tools:targetApi="27"` to
   the two style items in `app/src/main/res/values/themes.xml` (lines 17 and 24). That is why
   the current report has no errors.
 - `assembleDebug`: BUILD SUCCESSFUL. `app/build/outputs/apk/debug/app-debug.apk`,
-  11,717,817 bytes.
+  11,717,817 bytes, sha256 `5059157c…`.
 
 **APK content check.** The dex and `resources.arsc` inside the APK were read directly with
 Python's `zipfile`. Present in the dex: `Reopen onboarding`, `Looking for apps`,
@@ -99,33 +99,35 @@ interface works or looks right.
   evidence. For a text-first launcher these images carried no information, and their absence
   is why this report contains no visual claim.
 
-## 4. Known open findings
+## 4. Findings still open
 
-Each was confirmed against `docs/ui-ux-implementation.md` and the current source before
-being listed here.
+The first pass left four findings open. The second pass closed three of them in code
+(P0-4's affordance, P1-11's undo, P2-3's fixed offset) and closed P2-10's copy; each is
+recorded under "Findings closed in the second pass" in `docs/ui-ux-implementation.md`.
+What remains is one finding that cannot be closed from this repository, and one accepted
+design decision.
 
-- **P2-10, "Show today" has no visible effect.** Confirmed. The toggle is still bound to
-  `state.settings.todayEnabled` and `HomeScreen` still gates the block on it, but the block
-  also needs a `state.zendo` payload, and the only shipped source is `UnavailableZendoSource`
-  (`ui/LauncherViewModel.kt:17`, `:82`), which returns null. The implementation changed only
-  the copy. The toggle changes nothing on screen, in either position.
-- **P2-3, the Home top offset is still fixed.** Confirmed. It is now the named constant
-  `LauncherSpace.xl` (40dp) at `ui/HomeScreen.kt:60` instead of a bare 56dp literal, but it
-  is still a fixed value, not one derived from the available height or the inset.
-- **P1-11, hiding still has no undo.** Confirmed. The menu item is renamed "Hide and unpin"
-  so the unpin it also performs is stated (`ui/Components.kt:189`), but there is no
-  confirmation and no undo affordance. A mis-tap still costs a trip to Settings.
-- **P0-4's visible affordance is deliberately not shipped.** Confirmed. The announcement half
-  landed: `onLongClickLabel` and a `stateDescription` on the row, and the onboarding page
-  teaches the gesture. The per-row "Add"/"Remove" control the audit asked for was written
-  behind a `showFavouriteToggle` flag and then deleted, on the ground that an action on every
-  row of a list that can run to a hundred entries is the visual noise the design direction
-  rules out. The long-press remains the only way to build Essentials. This is an accepted,
-  recorded gap, not an oversight.
+- **P2-10, "Show today" still has no visible effect.** Not closable here. The toggle is
+  bound to `state.settings.todayEnabled` and `HomeScreen` gates the block on it
+  (`ui/HomeScreen.kt:81`), but the block also needs a `state.zendo` payload, and the only
+  shipped source is `UnavailableZendoSource` (`ui/LauncherViewModel.kt:17`, `:82`), which
+  returns null. The second pass fixed what was actually wrong — the note sat under the
+  *other* toggle, so the control that looks broken never explained itself — and the two
+  notes now read correctly (`ui/SettingsScreen.kt:110-114`, `:122-125`). The toggle will
+  still change nothing on screen until a Zendo source ships. This is a dependency of the
+  product, not a defect in the launcher.
+- **P0-4 is fixed in the drawer and deliberately not on Home.** The audit asked for "a
+  visible, small, text-only affordance to each row in the app list". That now ships:
+  `showPinAction` (`ui/Components.kt:131`) renders a trailing `Pin` / `Unpin` action
+  (`:175-186`) with a per-app `contentDescription`, and `AppListRow` turns it on
+  (`ui/AppListScreen.kt:196`). Home leaves it off, because every Home row is already pinned
+  and an `Unpin` on each would be a row of noise for a state the 6dp dot already reports.
+  The long press, `onLongClickLabel` and `stateDescription` are unchanged. This is an
+  accepted, recorded decision, not an oversight.
 
 ## 5. Honesty statement
 
-What is proven: the code compiles, the 33 JVM tests pass, lint reports no errors and five
+What is proven: the code compiles, the 37 JVM tests pass, lint reports no errors and four
 warnings, the APK built in this session contains the strings and resources the redesign
 introduced, and CI reproduces all three tasks on a second machine for two commits.
 

@@ -18,6 +18,8 @@ import com.zendolauncher.platform.UnavailableZendoSource
 import com.zendolauncher.platform.ZendoSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -51,6 +53,12 @@ data class UiState(
      * name it by unless the unfiltered list is carried alongside.
      */
     val allApps: List<LaunchTarget> = emptyList(),
+    /**
+     * The app just hidden, while it can still be put back. Non-null only for the few
+     * seconds the undo note is on screen; hiding has no confirmation step, so this is
+     * the only way back.
+     */
+    val undoHidden: LaunchTarget? = null,
     /** True only while the first enumeration is still running; see [LauncherViewModel.onStart]. */
     val isLoading: Boolean = false,
 )
@@ -93,6 +101,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      */
     private val _isLoading = MutableStateFlow(true)
 
+    /**
+     * The app the undo note names. Mirrors [_isLoading]: a plain state flow folded into
+     * the combine below, so the note appears and disappears with the rest of the state
+     * instead of through a second observation path.
+     */
+    private val _undoHidden = MutableStateFlow<LaunchTarget?>(null)
+
+    /** The auto-dismiss for [_undoHidden]; cancelling it is how a new hide takes over. */
+    private var undoJob: Job? = null
+
     private val allApps: Flow<List<LaunchTarget>> =
         combine(appRepository.apps, shortcutRepository.shortcuts) { installed, shortcuts ->
             installed + shortcuts
@@ -129,7 +147,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
 
     val state: StateFlow<UiState> =
-        combine(lists, prefs, zendo, _isLoading) { lists, prefs, zendo, isLoading ->
+        combine(lists, prefs, zendo, _isLoading, _undoHidden) { lists, prefs, zendo, isLoading, undoHidden ->
             UiState(
                 screen = lists.screen,
                 query = prefs.query,
@@ -141,6 +159,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 isDefaultHome = prefs.isDefaultHome,
                 zendo = zendo,
                 allApps = lists.allApps,
+                undoHidden = undoHidden,
                 isLoading = isLoading,
             )
         }.stateIn(
@@ -231,7 +250,47 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun toggleFavourite(key: String) = settingsStore.toggleFavourite(key)
 
-    fun toggleHidden(key: String) = settingsStore.toggleHidden(key)
+    /**
+     * Hides or unhides an app, and keeps the undo offer in step with which way it went.
+     * Hiding leaves a note naming the app for a few seconds; unhiding clears the note,
+     * because the user has already undone the thing it was offering to undo.
+     */
+    fun toggleHidden(key: String) {
+        val hiding = key !in settingsStore.settings.value.hidden
+        settingsStore.toggleHidden(key)
+        // One timer at a time: a second hide replaces the note rather than racing it.
+        undoJob?.cancel()
+        if (hiding) {
+            _undoHidden.value = targetFor(key)
+            undoJob = viewModelScope.launch {
+                delay(6_000)
+                _undoHidden.value = null
+            }
+        } else {
+            _undoHidden.value = null
+        }
+    }
+
+    /** Puts the app named by the undo note back, and takes the note down with it. */
+    fun undoHide() {
+        val target = _undoHidden.value ?: return
+        settingsStore.toggleHidden(target.key)
+        undoJob?.cancel()
+        _undoHidden.value = null
+    }
+
+    /**
+     * The target a hidden key belongs to. Discovery carries hidden apps in [UiState.allApps],
+     * but a key can outlive the app it names, and the note still has to say something, so
+     * the package name stands in as the label rather than leaving the line nameless.
+     */
+    private fun targetFor(key: String): LaunchTarget =
+        state.value.allApps.firstOrNull { it.key == key }
+            ?: LaunchTarget(
+                packageName = key.substringBefore('/'),
+                activityName = key.substringAfter('/', "").ifEmpty { null },
+                label = key.substringBefore('/'),
+            )
 
     fun moveFavourite(key: String, delta: Int) = settingsStore.moveFavourite(key, delta)
 

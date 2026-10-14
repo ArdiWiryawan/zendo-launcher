@@ -19,6 +19,8 @@ import androidx.compose.runtime.produceState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.unit.sp
 import com.zendolauncher.model.AgendaItem
 import com.zendolauncher.model.ZendoToday
@@ -41,6 +43,16 @@ import java.util.Locale
 @Composable
 fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
     val palette = LauncherColors.current
+    val windowInfo = LocalWindowInfo.current
+    val density = LocalDensity.current
+    val heightDp = with(density) { windowInfo.containerSize.height.toDp() }
+    // A fraction of the real window height rather than a fixed step, so the block below
+    // sits at the same height on a short screen and a tall one. The spacing scale is the
+    // floor and the ceiling, because a fraction of a very short or very tall window is
+    // either cramped or a gap nobody asked for.
+    val topGap = (heightDp * 0.06f).coerceIn(LauncherSpace.lg, LauncherSpace.xl)
+    // Measured here and handed to the clock, which needs the same width to size itself.
+    val widthDp = with(density) { windowInfo.containerSize.width.toDp().value }
 
     Column(
         Modifier
@@ -56,9 +68,9 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 .padding(horizontal = LauncherSpace.gutter),
         ) {
             // The status-bar inset is already consumed above, so this is the clock's
-            // deliberate breathing room rather than a measured offset: the largest step.
-            Spacer(Modifier.height(LauncherSpace.xl))
-            Clock(state.settings.clock24h)
+            // breathing room on top of it. The size is not a guess: see topGap above.
+            Spacer(Modifier.height(topGap))
+            Clock(state.settings.clock24h, widthDp)
             Spacer(Modifier.height(LauncherSpace.xs))
             Text(
                 text = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", currentLocale())),
@@ -93,6 +105,18 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.xl))
         }
 
+        state.undoHidden?.let {
+            // The gutter lives on the scrolling column above, not on this one, so the note
+            // has to carry its own or its text starts flush against the screen edge.
+            UndoNote(
+                text = "Hidden ${it.label}.",
+                actionLabel = "Undo",
+                onAction = { viewModel.undoHide() },
+                modifier = Modifier.padding(horizontal = LauncherSpace.gutter),
+            )
+            Spacer(Modifier.height(LauncherSpace.sm))
+        }
+
         // One mechanism for the bar's spacing: two actions packed from the same left edge
         // as everything above, not spread by a weight spacer.
         Row(
@@ -113,10 +137,11 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
  * minutes, and a home screen that wakes the CPU 86,400 times a day is not calm.
  *
  * The size is fitted to the screen instead of fixed, because at a raised system font
- * scale a 60.sp clock is wider than the text column and clips.
+ * scale a 60.sp clock is wider than the text column and clips. [widthDp] is the window's
+ * measured width, which is what the text column actually has to fit into.
  */
 @Composable
-private fun Clock(use24Hour: Boolean) {
+private fun Clock(use24Hour: Boolean, widthDp: Float) {
     val now by produceState(initialValue = LocalTime.now()) {
         while (true) {
             val current = LocalTime.now()
@@ -125,10 +150,11 @@ private fun Clock(use24Hour: Boolean) {
         }
     }
     val locale = currentLocale()
-    // LocalConfiguration is snapshot-backed, so a font-scale or width change re-runs this.
+    // LocalConfiguration is snapshot-backed, so a font-scale change re-runs this. The
+    // width is not read from it: LocalWindowInfo carries the real container size.
     val configuration = LocalConfiguration.current
     val clockStyle = LauncherType.clock.copy(
-        fontSize = clockSizeSp(configuration.screenWidthDp, configuration.fontScale).sp,
+        fontSize = clockSizeSp(widthDp.toInt(), configuration.fontScale).sp,
     )
     val palette = LauncherColors.current
     val pattern = if (use24Hour) "HH:mm" else "h:mm"

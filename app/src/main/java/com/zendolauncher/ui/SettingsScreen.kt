@@ -106,7 +106,12 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 onCheckedChange = { viewModel.setTodayEnabled(it) },
             )
             Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText("With this off, Home shows the clock, the date and your pinned apps only.")
+            // The toggle that looks broken explains itself here rather than under the
+            // other one: turning it on cannot change the screen while nothing fills the block.
+            SecondaryText(
+                "Home has a place for the Today block, between the date and your pinned apps. " +
+                    "Nothing fills it yet, so Home looks the same either way.",
+            )
             Spacer(Modifier.height(LauncherSpace.md))
             ToggleRow(
                 label = "Connect Zendo",
@@ -115,8 +120,8 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             )
             Spacer(Modifier.height(LauncherSpace.xs))
             SecondaryText(
-                "Zendo exposes no planning API yet, so connecting it fetches nothing and the " +
-                    "Today block stays empty. The launcher works fully without it.",
+                "Zendo exposes no planning API yet, so connecting it fetches nothing. " +
+                    "The launcher works fully without it.",
             )
 
             Spacer(Modifier.height(LauncherSpace.xl))

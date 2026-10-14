@@ -149,6 +149,15 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
             }
         }
 
+        state.undoHidden?.let {
+            UndoNote(
+                text = "Hidden ${it.label}.",
+                actionLabel = "Undo",
+                onAction = { viewModel.undoHide() },
+            )
+            Spacer(Modifier.height(LauncherSpace.sm))
+        }
+
         Spacer(Modifier.height(LauncherSpace.md))
         Row(
             Modifier.fillMaxWidth(),
@@ -182,6 +191,9 @@ private fun AppListRow(viewModel: LauncherViewModel, state: UiState, target: Lau
         onClick = { viewModel.launch(target) },
         onToggleFavourite = { viewModel.toggleFavourite(target.key) },
         onToggleHidden = { viewModel.toggleHidden(target.key) },
+        // The long press stays for anyone who knows it, but pinning must not depend on
+        // discovering it, so the drawer shows the action outright.
+        showPinAction = true,
     )
 }
 

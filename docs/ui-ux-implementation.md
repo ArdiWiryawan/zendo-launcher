@@ -50,10 +50,11 @@ achievable and section 2 explains why, then substitutes a textual review.
   (lines 144-145). A `defaultMinSize` of 48dp applies to the row (line 146). The long-press
   menu is anchored to the row's trailing edge through `menuAlignment` (line 174), and the
   hide item is renamed "Hide and unpin" so the unpin it also performs is stated (line 189).
-  Closes P1-4, P2-5, and the announcement half of P0-4. A trailing `Add` / `Remove`
-  affordance was written behind a `showFavouriteToggle` flag and then **deleted**: no screen
-  ever passed it, and shipping an unrendered parameter is the dead flexibility the audit
-  raised as P2-8. See "Findings still open" for why the visible affordance is not shipped.
+  Closes P1-4, P2-5, and the announcement half of P0-4. The first pass also wrote a trailing
+  `Add` / `Remove` affordance behind a `showFavouriteToggle` flag and then deleted it, on the
+  ground that no screen passed it and an unrendered parameter is the dead flexibility the
+  audit raised as P2-8. The second pass shipped the affordance properly, as `showPinAction`
+  wired to the app list; see "Findings closed in the second pass".
   Effect: pinning state is reportable, the menu opens under the finger, and hiding no
   longer silently drops a pinned entry.
 - **`ScreenTitle` (lines 76-85).** New. A title level above the rows with a trailing slot
@@ -88,9 +89,9 @@ achievable and section 2 explains why, then substitutes a textual review.
   "Settings" (lines 98-107). Closes P1-1 and, with it, P2-6, because the weighted spacer
   that produced the second spacing mechanism is gone and `Arrangement.spacedBy` is the only
   one left.
-- The top offset is `LauncherSpace.xl` (40dp, line 60) with a comment stating it is
-  deliberate breathing room rather than a measured offset. P2-3 is only partly addressed;
-  see "Findings still open".
+- The top offset was `LauncherSpace.xl` (40dp) in the first pass, which the audit counted as
+  only partly addressing P2-3. The second pass replaced it with a value derived from the real
+  window height; see "Findings closed in the second pass".
 - The clock takes `clockSizeSp` and `maxLines = 1` (lines 130-137). Closes P0-7 with the
   token change above.
 - The Today block returns early when it has neither an action nor an agenda entry
@@ -138,8 +139,9 @@ achievable and section 2 explains why, then substitutes a textual review.
 - The Today copy changed. The note under "Show today" now reads "With this off, Home shows
   the clock, the date and your pinned apps only." (line 109), and the note under "Connect
   Zendo" states that Zendo exposes no planning API, so connecting it fetches nothing and
-  the block stays empty (lines 117-120). This is copy only. P2-10 is not closed; see
-  "Findings still open".
+  the block stays empty. The first pass changed only the copy. The second pass rewrote the
+  two notes so the toggle that looks broken explains itself; see "Findings closed in the
+  second pass".
 - A "Reopen onboarding" action is added under About (line 202). Closes the reachability half
   of P1-2. Effect: the first-run explanation is not a one-time, unrecoverable page.
 
@@ -153,7 +155,8 @@ achievable and section 2 explains why, then substitutes a textual review.
   Home app" action that opens `Settings.ACTION_HOME_SETTINGS` when the launcher is not
   default, and a "Got it" action that dismisses it (lines 86-103). Closes P1-2. The page
   names the long-press explicitly, because the per-row affordance that P0-4 asked for is not
-  shipped (see "Findings still open"); it does not describe a control that is not there.
+  shipped (see "Findings closed in the second pass"); it does not describe a control that is
+  not there.
 - **`data/SettingsStore.kt`.** `onboardingSeen` is added to `LauncherSettings` (line 107),
   read with a default of `false` (line 37) and written with the rest of the settings
   (line 50). Closes the persistence half of P1-2.
@@ -219,33 +222,71 @@ achievable and section 2 explains why, then substitutes a textual review.
   that no source's rendered UI was retrievable and that the file records principles only.
 - `docs/ui-ux-audit.md` gains P0-9, the cold-start window background finding.
 
-### Findings still open, and one correction
+### Findings closed in the second pass
 
-- **P2-10.** The "Show today" toggle still has no observable effect. The wiring is correct
-  and the block still requires a Zendo payload that no shipped source produces
-  (`ui/LauncherViewModel.kt:82`, `UnavailableZendoSource`). The implementation changed only
-  the copy (lines 104 and 116-120), which is what the audit's recommendation asked for, but
-  the toggle itself remains without a visible result until a source ships.
-- **P0-4.** The announcement half is done (`onLongClickLabel` and `stateDescription` on the
-  row, so TalkBack states the favourite and names the gesture), and the onboarding page now
-  teaches the gesture in words. The visible per-row affordance the audit asked for was
-  **deliberately not shipped**. An "Add"/"Remove" action on every row of a list that can run
-  to a hundred entries is the visual noise the design direction rules out, and the audit's
-  own P1-5 recommendation was to take texture *out* of this list. The parameter that would
-  have rendered it (`showFavouriteToggle`) was therefore deleted rather than left as dead
-  flexibility, which is the same defect the audit raised as P2-8 against `SecondaryText`.
-  The gesture remains the only way to build Essentials; this is an accepted, recorded gap.
-- **P0-3, closed.** Focus on arrival, keyboard options, the Search action, the Clear action
-  and the accessible name all landed. The field's accessible name is set through
-  `semantics { contentDescription = "Search apps" }` (`ui/AppListScreen.kt:100-105`), because
-  the "Search" placeholder is a sibling `Text` in the `decorationBox` and is not part of the
-  field's own semantics.
-- **P1-11, partly.** The menu item is renamed "Hide and unpin" so the unpin is stated, but
-  there is still no confirmation and no undo. A mis-tap still costs a trip to Settings.
-- **P2-3, not closed.** The Home top offset is now a named constant (`LauncherSpace.xl`,
-  40dp) rather than a bare 56dp literal, but it is still a fixed value, not one derived
-  from the available height or the inset. The audit's recommendation is unaddressed.
-- **Correction: P2-2 is closed, not open.** All four screens now use `LauncherSpace`.
+Four findings were left open by the first pass and are now closed.
+
+- **P0-4, closed.** The audit asked for "a visible, small, text-only affordance to each row
+  in the app list". `AppRow` gains `showPinAction` (`ui/Components.kt:131`), which renders a
+  trailing `Pin` / `Unpin` action (`:175-186`) carrying a per-app `contentDescription` so one
+  repeated word down a list stays distinguishable to a screen reader. `AppListRow` turns it on
+  (`ui/AppListScreen.kt:196`). **Home leaves it off**, and that is deliberate rather than an
+  omission: every Home row is already pinned, so an `Unpin` on each would be a row of noise
+  for a state the 6dp dot already reports. The long press, `onLongClickLabel` and
+  `stateDescription` are unchanged, so the gesture still works as a shortcut for anyone who
+  knows it. The first pass deleted a flag with the same purpose as dead flexibility; this pass
+  ships it wired to a screen, which is the difference the audit's P2-8 was pointing at.
+- **P1-11, closed.** Hiding now offers an undo instead of a confirmation, which is what the
+  audit recommended as the better fit for the product's tone. `UiState.undoHidden`
+  (`ui/LauncherViewModel.kt:61`) is folded into the state `combine` (`:150`) exactly as
+  `isLoading` is, so the note appears and clears with the rest of the state rather than through
+  a second observation path. `toggleHidden` (`:258`) detects which way the toggle went, cancels
+  any previous timer so a second hide replaces the note rather than racing it, and starts a
+  six-second `viewModelScope` job that clears it. `undoHide` (`:275`) puts the app back and
+  takes the note down. Unhiding clears the note immediately, because the user has already
+  undone the thing it offered. `UndoNote` (`ui/Components.kt:354`) renders it: a line of the
+  page, no container, background or border, with the action held to the trailing edge by a
+  weight spacer. It is drawn above the bottom action row on both screens that can hide an app
+  (`ui/HomeScreen.kt:108-118`, `ui/AppListScreen.kt:152-159`). `targetFor` (`:287`) falls back
+  to the package name when a key outlives the app it names, so the note always has a subject.
+- **P2-3, closed.** The Home top offset is no longer a constant. `topGap`
+  (`ui/HomeScreen.kt:53`) is a fraction of the real window height read from
+  `LocalWindowInfo.containerSize`, clamped between `LauncherSpace.lg` and `LauncherSpace.xl`
+  so a fraction of a very short or very tall window cannot become cramped or absurd.
+- **P2-10, closed as far as it can be.** No Zendo source ships, so the block still cannot
+  render and the toggle still changes nothing on screen. What was wrong was the copy: the
+  note sat under the *other* toggle, so the control that looks broken never explained itself.
+  The two notes are rewritten and no longer duplicate each other
+  (`ui/SettingsScreen.kt:110-114`, `:122-125`). The first now says Home has a place for the
+  block and that nothing fills it yet, so Home looks the same either way; the second stays
+  Zendo-specific. Both were checked against `UnavailableZendoSource.load()` returning null and
+  against the Home gate requiring both the setting and a non-empty payload.
+
+### Also in the second pass
+
+- **Lint `ConfigurationScreenWidthHeight` cleared.** `HomeScreen` read
+  `Configuration.screenWidthDp` for the clock. It now reads the measured container width from
+  `LocalWindowInfo` (`ui/HomeScreen.kt:55`) and passes it to `clockSizeSp` (`:144`, `:154`).
+  `configuration.fontScale` is still read, because lint does not flag it and it is the right
+  source for a scale.
+- **`clockSizeSp` guarded against a zero width** (`ui/theme/Theme.kt:108-111`). A caller that
+  measures the window before layout can hand it `0`, which would compute a negative available
+  width and floor the clock at 28sp on a screen with plenty of room.
+- **The four `GradleDependency` warnings are deliberate and stay.** Lint suggests
+  compose-bom `2026.09.00` and core-ktx `1.19.1`. Both require **compileSdk 37 and AGP
+  9.1.0**; this project is on compileSdk 36 and AGP 8.13.2, so bumping them fails the build
+  outright with `Dependency 'androidx.compose.ui:ui-android:1.12.1' requires Android Gradle
+  plugin 9.1.0 or higher`. That was tried and reverted. `app/build.gradle` now records the
+  reason at the dependency block. The correct order is to raise the toolchain first.
+- **Tests.** `ui/LauncherUiTest` goes from 18 to 22: `hideApp_offersUndo_andUndoPutsTheAppBack`,
+  `unhide_takesDownTheUndoOffer`, `appRow_showsPinAction_whenTheDrawerAsksForIt` and
+  `appRow_hidesPinAction_onHomeRows`. The last two render the real `AppRow` with the activity's
+  own view model, so they exercise the shipped composable rather than a stand-in. No existing
+  assertion was changed or removed.
+
+### Correction to the first pass
+
+- **P2-2 is closed, not open.** All four screens now use `LauncherSpace`.
   `ui/OnboardingScreen.kt` was the last holdout: it carried inline `24.dp`, `56.dp`, `28.dp`,
   `20.dp`, `36.dp`, `40.dp` and `18.dp` literals and its own `TextAction` justified by a
   comment claiming `QuietAction` was under the minimum touch target, which the P0-5 change
