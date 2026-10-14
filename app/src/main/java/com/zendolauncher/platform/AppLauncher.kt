@@ -48,7 +48,10 @@ class AppLauncher(private val context: Context) {
         }
     }
 
-    /** Last resort for a package whose launcher entry moved: open its store page. */
+    /**
+     * Last resort for a package whose recorded entry no longer starts: ask PackageManager
+     * for the package's launch intent and start that instead.
+     */
     private fun fallbackIntent(packageName: String): Boolean {
         val intent = context.packageManager.getLaunchIntentForPackage(packageName)
         if (intent != null) {

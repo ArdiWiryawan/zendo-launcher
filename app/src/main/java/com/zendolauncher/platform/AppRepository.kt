@@ -89,11 +89,4 @@ class AppRepository(private val context: Context) {
 
     fun bitmapFor(target: LaunchTarget, sizePx: Int): android.graphics.Bitmap? =
         iconFor(target, sizePx)?.toBitmap(sizePx, sizePx)
-
-    fun activitiesFor(packageName: String): List<android.content.pm.LauncherActivityInfo> =
-        try {
-            launcherApps.getActivityList(packageName, android.os.Process.myUserHandle())
-        } catch (e: SecurityException) {
-            emptyList()
-        }
 }

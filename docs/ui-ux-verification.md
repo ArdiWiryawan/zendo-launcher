@@ -29,19 +29,25 @@ Local build, Windows, `./gradlew.bat --no-daemon`, after deleting `app/build/kot
   `app/src/main/res/values/themes.xml`. That is why
   the current report has no errors.
 - `assembleDebug`: BUILD SUCCESSFUL. `app/build/outputs/apk/debug/app-debug.apk`,
-  11,717,817 bytes, sha256 `3a4f5f53…`. Version 0.2.2, versionCode 4.
+  11,824,199 bytes, sha256 `48a6984e…`. Version 0.2.2, versionCode 4.
 
 **APK content check.** The dex and `resources.arsc` inside the APK were read directly with
 Python's `zipfile`. Present in the dex: `Reopen onboarding`, `Looking for apps`,
 `No pinned apps yet`, `Hide and unpin`, `Zendo is optional`, `Set as Home app`,
-`No launchable apps found`, plus the second pass's `Undo`, `Pin`, `Unpin` and
-`Search apps`. Present in `resources.arsc`: `Theme.ZendoLauncher.Base`,
+`No launchable apps found`, plus the second pass's `Undo`, `Pin`, `Unpin`, `Search apps`,
+`Refresh` and `Results`, and the corrected first-run sentence `use the Pin action` /
+`hold your finger on it`. Present in `resources.arsc`: `Theme.ZendoLauncher.Base`,
 `Theme.ZendoLauncher.Light`, `Theme.ZendoLauncher.Dark`, `launcher_window_background_light`,
 `launcher_window_background_dark`. This check is what rules out a stale artifact: the strings
 and resource names the redesign introduced are inside the APK that was built in this session,
 so the artifact is the redesigned build rather than a cached one. The same check was run
 against the APK CI produced for `dadc1b3` and it carries `0.2.1-debug` in its binary manifest
 and the second pass's strings in its dex, so the published artifact is that build.
+
+The APK above is a local debug build of the working tree that carries the first-run copy
+correction; it is not the published `debug-0.2.2` release, which was built from `ea9ee7a`
+before that correction and therefore differs by a few bytes of dex. Both report version
+0.2.2. The release is the older artifact; the local build is the newer tree.
 
 **CI.** `.github/workflows/build-apk.yml` runs `testDebugUnitTest`, `lintDebug` and
 `assembleDebug` on every push to `main`. The run for commit `22273c1` completed `success`
@@ -60,7 +66,7 @@ that evidence is stated.
 
 | # | Item | Check and evidence | Verdict |
 | --- | --- | --- | --- |
-| 1 | Existing user preferences survive | `data/SettingsStore.kt` still reads and writes every setting through one `prefs.edit { }` and updates the `StateFlow` in the same call (audit, "Persistence"). `LauncherUiTest` drives `setTheme`, `setLayout`, `setTodayEnabled`, `setClock24h`, `setZendoEnabled` and reads the values back. No test loads preferences written by a pre-redesign build, so upgrade survival is not covered. | NOT VERIFIED |
+| 1 | Existing user preferences survive | `data/SettingsStore.kt` still reads and writes every setting through one `prefs.edit { }` and updates the `StateFlow` in the same call (audit, "Persistence"). `LauncherUiTest` drives `setTheme`, `setLayout`, `setTodayEnabled` and `setClock24h` and reads each value back (`settings_themeChoice_updatesState`, `settings_layoutChoice_updatesState`, `settings_showTodayToggle_updatesState`, `settings_24HourToggle_updatesState_andClockRenders12Hour`). It also calls `setZendoEnabled`, but only ever asserts the value false — in `resetSettings` and in `todayBlock_absentWithDefaultUnavailableSource_andScreenStillRenders`, which sets it true and does not read it back — so that setting has no round-trip test. No test loads preferences written by a pre-redesign build, so upgrade survival is not covered. | NOT VERIFIED |
 | 2 | App discovery still works | the `<queries>` block in `AndroidManifest.xml` still declares the `MAIN`/`LAUNCHER` intent filter and no `QUERY_ALL_PACKAGES`. `platform/AppRepository.kt` is not in the redesign diff. Robolectric returns no installed apps, so no real enumeration ran. | NOT VERIFIED |
 | 3 | PWA and pinned-shortcut support still works | `platform/ShortcutRepository.kt` is not in the redesign diff; the `FLAG_MATCH_PINNED` query, profile loop, blank-label skip and dedupe are unchanged. No test exercises a shortcut, and Robolectric returns none. | NOT VERIFIED |
 | 4 | Launching still works | `platform/AppLauncher.kt` is not in the redesign diff; `startMainActivity`, `startShortcut` and the `getLaunchIntentForPackage` fallback are unchanged. No test launches anything. | NOT VERIFIED |
@@ -126,25 +132,29 @@ interface works or looks right on a device.
 - **No transient states captured.** The row long-press menu is a separate window and would
   need its own capture path; the undo note and the loading state are not in any image.
 
-## 5. Findings still open
+## 5. What the second pass left: one open finding, one recorded decision
 
 The first pass left four findings open. The second pass closed three of them in code
-(P0-4's affordance, P1-11's undo, P2-3's fixed offset) and closed P2-10's copy; each is
+(P0-4's affordance, P1-11's undo, P2-3's fixed offset) and rewrote P2-10's copy; each is
 recorded under "Findings closed in the second pass" in `docs/ui-ux-implementation.md`.
-What remains is one finding that cannot be closed from this repository, and one accepted
-design decision.
+
+Of the four, one is still open as behaviour, and it is the only one: **P2-10**, whose
+visible effect does not exist yet. **P0-4** is not open. It is closed by a recorded
+decision — the affordance ships in the drawer and is deliberately left off Home — and the
+bullet below keeps the reasoning for that decision rather than filing it as a gap.
 
 - **P2-10, "Show today" still has no visible effect.** Not closable here. The toggle is
   bound to `state.settings.todayEnabled`, and `ui/HomeScreen.kt` gates the block on that
   setting, but the block also needs a `state.zendo` payload, and the only
-  shipped source is `UnavailableZendoSource` in `ui/LauncherViewModel.kt`, which
+  shipped source is `UnavailableZendoSource` in `platform/ZendoSource.kt`, which
   returns null. The second pass fixed what was actually wrong — the note sat under the
   *other* toggle, so the control that looks broken never explained itself — and the two
   notes now read correctly (the two notes in `ui/SettingsScreen.kt`). The toggle will
   still change nothing on screen until a Zendo source ships. This is a dependency of the
   product, not a defect in the launcher.
-- **P0-4 is fixed in the drawer and deliberately not on Home.** The audit asked for "a
-  visible, small, text-only affordance to each row in the app list". That now ships:
+- **P0-4, closed by decision: fixed in the drawer and deliberately not on Home.** The
+  audit asked for "a visible, small, text-only affordance to each row in the app list". That
+  now ships:
   `showPinAction` in `ui/Components.kt` renders a trailing `Pin` / `Unpin` action
   with a per-app `contentDescription`, and `AppListRow` turns it on
   (`ui/AppListScreen.kt`). Home leaves it off, because every Home row is already pinned

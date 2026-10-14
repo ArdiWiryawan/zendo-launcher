@@ -121,30 +121,56 @@ Activity handling code (searched repo trees for `pwa`, `webapk`, `trustedweb`, `
 
 ## Dependencies selected for this project
 
-Licenses verified from the artifact POM on the vendor Maven repository on 2026-10-13.
+Licenses verified from the artifact POM on the vendor Maven repository on 2026-10-13. The
+coordinates were re-checked against this tree on 2026-10-14, because the versions first listed
+here were not the ones the build actually resolves.
 
-| Dependency | Coordinate checked | License | Verified from |
+There is no Gradle version catalog in this repository — `gradle/` holds only `wrapper/`, and no
+`libs.versions.toml` exists at any path. Every coordinate is declared inline in
+`app/build.gradle`, except the Compose artifacts, which take their version from
+`androidx.compose:compose-bom:2026.06.01`, and `kotlin-stdlib`, which the Kotlin Gradle plugin
+adds. The versions below are the resolved ones: read from the resolved dependency graph in
+`app/build/intermediates/` and confirmed against the `META-INF/*.version` markers inside the
+built `dist/ZendoLauncher-debug.apk`.
+
+| Dependency | Coordinate as shipped | License | Verified from |
 |---|---|---|---|
-| AndroidX Jetpack Compose (foundation) | `androidx.compose.foundation:foundation:1.7.0` | Apache-2.0 | Google Maven POM `<licenses>` = "The Apache Software License, Version 2.0" |
-| AndroidX activity-compose | `androidx.activity:activity-compose:1.9.0` | Apache-2.0 | Google Maven POM |
-| AndroidX core-ktx | `androidx.core:core-ktx:1.13.1` | Apache-2.0 | Google Maven POM |
-| AndroidX DataStore Preferences | `androidx.datastore:datastore-preferences:1.1.1` | Apache-2.0 | Google Maven POM |
-| Kotlin stdlib | `org.jetbrains.kotlin:kotlin-stdlib:2.0.0` | Apache-2.0 | Maven Central POM ("The Apache License, Version 2.0") |
-| kotlinx-coroutines-core | `org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1` | Apache-2.0 | Maven Central POM |
+| AndroidX Jetpack Compose (foundation) | `androidx.compose.foundation:foundation:1.11.4` | Apache-2.0 | Google Maven POM `<licenses>` = "The Apache Software License, Version 2.0"; version set by Compose BOM `2026.06.01` |
+| AndroidX activity-compose | `androidx.activity:activity-compose:1.13.0` | Apache-2.0 | Google Maven POM; declared in `app/build.gradle` |
+| AndroidX core-ktx | `androidx.core:core-ktx:1.18.0` | Apache-2.0 | Google Maven POM; declared in `app/build.gradle` |
+| AndroidX lifecycle (runtime-compose, viewmodel-compose) | `androidx.lifecycle:lifecycle-runtime-compose:2.10.0`, `lifecycle-viewmodel-compose:2.10.0` | Apache-2.0 | Google Maven POM; declared in `app/build.gradle` |
+| Kotlin stdlib | `org.jetbrains.kotlin:kotlin-stdlib:2.4.21` | Apache-2.0 | Maven Central POM ("The Apache License, Version 2.0"); added by the Kotlin Gradle plugin `2.4.21` in `build.gradle` |
+| kotlinx-coroutines-core | `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.9.0`, with `kotlinx-coroutines-android:1.9.0` | Apache-2.0 | Maven Central POM; **not declared directly** — it arrives transitively, `androidx.compose.runtime:runtime` requiring `kotlinx-coroutines-core` |
 | `SharedPreferences` | n/a — Android framework API | Part of the Android platform (AOSP, Apache-2.0) | **UNVERIFIED as a discrete artifact**: it is an OS API, not a bundled library, so no separate POM exists to cite |
 
-The exact versions above are the ones checked; the versions actually pinned in
-`gradle/libs.versions.toml` were not read for this audit and should be re-checked against the
-same POM `<licenses>` field if they differ materially.
+AndroidX DataStore Preferences is **not** a dependency of this project and is not in the
+resolved graph. `app/build.gradle` declares no DataStore artifact, and
+`app/src/main/java/com/zendolauncher/data/SettingsStore.kt` states the decision: a handful of
+keys and two ordered string lists "do not justify a database or DataStore", so settings live in
+`SharedPreferences`. The earlier version of this table listed it in error.
+
+Also absent from `app/build.gradle`: an explicit `kotlinx-coroutines` declaration. The source
+imports `kotlinx.coroutines.*` directly (`LauncherViewModel.kt`, `HomeScreen.kt`,
+`SettingsStore.kt`, `AppRepository.kt`, `ShortcutRepository.kt`), so it compiles against the
+transitive artifact rather than a declared one. That is a build hygiene issue, not a licensing
+one — the license obligation is the same either way.
 
 ## Compliance decisions
 
-- Chosen approach: original code, Apache-2.0 licensed, with no GPL-3.0 code adapted. This keeps
-  the APK permissively distributable and imposes **no** source-disclosure duty.
+- Chosen approach: original code, **intended** to be Apache-2.0 licensed, with no GPL-3.0 code
+  adapted. That keeps the APK permissively distributable and imposes **no** source-disclosure
+  duty. **It is not in effect yet.** No `LICENSE` file and no licence statement of the project's
+  own exist in this repository: `git ls-files` contains no `LICENSE`, `NOTICE`, or licence-text
+  file at any path, and `README.md`'s Licence section names only the third-party licences. By the
+  standard this document applies above to `RafaelGoulartB/minimal-launcher`, a repository with no
+  `LICENSE` file grants nothing, so until the Apache-2.0 text is committed as `LICENSE` this
+  bullet records an intention, not a grant. Adding that file is the outstanding step.
 - Attribution obligations for Apache-2.0 dependencies: retain the license text and copyright
-  notices, and state that the app uses Apache-2.0-licensed libraries. Ship a
-  `NOTICE`/open-source-licenses screen or bundled license text file in the APK, and include the
-  same notices in the distributed source. Apache-2.0 requires preserving notices and stating
+  notices, and state that the app uses Apache-2.0-licensed libraries. **Not yet implemented** —
+  there is no `NOTICE` file, no bundled licence text, and no open-source-licences screen anywhere
+  in the repository or in the APK. When the app is distributed with those dependencies, ship the
+  notices; a bundled licence text file is the smallest way to do it, and a licences screen is a
+  UI change outside this document's scope. Apache-2.0 requires preserving notices and stating
   significant changes; it does **not** require disclosing Zendo Launcher's own source.
 - Because all five reviewed launchers are excluded from code reuse (four GPL-3.0, one
   unlicensed), no GPL notice, source offer, or copyleft file needs to ship with the APK.

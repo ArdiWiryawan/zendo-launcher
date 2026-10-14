@@ -4,10 +4,12 @@ This document records the redesign that followed `docs/ui-ux-audit.md`. It has t
 Section 1 is the implementation summary: what changed, in which file, which audit finding
 it closes, and what the user sees as a result. Section 2 is the before-and-after review.
 
-Scope of section 1 is exactly the set of changes in commit `22273c1` (the diff against its
-parent `2ac913a`). Nothing is described that the diff does not show. Findings are cited by
-their id in `docs/ui-ux-audit.md`. Source locations are named by symbol rather than by line
-number, so they do not rot as the source is edited.
+Section 1 is organised in three parts, each named where it occurs: the first-pass change set
+in commit `22273c1` (the diff against its parent `2ac913a`); the findings the second pass
+closed, and what else that pass carried, in commits `dadc1b3` and `ea9ee7a`; and one
+correction to the first pass. Findings are cited by their id in `docs/ui-ux-audit.md`. Source
+locations are named by symbol rather than by line number, so they do not rot as the source is
+edited.
 
 Section 2 is the before-and-after review, which now rests on real captures in
 `docs/ui-ux-review/` as well as on a per-screen account of behaviour.
@@ -18,9 +20,15 @@ Section 2 is the before-and-after review, which now rests on real captures in
 
 - **`LauncherSpace` in `ui/theme/Theme.kt`.** A named spacing scale now exists: `xs` 4dp,
   `sm` 8dp, `md` 16dp, `lg` 24dp, `xl` 40dp, plus `gutter` 24dp, `hairline` 1dp and
-  `touchTarget` 48dp. Every screen and component reads from it instead of inline literals.
-  Closes P2-2 across all four screens. Effect: one shared vertical rhythm, and no new gap
-  invented per screen.
+  `touchTarget` 48dp. Every screen reads from it, and so do most components, but the
+  tokenisation is not total: `ui/Components.kt` still holds four literal dimensions. Three
+  are component-local geometry that no spacing step fits — the `6.dp` favourite dot, the
+  `20.dp` width of the hairline marker under a selected option, and the `2.dp` horizontal
+  nudge that keeps `QuietAction`'s label off the edge of its box. The fourth is a genuine
+  gap and the one honest exception: the `14.dp` between an app icon and its label, sized to
+  the 28dp icon it follows rather than to the page rhythm. Those four are the whole surviving
+  set outside `ui/theme/Theme.kt`. Closes P2-2 across all four screens. Effect: one shared
+  vertical rhythm, and no new gap invented per screen.
 - **`LauncherType` extended, in `ui/theme/Theme.kt`.** `title` (20sp) is new, for screen
   headers. `section` moved from 11sp to 12sp. `appLabel` and `body` gained explicit
   `lineHeight` (24sp and 22sp). Closes P2-1. Effect: section labels are legible, and
@@ -166,13 +174,15 @@ Section 2 is the before-and-after review, which now rests on real captures in
 
 - **`ui/OnboardingScreen.kt` (new).** A single scrollable page, not a wizard,
   built from primitives. It states what the launcher replaces, that essentials are chosen
-  from the app list by holding a finger on an app, that Android owns the Home app setting,
-  how to restore the previous Home screen, and that Zendo is optional. It has its own
-  `BackHandler`, a "Set as Home app" action that opens `Settings.ACTION_HOME_SETTINGS` when
-  the launcher is not default, and a "Got it" action that dismisses it. Closes P1-2. The
-  page names the long press as the way to add an app to Essentials from the drawer, where
-  the visible `Pin` action is the other path (see "Findings closed in the second pass"). It
-  describes only controls that exist.
+  from the app list through the `Pin` action or by holding a finger on a row, that Android
+  owns the Home app setting, how to restore the previous Home screen, and that Zendo is
+  optional. It has its own `BackHandler`, a "Set as Home app" action that opens
+  `Settings.ACTION_HOME_SETTINGS` when the launcher is not default, and a "Got it" action
+  that dismisses it. Closes P1-2. The page names both ways to add an app to Essentials from
+  the drawer: the visible `Pin` action and the long press (see "Findings closed in the second
+  pass"). Before, it named only the long press, so a user who followed the page's own
+  instructions would never learn the visible affordance existed. It describes only controls
+  that exist.
 - **`data/SettingsStore.kt`.** `onboardingSeen` is added to `LauncherSettings`, read with a
   default of `false` and written with the rest of the settings. Closes the persistence half
   of P1-2.
@@ -296,7 +306,11 @@ Four findings were left open by the first pass and are now closed.
   `unhide_takesDownTheUndoOffer`, `appRow_showsPinAction_whenTheDrawerAsksForIt`,
   `appRow_hidesPinAction_onHomeRows`, and `aboutLine_reportsTheVersionTheBuildCarries`. The
   first four render the real `AppRow` with the activity's own view model, so they exercise the
-  shipped composable rather than a stand-in. No existing assertion was changed or removed.
+  shipped composable rather than a stand-in. Existing test code did change, and the count
+  alone hides it: `homeScreen_rendersRefreshOnlyInIconTextLayout` was replaced by
+  `homeScreen_hasNoRefreshActionInAnyLayout`, the drawer test gained an assertion on the
+  "All apps" header, and `resetSettings()` gained a `goHome()` call so the first-run screen
+  does not stand in the way of a test that expects to land on Home.
 - **The About line stopped hardcoding the version.** It read "Zendo Launcher 0.2.0" as a
   string literal and went stale the first time `versionName` was raised, so a user on 0.2.1
   was told they were on 0.2.0. It now reads `BuildConfig.VERSION_NAME`, which required turning
@@ -308,13 +322,15 @@ Four findings were left open by the first pass and are now closed.
 
 ### Correction to the first pass
 
-- **P2-2 is closed, not open.** All four screens now use `LauncherSpace`.
-  `ui/OnboardingScreen.kt` was the last holdout: it carried inline `24.dp`, `56.dp`, `28.dp`,
-  `20.dp`, `36.dp`, `40.dp` and `18.dp` literals and its own `TextAction` justified by a
-  comment claiming `QuietAction` was under the minimum touch target, which the P0-5 change
-  had made false. Both were corrected: the spacing is tokenised and the helper's comment now
-  states its real reason (it keeps the label on the row's leading edge, where `QuietAction`'s
-  centring `Box` would float it into the middle of the weight it is given).
+- **P2-2 is closed, not open.** All four screens use `LauncherSpace`. `ui/OnboardingScreen.kt`
+  was the last of them written, and it settles the finding rather than reopening it: the file
+  was added by the redesign commit `22273c1` and has been touched once since (`3217d4a`, a
+  copy change to a single line), and as created it already reads `LauncherSpace` throughout
+  — no `N.dp` literal appears in it at any revision. Its own `TextAction` is not a duplicate
+  of `QuietAction` but a deliberate variant, and the comment on it states the reason: it keeps
+  the label on the row's leading edge, where `QuietAction`'s centring `Box` would float it
+  into the middle of the weight it is given. The helper's comment has stated that reason since
+  `22273c1`; no revision of it ever justified the helper by the touch-target claim.
 
 ## 2. Before-and-after review
 
@@ -429,6 +445,11 @@ step with the resolved palette (`LauncherActivity.kt`).
 This review was not produced on a device. There was no device and no emulator. There is no
 real font scale, no real IME, no TalkBack session, and no real `LauncherApps` app list
 behind any statement above: every test runs against Robolectric, which returns no installed
-apps and no shortcuts. There is no visual confirmation of the result. The before-and-after
-comparison is a comparison of source and of recorded findings, not of rendered screens, and
-the screenshot harness described above produced nothing that could change that.
+apps and no shortcuts. The eleven captures in `docs/ui-ux-review/` are the closest thing to
+a visual confirmation, and they are not a substitute for one. They are real renders of the
+Compose UI, but Robolectric-rendered bitmaps at a chosen qualifier (360x800dp, xxhdpi)
+rather than device screenshots, and every screen in them is an empty state, because
+Robolectric returns no installed apps. For everything the empty state does not show — a
+row under press, the long-press menu, the app list with apps in it — the before-and-after
+comparison remains a comparison of source and of recorded findings, and the screenshot
+harness produced nothing that could change that.

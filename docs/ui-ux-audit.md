@@ -48,12 +48,10 @@ current state, and this file for what was wrong.
 
 ## Screen inventory
 
-The brief names the Home screen as the highest design priority. The findings do not simply
-follow that ranking by count — the app list carries more of them, because it has more
-controls that can go wrong — but the Home findings are the ones that decide what the product
-is: the clock (P0-7), the empty Essentials state (P1-8), the bottom action row (P1-1, P2-6),
-and the top offset (P2-3). Home is also the screen with the least on it, which is the point;
-see the empty-space rule in `docs/design-system.md`.
+The brief names the Home screen as the highest design priority. The Home findings are the
+ones that decide what the product is: the clock (P0-7), the empty Essentials state (P1-8),
+the bottom action row (P1-1, P2-6), and the top offset (P2-3). Home is also the screen with
+the least on it, which is the point; see the empty-space rule in `docs/design-system.md`.
 
 | Screen | File | Lines | What it does | What it is missing |
 | --- | --- | --- | --- | --- |
@@ -335,11 +333,11 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   is the first thing the user sees, and it is the most visible possible contradiction of a
   launcher whose premise is calm. It is reachable in two taps from Settings and there is no
   setting that turns it off once chosen.
-- **Recommended improvement, now in the tree:** split the window theme per variant and
-  select it before the window exists. `values/themes.xml` defines `Theme.ZendoLauncher.Base`
-  (transparent system bars, edge-to-edge, `:4-8`), `Theme.ZendoLauncher.Light`
-  (`launcher_window_background_light`, `windowLightStatusBar` and
-  `windowLightNavigationBar` true, `:11-18`) and `Theme.ZendoLauncher.Dark` (the dark
+- **Recommended improvement:** split the window theme per variant and select it before the
+  window exists. This fix is now in the tree: `values/themes.xml` defines
+  `Theme.ZendoLauncher.Base` (transparent system bars, edge-to-edge, `:4-8`),
+  `Theme.ZendoLauncher.Light` (`launcher_window_background_light`, `windowLightStatusBar`
+  and `windowLightNavigationBar` true, `:11-18`) and `Theme.ZendoLauncher.Dark` (the dark
   background, both flags false, `:21-25`). `values/colors.xml:3-4` defines both colours, so
   neither is night-qualified any more. The new `app/src/main/res/values-night/themes.xml:3`
   makes bare `Theme.ZendoLauncher` inherit the Dark variant, which is what keeps the
@@ -561,8 +559,8 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   each setting is legible as words rather than as a position.
 - **Regression risk:** medium. `ui/LauncherUiTest.kt:73-74` locates the three toggles by
   `isToggleable()` and index, so the tests depend on the toggle semantics. A text-based
-  control must keep `Modifier.toggleable(...)`, or those helpers must be rewritten. The three
-  tests using them are at `:167-182`, `:210-219`, and the helper at `:73-74`.
+  control must keep `Modifier.toggleable(...)`, or those helpers must be rewritten. The two
+  tests using them are at `:167-182` and `:210-219`, through the helper at `:73-74`.
 
 ### P1-10. Pinned-order controls are cramped
 
@@ -681,7 +679,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 ### P2-2. No spacing scale exists
 
 - **Screen / component:** all three screens.
-- **Observed problem:** spacing is inline literals with no named scale. Fourteen distinct
+- **Observed problem:** spacing is inline literals with no named scale. Fifteen distinct
   values are in use: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 40, 44, and 56 dp. The one
   consistent value is the 24dp gutter, used on all three screens.
 - **Priority:** P2
@@ -690,10 +688,12 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   `:53` (12), `:55` (20), `:86` (16); `ui/SettingsScreen.kt:49` (28), `:56` (24), `:72` (14),
   `:97` (6). The 24dp gutter appears at `ui/HomeScreen.kt:50`, `ui/AppListScreen.kt:34`, and
   `ui/SettingsScreen.kt:47`.
-- **Why it creates friction:** with fourteen separate gap values and no shared scale, spacing differs from one screen and one block to the next, so the layout reads as uneven even though no single gap is wrong.
+- **Why it creates friction:** with fifteen separate gap values and no shared scale, spacing differs from one screen and one block to the next, so the layout reads as uneven even though no single gap is wrong.
 - **Recommended improvement:** define one small set of named values and use it. The brief's
-  design direction asks for this explicitly, and the values already cluster: 4, 8, 12, 16,
-  24, 32, 48 would cover every current use with a handful of literals retired.
+  design direction asks for this explicitly, and the values already cluster: 4, 8, 16, 24
+  and 40 would cover every current use once the literals between them round to the nearest
+  step, with 24 also serving as the gutter. That retires 2, 6, 10, 12, 14, 18, 20, 28 and
+  44; the 56dp top offset is P2-3's to replace rather than a step in the scale.
 - **Expected user benefit:** vertical rhythm becomes consistent and future screens do not
   invent new gaps.
 - **Regression risk:** low. No test asserts a dp value.
@@ -769,8 +769,8 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 
 - **Screen / component:** `EmptyNote`.
 - **Observed problem:** it is used both for true empty states and for long explanatory
-  paragraphs, at the same 13sp secondary tone. A paragraph of about 280 characters reads as
-  a hint line.
+  paragraphs, at the same 13sp secondary tone. Paragraphs of 85 to 151 characters read as
+  hint lines.
 - **Priority:** P2
 - **Evidence:** `ui/Components.kt:165-172` is a single 13sp `Text` with 4dp vertical padding.
   True empty states use it at `ui/HomeScreen.kt:73`, `ui/AppListScreen.kt:66`, and

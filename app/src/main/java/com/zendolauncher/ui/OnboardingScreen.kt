@@ -61,7 +61,7 @@ fun OnboardingScreen(viewModel: LauncherViewModel, state: UiState) {
 
             Line("It replaces your Home screen with a short text list of the apps you choose, so the phone shows fewer things at once.")
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
-            Line("Open All apps and hold your finger on an app to add it to Essentials.")
+            Line("Open All apps and use the Pin action on an app, or hold your finger on it, to add it to Essentials.")
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
             Line("Android owns the Home app setting, so making Zendo the default happens in your device settings.")
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))

@@ -30,11 +30,14 @@ All apps   Settings
 - **Search** across every launchable app, ranked so an exact name beats a prefix beats a
   word start beats a substring, ignoring case and accents. The field takes focus as the
   drawer opens, is set up for app names rather than sentences (no autocorrect, no
-  auto-capitalisation), and the Search key or a Clear action ends the query without
-  leaving the screen.
+  auto-capitalisation), and the Search key hides the keyboard while a Clear action
+  empties the query, neither leaving the screen.
 - **All apps**, listed alphabetically under sticky letter headers while the query is
   empty. While the first scan of installed apps is still running the drawer says so,
   instead of reporting that no apps were found.
+- **Refresh and a count in the drawer.** The bottom row carries **Settings** and
+  **Refresh**, which rescans installed apps and shortcuts, and the list is headed by a
+  count: "N apps" while the query is empty, **Results** once one is typed.
 - **Essentials** — pin apps to the home screen, reorder them, unpin them. In the app list
   every row carries a visible **Pin** action, so the feature does not depend on knowing the
   long press; holding a row still opens the same menu as a shortcut.
@@ -154,5 +157,9 @@ The launcher is original work. No code was copied from any existing launcher —
 maintained candidates reviewed are GPL-3.0, and the fifth carries no licence at all, so all
 five were used as reference only. See [docs/opensource-review.md](docs/opensource-review.md).
 
-Third-party dependencies are AndroidX and Jetpack Compose (Apache-2.0) and the Kotlin
-standard library (Apache-2.0).
+The launcher itself is intended to be released under the Apache License 2.0, but no `LICENSE`
+file has been added to this repository yet, so no licence is granted at present.
+
+Third-party dependencies are AndroidX and Jetpack Compose (Apache-2.0), the Kotlin standard
+library (Apache-2.0), and kotlinx-coroutines (Apache-2.0), which the APK ships transitively
+through Compose.

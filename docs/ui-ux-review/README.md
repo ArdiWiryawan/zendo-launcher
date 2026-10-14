@@ -7,21 +7,44 @@ that `View.draw(Canvas)` produced from the launcher's own window.
 | Revision | Commit | What it is |
 | --- | --- | --- |
 | before | `2ac913a` — *Add Zendo Launcher: a monochrome minimalist Android home screen* | The last commit before the redesign |
-| after | `85a84aa` — *Tidy a redundant clause in the P2-10 note*, branch `main` | The redesign, including everything landed since `22273c1` |
+| after | `main`, at the commit that lands this file's current revision | The redesign, including everything landed since `22273c1` |
 
-Both sets were captured from clean checkouts of those commits in `git worktree`
-directories under the system temp directory, not from the working tree. The working tree
-carries uncommitted edits (a `BuildConfig.VERSION_NAME` change and related docs), so
-capturing there would have produced images that belong to no commit. Both worktrees have
-been removed; `main` is untouched.
+The "before" set was captured from a clean checkout of `2ac913a` in a `git worktree`
+under the system temp directory; that worktree has been removed and `main` is untouched.
+The "after" set has been recaptured three times as the tree moved, always by running the
+harness in the working tree it is documenting:
+
+1. at `85a84aa`, the first time the harness worked;
+2. at `fd539ba`, the revision the published `debug-0.2.2` release was built from, so the
+   images and the shipped APK would come from the same tree;
+3. against the working tree whose only rendering-visible source change is the onboarding
+   sentence below (the other source edits since `fd539ba` are a deleted unused function and
+   two comments, none of which draw), so the capture shows the first-run page as it now
+   ships rather than as it was before that fix. This is the set committed here.
 
 `22273c1` (*Redesign the launcher UI*) is the redesign commit itself; the "after" tree
 carries the follow-up work that closed the audit's findings, so the images show the
 redesign as it actually shipped rather than as it was first written.
 
+Between the second and third captures, `after-apps`, `after-apps-search` and
+`after-settings` came back **byte-identical**, and the two Home captures differed only in
+the rows the clock occupies (`y=157..288`, 132 rows, every differing pixel inside them).
+`after-onboarding` differs because its copy genuinely changed: the page used to teach only
+the long press, and now names the visible `Pin` action as well. Its diff is confined to the
+text block (`y=563..1444`); the title, the first paragraph and the bottom `Got it` row are
+untouched, the last because that row is pinned to the bottom of the screen rather than
+following the text.
+
+An earlier pair of runs at `fd539ba` established the same invariance from the other
+direction: `after-onboarding`, `after-apps`, `after-apps-search` and `after-settings`
+reproduced byte-for-byte, and the two Home captures again differed only within the clock
+rows (`y=158..288`). The horizontal extent of a clock difference moves with which digits
+changed; the row band does not. The clock is the only element that varies between runs, and
+it is the capture-time minute.
+
 ## Images
 
-### after (`main`, `85a84aa`)
+### after (`main`, working tree described above)
 
 | File | Screen | Theme |
 | --- | --- | --- |
@@ -101,8 +124,13 @@ The harness is `app/src/test/java/com/zendolauncher/ui/ScreenshotCaptureTest.kt`
 so the images can be regenerated and re-checked):
 
 ```
-./gradlew :app:testDebugUnitTest --tests "com.zendolauncher.ui.ScreenshotCaptureTest"
+./gradlew :app:testDebugUnitTest --tests "com.zendolauncher.ui.ScreenshotCaptureTest" --rerun
 ```
+
+`--rerun` is not optional if the images have been deleted. `app/build/screenshots/` is not
+a declared output of the test task, so Gradle reports the task `up-to-date`, skips it
+entirely, and writes nothing — leaving no images and no `stats.txt`, with no error. Without
+`--rerun` this only produces fresh images when the test's inputs have changed.
 
 It writes to `app/build/screenshots/`, which is gitignored. The "before" images came from
 the same harness adapted to the older API (`2ac913a` has no onboarding and no loading
@@ -126,9 +154,9 @@ than fringe.
 
 | Image | distinct | nonBackground | ink | background | sha256 |
 | --- | --- | --- | --- | --- | --- |
-| `after-onboarding.png` | 365 | 112492 | 95732 | `#FFF7F7F5` | `0c0629e4…7d5e7b5` |
-| `after-home-light.png` | 366 | 30576 | 27761 | `#FFF7F7F5` | `9acb5ff1…8eefe167` |
-| `after-home-dark.png` | 372 | 30443 | 28368 | `#FF0B0B0C` | `3e4143c8…bf26b853` |
+| `after-onboarding.png` | 365 | 118101 | 100704 | `#FFF7F7F5` | `b2488866…0f1eaf24` |
+| `after-home-light.png` | 366 | 26870 | 24305 | `#FFF7F7F5` | `f906c470…e1508d91` |
+| `after-home-dark.png` | 372 | 26737 | 24772 | `#FF0B0B0C` | `cb681899…0f9c2241` |
 | `after-apps.png` | 371 | 21545 | 17232 | `#FF0B0B0C` | `a0efe5ae…3405ec` |
 | `after-apps-search.png` | 372 | 20605 | 16614 | `#FF0B0B0C` | `8ca1454e…8fff8c0f` |
 | `after-settings.png` | 373 | 121352 | 104383 | `#FF0B0B0C` | `a5fcc967…7f636c25` |
@@ -169,11 +197,14 @@ Stated plainly, because the alternative is a screenshot that quietly overstates 
 - **No dialogs, menus or transient states.** The row long-press menu, the undo note and
   the loading state are not captured. The dropdown is a separate window and would need
   its own capture path.
-- **The clock and date are the moment of capture**, not fixed values: 09:43 in the
-  "after" set, 09:40 in the "before" set, Wednesday 14 October in both. The two sets
-  were captured minutes apart, which is why the times differ. The clock is the only
-  thing that varies between runs; the other ten images are byte-identical when the
-  harness is re-run.
+- **The clock and date are the moment of capture**, not fixed values: 11:23 in the
+  committed "after" set, 09:40 in the "before" set, Wednesday 14 October in all of them.
+  The sets were captured hours apart, which is why the times differ. Within the "after"
+  set the clock is the only thing that varies between runs: three of its six images
+  reproduce byte-for-byte when the harness is re-run, and two more (`after-home-light`,
+  `after-home-dark`) differ only within the rows the clock occupies. `after-onboarding`
+  also reproduces byte-for-byte now that the copy change is committed; it differed in the
+  previous run only because that run was the one that introduced the change.
 - **Not a device.** These are Robolectric-rendered bitmaps at a chosen qualifier
   (360x800dp, xxhdpi). Font rasterisation, insets and window behaviour on real hardware
   can differ.

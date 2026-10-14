@@ -25,9 +25,18 @@ one separator tone, plus an `isDark` flag. There is no fourth colour.
 `ThemeMode.SYSTEM`, whichever `isSystemInDarkTheme()` reports.
 
 There is no accent colour, and none can appear by accident. `ColorScheme.inLauncherPalette`
-in `ui/theme/Theme.kt` maps every Material3 role a component might read onto these tones —
-including `error` and `onError`, which map to `primary` and `background`. Material3's own
-tonal palette is therefore unreachable from launcher UI.
+in `ui/theme/Theme.kt` maps the Material3 roles the product reads onto these tones:
+`background`, `surface`, `onBackground`, `onSurface`, `onSurfaceVariant`, `primary`,
+`onPrimary`, `outline`, `outlineVariant`, `scrim`, `surfaceTint`, the five `surfaceContainer*`
+roles, `surfaceVariant`, `secondaryContainer`, `onSecondaryContainer`, `inverseSurface` and
+`inverseOnSurface`, plus `error` and `onError`, which map to `primary` and `background`. The
+rest of the scheme is left unmapped and keeps Material3's own defaults: `primaryContainer`,
+`onPrimaryContainer`, `inversePrimary`, `secondary`, `onSecondary`, `tertiary`, `onTertiary`,
+`tertiaryContainer`, `onTertiaryContainer`, `errorContainer`, `onErrorContainer`, `surfaceDim`
+and `surfaceBright`. No launcher UI reads one of those, because the only Material3 components
+the product uses are `Text` and the long-press `DropdownMenu` — and the menu's container is
+`surfaceContainer`, its item colour is `onSurfaceVariant` and its elevation tint is
+`surfaceTint`, all mapped.
 
 Colour never carries meaning alone. Every state that changes a colour also changes a word,
 a weight, a marker, or a semantic property:
@@ -40,9 +49,11 @@ a weight, a marker, or a semantic property:
 
 ## 2. Typography
 
-Every style is a `TextStyle` in `LauncherType` in `ui/theme/Theme.kt`. `fontFamily` is
-`FontFamily.Default` for all of them. Nothing is uppercase, and only `section` and `action`
-carry letter-spacing, so hierarchy comes from size and tone rather than from shouting.
+Every style is a `TextStyle` in `LauncherType` in `ui/theme/Theme.kt`. Only `clock` names a
+`fontFamily` (`FontFamily.Default`); the rest leave it unset and inherit the same default
+through `MaterialTheme(typography = Typography())`, so every style renders in the platform
+face. Nothing is uppercase, and only `clock`, `section` and `action` carry letter-spacing, so
+hierarchy comes from size and tone rather than from shouting.
 
 | Style | Size | Weight | Line height | Letter spacing | Purpose |
 | --- | --- | --- | --- | --- | --- |
@@ -100,12 +111,13 @@ values; no screen defines a spacing constant of its own.
 
 Usage rules the screens actually follow:
 
-- **Gutter.** `padding(horizontal = LauncherSpace.gutter)` is applied to the scrolling
-  column of each screen (`HomeScreen`, `AppListScreen`, `SettingsScreen`,
-  `OnboardingScreen`) and again to the fixed bottom action row on `HomeScreen` and
-  `OnboardingScreen`. It is not applied to the outer `Column`, so a child that sits
-  outside the scrolling column has to carry its own: `HomeScreen`'s `UndoNote` is padded
-  explicitly for that reason.
+- **Gutter.** `padding(horizontal = LauncherSpace.gutter)` is applied to the scrolling column
+  of `HomeScreen`, `SettingsScreen` and `OnboardingScreen`, and to the outer `Column` of
+  `AppListScreen`, whose scrolling list is a `LazyColumn` rather than a padded column. The
+  fixed bottom action row therefore carries the gutter on all three bars that have one
+  (`HomeScreen`, `AppListScreen`, `OnboardingScreen`). Elsewhere the gutter is not on the
+  outer `Column`, so a child that sits outside the scrolling column has to carry its own:
+  `HomeScreen`'s `UndoNote` is padded explicitly for that reason.
 - **`xs` vs `sm` vs `md`.** `xs` joins an item to its own companion — the clock to the
   date, a `ChoiceRow` label to its options, an option's text to its marker, a toggle to
   the sentence explaining it, and `EmptyNote`'s vertical padding. `sm` separates a
@@ -115,10 +127,11 @@ Usage rules the screens actually follow:
   and a `ToggleRow`), the space after a `Hairline` before the next heading
   (`AppListScreen`, `SettingsScreen`), and the gap between a row's trailing actions
   (`PinnedOrderRow`, `AppRow`).
-- **`lg`** is the top offset of a screen (`AppListScreen`, `SettingsScreen`,
-  `OnboardingScreen`) and the gap between sibling actions packed into one row
-  (`Arrangement.spacedBy(LauncherSpace.lg)` on both bottom bars, and between `ChoiceRow`
-  options).
+- **`lg`** is the top offset of a screen (`AppListScreen`, `SettingsScreen`) and the gap
+  between sibling actions packed into one row: `Arrangement.spacedBy(LauncherSpace.lg)` in
+  the bottom bars of `HomeScreen` and `AppListScreen`, and between `ChoiceRow` options.
+  `OnboardingScreen`'s bottom bar is the third and does not use it: it gives its first child
+  `weight(1f)`, so the closing action sits on the trailing edge instead.
 - **`xl`** is the section break: one full blank step between a section and the next, and
   between the last section and the bottom of the scroll. Every `SettingsScreen` heading
   after the first is preceded by it, and `HomeScreen` uses it before "Essentials", before
@@ -171,6 +184,11 @@ Usage rules the screens actually follow:
   - Not in the app drawer's alphabetical list: `AppListRow` draws no separator at all,
     because at that length a rule per row is texture (P1-5). The letter headers carry the
     structure instead.
+- **The drawer's bottom row and the heading under its rule.** `AppListScreen`'s bottom row
+  carries two actions of its own, `QuietAction("Settings")` and
+  `QuietAction("Refresh", onClick = { viewModel.refreshApps() })`, placed directly on the
+  page, and the `SectionHeading` under the search row's hairline states what is showing —
+  `"${list.size} apps"`, or `"Results"` once a query is typed.
 - **Elevated surfaces are the exception, not a second system.** The only place the
   `separator` tone is used as a fill rather than a rule is the long-press `DropdownMenu`,
   and it arrives there through the `ColorScheme` mapping rather than through launcher code.

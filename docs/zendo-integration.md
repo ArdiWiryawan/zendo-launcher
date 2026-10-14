@@ -13,6 +13,11 @@ endpoint, or public read path. The payload is one opaque JSON blob, not a typed 
 
 ## What exists today
 
+None of the paths cited in this document exist in this repository: `supabase_init.sql`, `src/`,
+`api/`, `vercel.json`, and `app/src/main/java/app/vercel/zendo_focus/twa/` are all paths in the
+separate Zendo web app repository, which was read for this audit and is not part of this tree —
+the only `app/` here is this launcher's own Android module.
+
 ### 1. No planning-data API
 
 - `api/` holds exactly `bayargg-checkout.ts`, `bayargg-webhook.ts` + their tests
@@ -178,26 +183,27 @@ access token. Anon key alone yields zero rows.
 
 ## Recommended integration boundary for the launcher
 
-One interface, one nullable result:
+One interface, one nullable result. This is the shipped shape, not a proposal:
+`platform/ZendoSource.kt` and `model/ZendoToday.kt` declare exactly these two types.
 
 ```kotlin
 interface ZendoSource {
     /** Null = Zendo unavailable/not configured/signed out. Never throws to UI. */
-    suspend fun today(): ZendoToday?
+    suspend fun load(): ZendoToday?
 }
 
 data class ZendoToday(
-    val highlight: String?,
-    val mainAction: String?,
-    val nextAgendaItem: String?,
-    val practices: List<String>,   // names, active practices only
+    val highlight: String? = null,
+    val mainAction: String? = null,
+    val nextAgenda: AgendaItem? = null,   // title, and a time only if Zendo has one
+    val practices: List<String> = emptyList(),   // names, active practices only
 )
 ```
 
 - Home screen renders immediately from local state; the Today block starts empty
-  and is filled by a coroutine. **Never** await `today()` on the main thread or in
+  and is filled by a coroutine. **Never** await `load()` on the main thread or in
   a blocking `onCreate` path.
-- `today()` returns `null` on: no URL/key, no signed-in user, any HTTP/auth/parse
+- `load()` returns `null` on: no URL/key, no signed-in user, any HTTP/auth/parse
   failure, or offline with no cache. Callers render nothing when null — no error
   UI, no placeholder implying Zendo is broken.
 - Cache the last good snapshot in the launcher's own storage. Freshness rule:
@@ -218,6 +224,17 @@ data class ZendoToday(
   Zendo passwords and never parses the whole blob. This endpoint does not exist.
 - If neither is accepted, ship the feature **absent**, not as a best-effort read of
   a private table.
+
+### The selector half already ships, with no source behind it
+
+`core/TodaySelector.kt` (`ZendoDayPlan`, `TodaySelector.select`) already encodes
+the row-selection rule above — today's `dayPlans` entry, newest wins, blank fields
+dropped — and is covered by `core/TodaySelectorTest.kt` (6 tests). It has **no
+production caller**: no `ZendoSource` implementation exists, and
+`platform/ZendoSource.kt` ships only `UnavailableZendoSource`, whose `load()`
+returns null. It is code prepared for a source, not a working feature, so its
+presence is not evidence that the Today block works; `ZendoToday.practices` is
+never populated by anything.
 
 ## Explicit non-goals
 
@@ -244,3 +261,5 @@ data class ZendoToday(
 - Semantics of "selected practices" — no such concept exists in the types.
 - Whether planning data is reachable by any route other than the owner-authed
   `zendo_state` row — none found, but the live deployment was not probed.
+- The Today block's status in the launcher: the selector is written and tested but
+  has no production caller, so nothing reads Zendo today. See the boundary section.

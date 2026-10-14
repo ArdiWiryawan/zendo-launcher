@@ -72,8 +72,9 @@ object LauncherSpace {
 
 /**
  * Type scale. The clock is the only large element; everything else is quiet.
- * Nothing is uppercase and only section headings carry letter-spacing, so the
- * hierarchy comes from size and colour rather than from shouting.
+ * Nothing is uppercase, and letter-spacing appears only where size asks for it: the
+ * clock tightens at 60.sp, and `section` and `action` open up so the small styles stay
+ * legible. Hierarchy comes from size and colour rather than from shouting.
  */
 object LauncherType {
     val clock = TextStyle(
