@@ -42,6 +42,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.LauncherColors
@@ -342,6 +343,31 @@ fun SecondaryText(text: String, modifier: Modifier = Modifier) {
         color = LauncherColors.current.secondary,
         modifier = modifier,
     )
+}
+
+/**
+ * The intentional pause: a calm monochrome dialog over the current list. Continue
+ * launches once; Cancel returns. No timer, no journaling.
+ */
+@Composable
+fun PauseDialog(label: String, onContinue: () -> Unit, onCancel: () -> Unit) {
+    Dialog(onDismissRequest = onCancel) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(LauncherColors.current.background)
+                .padding(LauncherSpace.lg),
+        ) {
+            Text(text = label, style = LauncherType.body, color = LauncherColors.current.primary)
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText("Take a breath. Open it anyway?")
+            Spacer(Modifier.height(LauncherSpace.md))
+            Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
+                QuietAction("Continue", onClick = onContinue)
+                QuietAction("Cancel", onClick = onCancel)
+            }
+        }
+    }
 }
 
 /**

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="360dp"
+    android:height="720dp"
+    android:viewportWidth="360"
+    android:viewportHeight="720">
+    <!-- Calm light monochrome background (#F7F7F5) with a quiet horizon hairline (#E2E2DE) -->
+    <path
+        android:fillColor="#FFF7F7F5"
+        android:pathData="M0,0H360V720H0Z" />
+    <path
+        android:pathData="M48,504H312"
+        android:strokeColor="#FFE2E2DE"
+        android:strokeWidth="1" />
+</vector>

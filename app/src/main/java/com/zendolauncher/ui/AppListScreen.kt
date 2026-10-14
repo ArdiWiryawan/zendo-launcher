@@ -14,11 +14,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -57,6 +59,13 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
     // The drawer exists to be typed into, so the field takes focus on arrival instead of
     // costing a tap every time.
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    // Retained across re-entry via the view model (no animation library): leaving for
+    // Settings and coming back lands where the list was, not at the top.
+    val listState = rememberLazyListState(
+        initialFirstVisibleItemIndex = viewModel.drawerIndex,
+        initialFirstVisibleItemScrollOffset = viewModel.drawerOffset,
+    )
 
     Column(
         Modifier
@@ -131,7 +140,15 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
                 },
             )
         } else {
-            LazyColumn(Modifier.weight(1f)) {
+            // Instant swap, no animation library: state is saved on dispose so
+            // re-entry restores the position instead of jumping to the top.
+            DisposableEffect(Unit) {
+                onDispose {
+                    viewModel.drawerIndex = listState.firstVisibleItemIndex
+                    viewModel.drawerOffset = listState.firstVisibleItemScrollOffset
+                }
+            }
+            LazyColumn(Modifier.weight(1f), state = listState) {
                 if (state.query.isBlank()) {
                     // Headers only without a query: search results are ranked, not
                     // alphabetical, and a letter over them would be a lie.
@@ -163,7 +180,7 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
         ) {
-            QuietAction("Settings", onClick = { viewModel.openSettings() })
+            QuietAction("Settings", onClick = { viewModel.openSettings(Screen.APPS) })
             QuietAction("Refresh", onClick = { viewModel.refreshApps() })
         }
         Spacer(Modifier.height(LauncherSpace.sm))

@@ -1,7 +1,11 @@
 package com.zendolauncher.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -136,8 +140,7 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 },
             )
             QuietAction("Open Home app settings") {
-                val intent = Intent(Settings.ACTION_HOME_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                runCatching { context.startActivity(intent) }
+                openSystemSettings(context, Settings.ACTION_HOME_SETTINGS)
             }
             Spacer(Modifier.height(LauncherSpace.xs))
             SecondaryText(
@@ -187,6 +190,59 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                         QuietAction("Unhide") { viewModel.toggleHidden(key) }
                     }
                 }
+            }
+
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Intentional Pause")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            ToggleRow(
+                label = "Pause before opening",
+                checked = state.settings.pauseEnabled,
+                onCheckedChange = { viewModel.setPauseEnabled(it) },
+            )
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText(
+                "When on, opening a checked app below shows a calm pause first. " +
+                    "This only interposes on launches from this launcher; it does not " +
+                    "block apps system-wide, and web links opened in Chrome are not intercepted.",
+            )
+            Spacer(Modifier.height(LauncherSpace.md))
+            if (state.allApps.isEmpty()) {
+                EmptyNote("No apps listed yet.")
+            } else {
+                state.allApps.sortedBy { it.label.lowercase() }.forEachIndexed { index, target ->
+                    if (index > 0) Hairline()
+                    ToggleRow(
+                        label = target.label,
+                        checked = target.key in state.settings.distract,
+                        onCheckedChange = { viewModel.toggleDistract(target.key) },
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("System settings")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText(
+                "Connectivity, display, and notification controls belong to Android. " +
+                    "These open the system pages directly rather than duplicating toggles.",
+            )
+            QuietAction("Internet & Wi-Fi") {
+                val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    Settings.Panel.ACTION_INTERNET_CONNECTIVITY
+                } else {
+                    Settings.ACTION_WIFI_SETTINGS
+                }
+                openSystemSettings(context, primary, Settings.ACTION_WIFI_SETTINGS)
+            }
+            QuietAction("Display & lock screen") {
+                openSystemSettings(context, Settings.ACTION_DISPLAY_SETTINGS)
+            }
+            QuietAction("Sound & notifications") {
+                openSystemSettings(context, Settings.ACTION_SOUND_SETTINGS)
+            }
+            QuietAction("Wallpaper") {
+                openSystemSettings(context, Intent.ACTION_SET_WALLPAPER)
             }
 
             Spacer(Modifier.height(LauncherSpace.xl))
@@ -259,3 +315,19 @@ private fun PinnedOrderRow(
         )
     }
 }
+
+private fun openSystemSettings(context: Context, action: String, fallbackAction: String? = null) {
+    try {
+        context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        if (fallbackAction != null && fallbackAction != action) {
+            try {
+                context.startActivity(Intent(fallbackAction).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (_: ActivityNotFoundException) {
+            }
+        }
+        Toast.makeText(context, "Settings page unavailable", Toast.LENGTH_SHORT).show()
+    }
+}
+

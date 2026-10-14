@@ -127,7 +127,7 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             QuietAction("All apps", onClick = { viewModel.openApps() })
-            QuietAction("Settings", onClick = { viewModel.openSettings() })
+            QuietAction("Settings", onClick = { viewModel.openSettings(Screen.HOME) })
         }
     }
 }

@@ -23,6 +23,7 @@ import com.zendolauncher.ui.AppListScreen
 import com.zendolauncher.ui.HomeScreen
 import com.zendolauncher.ui.LauncherViewModel
 import com.zendolauncher.ui.OnboardingScreen
+import com.zendolauncher.ui.PauseDialog
 import com.zendolauncher.ui.Screen
 import com.zendolauncher.ui.SettingsScreen
 import com.zendolauncher.ui.theme.LauncherColors
@@ -104,7 +105,11 @@ private fun SystemBarIcons() {
 private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.ui.UiState) {
     // Home is a back-stack root: Back from a secondary screen returns home. Onboarding
     // owns its own BackHandler so Back dismisses it rather than dropping into Home unseen.
-    BackHandler(enabled = state.screen != Screen.HOME && state.screen != Screen.ONBOARDING) {
+    // Back from Settings returns to the drawer when entered from it, keeping the query.
+    BackHandler(enabled = state.screen == Screen.SETTINGS) {
+        viewModel.backFromSettings()
+    }
+    BackHandler(enabled = state.screen == Screen.APPS) {
         viewModel.goHome()
     }
 
@@ -118,6 +123,15 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
             Screen.HOME -> HomeScreen(viewModel, state)
             Screen.APPS -> AppListScreen(viewModel, state)
             Screen.SETTINGS -> SettingsScreen(viewModel, state)
+        }
+        // Launcher-level pre-launch only: the dialog interposes here, over whichever
+        // list the tap came from, and Home underneath is untouched.
+        state.pendingPause?.let {
+            PauseDialog(
+                label = it.label,
+                onContinue = { viewModel.confirmPause() },
+                onCancel = { viewModel.cancelPause() },
+            )
         }
     }
 }

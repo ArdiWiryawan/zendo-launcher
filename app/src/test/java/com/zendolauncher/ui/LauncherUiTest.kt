@@ -64,6 +64,7 @@ class LauncherUiTest {
         viewModel.setTodayEnabled(true)
         viewModel.setClock24h(true)
         viewModel.setZendoEnabled(false)
+        viewModel.setPauseEnabled(false)
         viewModel.goHome()
         rule.waitForIdle()
     }

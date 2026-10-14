@@ -61,6 +61,11 @@ data class UiState(
     val undoHidden: LaunchTarget? = null,
     /** True only while the first enumeration is still running; see [LauncherViewModel.onStart]. */
     val isLoading: Boolean = false,
+    /**
+     * The distraction-listed app waiting on the intentional pause. Non-null only while
+     * the pause dialog is up; launching it is the only way out besides cancelling.
+     */
+    val pendingPause: LaunchTarget? = null,
 )
 
 private data class Lists(
@@ -111,6 +116,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** The auto-dismiss for [_undoHidden]; cancelling it is how a new hide takes over. */
     private var undoJob: Job? = null
 
+    /**
+     * The distraction-listed app waiting on the intentional pause. Plain dialog state:
+     * set by [launch], cleared by [confirmPause]/[cancelPause]. No journaling.
+     */
+    private val _pendingPause = MutableStateFlow<LaunchTarget?>(null)
+
+    /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
+    private var settingsReturn: Screen = Screen.HOME
+
+    /** Drawer scroll position, retained across re-entry; see AppListScreen. */
+    var drawerIndex: Int = 0
+    var drawerOffset: Int = 0
+
     private val allApps: Flow<List<LaunchTarget>> =
         combine(appRepository.apps, shortcutRepository.shortcuts) { installed, shortcuts ->
             installed + shortcuts
@@ -146,7 +164,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             Prefs(settings, query, shortcutAccess, isDefaultHome)
         }
 
-    val state: StateFlow<UiState> =
+    private val base: Flow<UiState> =
         combine(lists, prefs, zendo, _isLoading, _undoHidden) { lists, prefs, zendo, isLoading, undoHidden ->
             UiState(
                 screen = lists.screen,
@@ -161,7 +179,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 allApps = lists.allApps,
                 undoHidden = undoHidden,
                 isLoading = isLoading,
+                pendingPause = _pendingPause.value,
             )
+        }
+
+    val state: StateFlow<UiState> =
+        combine(base, _pendingPause) { state, pendingPause ->
+            state.copy(pendingPause = pendingPause)
         }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(5_000),
@@ -222,10 +246,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun openApps() { _screen.value = Screen.APPS }
 
-    fun openSettings() { _screen.value = Screen.SETTINGS }
+    fun openSettings(from: Screen = if (_screen.value == Screen.APPS) Screen.APPS else Screen.HOME) {
+        settingsReturn = from
+        _screen.value = Screen.SETTINGS
+    }
+
+    /** Back from Settings returns to the drawer when entered from it, keeping the query. */
+    fun backFromSettings() {
+        _screen.value = settingsReturn
+        settingsReturn = Screen.HOME
+    }
 
     fun goHome() {
         _screen.value = Screen.HOME
+        settingsReturn = Screen.HOME
         _query.value = ""
     }
 
@@ -246,9 +280,36 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      */
     fun clearQuery() { _query.value = "" }
 
-    fun launch(target: LaunchTarget) = appLauncher.launch(target)
+    /**
+     * Launcher-level pre-launch only: a distraction-listed target with the pause on
+     * opens the calm dialog instead of launching directly. Everything else launches.
+     * ponytail: per-launch gate covers conscious entry up to daily use; upgrade to an
+     * in-memory `allowUntilMs: Map<String, Long>` check here when timed access windows are needed.
+     */
+    fun launch(target: LaunchTarget) {
+        val settings = settingsStore.settings.value
+        if (settings.pauseEnabled && target.key in settings.distract) {
+            _pendingPause.value = target
+        } else {
+            appLauncher.launch(target)
+        }
+    }
+
+    /** The dialog's Continue: one direct launch, no journaling. */
+    fun confirmPause() {
+        _pendingPause.value?.let { appLauncher.launch(it) }
+        _pendingPause.value = null
+    }
+
+    /** The dialog's Cancel: back to the list, nothing launched. */
+    fun cancelPause() { _pendingPause.value = null }
 
     fun toggleFavourite(key: String) = settingsStore.toggleFavourite(key)
+
+    fun toggleDistract(key: String) = settingsStore.update { current ->
+        val distract = if (key in current.distract) current.distract - key else current.distract + key
+        current.copy(distract = distract)
+    }
 
     /**
      * Hides or unhides an app, and keeps the undo offer in step with which way it went.
@@ -303,6 +364,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setClock24h(enabled: Boolean) = settingsStore.update { it.copy(clock24h = enabled) }
 
     fun setZendoEnabled(enabled: Boolean) = settingsStore.update { it.copy(zendoEnabled = enabled) }
+
+    fun setPauseEnabled(enabled: Boolean) = settingsStore.update { it.copy(pauseEnabled = enabled) }
 
     suspend fun bitmapFor(target: LaunchTarget, sizePx: Int): Bitmap? =
         withContext(Dispatchers.IO) { appRepository.bitmapFor(target, sizePx) }

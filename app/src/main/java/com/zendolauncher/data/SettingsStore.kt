@@ -35,6 +35,8 @@ class SettingsStore(context: Context) {
         clock24h = prefs.getBoolean(KEY_CLOCK_24H, true),
         zendoEnabled = prefs.getBoolean(KEY_ZENDO, false),
         onboardingSeen = prefs.getBoolean(KEY_ONBOARDING_SEEN, false),
+        distract = prefs.getStringSet(KEY_DISTRACT, null)?.toSet() ?: emptySet(),
+        pauseEnabled = prefs.getBoolean(KEY_PAUSE, false),
     )
 
     fun update(transform: (LauncherSettings) -> LauncherSettings) {
@@ -48,6 +50,8 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_CLOCK_24H, next.clock24h)
             putBoolean(KEY_ZENDO, next.zendoEnabled)
             putBoolean(KEY_ONBOARDING_SEEN, next.onboardingSeen)
+            putStringSet(KEY_DISTRACT, HashSet(next.distract))
+            putBoolean(KEY_PAUSE, next.pauseEnabled)
         }
         _settings.value = next
     }
@@ -93,6 +97,8 @@ class SettingsStore(context: Context) {
         private const val KEY_CLOCK_24H = "clock_24h"
         private const val KEY_ZENDO = "zendo_enabled"
         private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
+        private const val KEY_DISTRACT = "distract_set"
+        private const val KEY_PAUSE = "pause_enabled"
     }
 }
 
@@ -105,4 +111,6 @@ data class LauncherSettings(
     val clock24h: Boolean = true,
     val zendoEnabled: Boolean = false,
     val onboardingSeen: Boolean = false,
+    val distract: Set<String> = emptySet(),
+    val pauseEnabled: Boolean = false,
 )
