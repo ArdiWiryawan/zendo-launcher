@@ -6,7 +6,8 @@ it closes, and what the user sees as a result. Section 2 is the before-and-after
 
 Scope of section 1 is exactly the set of changes in commit `22273c1` (the diff against its
 parent `2ac913a`). Nothing is described that the diff does not show. Findings are cited by
-their id in `docs/ui-ux-audit.md`.
+their id in `docs/ui-ux-audit.md`. Source locations are named by symbol rather than by line
+number, so they do not rot as the source is edited.
 
 The register of section 2 is deliberately narrower than the spec asked for. The spec asked
 for before-and-after screenshots under `docs/ui-ux-review/`. That deliverable was not
@@ -16,40 +17,41 @@ achievable and section 2 explains why, then substitutes a textual review.
 
 ### Design tokens: `ui/theme/Theme.kt`
 
-- **`LauncherSpace` (lines 62-71).** A named spacing scale now exists: `xs` 4dp, `sm` 8dp,
-  `md` 16dp, `lg` 24dp, `xl` 40dp, plus `gutter` 24dp, `hairline` 1dp and `touchTarget`
-  48dp. Every screen and component reads from it instead of inline literals. Closes P2-2
-  across all four screens. Effect: one shared vertical rhythm, and no new gap
+- **`LauncherSpace` in `ui/theme/Theme.kt`.** A named spacing scale now exists: `xs` 4dp,
+  `sm` 8dp, `md` 16dp, `lg` 24dp, `xl` 40dp, plus `gutter` 24dp, `hairline` 1dp and
+  `touchTarget` 48dp. Every screen and component reads from it instead of inline literals.
+  Closes P2-2 across all four screens. Effect: one shared vertical rhythm, and no new gap
   invented per screen.
-- **`LauncherType` extended (lines 78-96).** `title` (20sp) is new, for screen headers.
-  `section` moved from 11sp to 12sp (line 89). `appLabel` and `body` gained explicit
+- **`LauncherType` extended, in `ui/theme/Theme.kt`.** `title` (20sp) is new, for screen
+  headers. `section` moved from 11sp to 12sp. `appLabel` and `body` gained explicit
   `lineHeight` (24sp and 22sp). Closes P2-1. Effect: section labels are legible, and
   text-heavy rows no longer inherit the font default line height.
-- **`clockSizeSp(screenWidthDp, fontScale, base)` (lines 106-121).** A pure function that
-  shrinks the requested clock size so the widest realistic clock string still fits the
-  width available after the gutters, clamped to 28sp at the floor and `base` at the
-  ceiling. Closes P0-7 together with the `maxLines = 1` at `ui/HomeScreen.kt:137`. Effect:
-  the clock stays one line at a raised system font scale. This is arithmetic from default
-  font metrics, not a device measurement.
-- **`ColorScheme.inLauncherPalette` (lines 130-158).** Every role Material3 reads for a
-  menu is now mapped onto the two-tone palette: `surfaceContainer`, `surfaceContainerHigh`,
-  `surfaceContainerHighest`, `onSurfaceVariant`, `surfaceVariant`, `scrim`, `inverseSurface`,
-  `surfaceTint` (transparent, or elevated surfaces get tinted) and others. Closes P0-1.
-  Effect: the long-press menu renders in the launcher's own tones instead of Material3's
-  default violet-tinted container.
+- **`clockSizeSp(screenWidthDp, fontScale, base)` in `ui/theme/Theme.kt`.** A pure
+  function that shrinks the requested clock size so the widest realistic clock string
+  still fits the width available after the gutters, clamped to 28sp at the floor and
+  `base` at the ceiling. Closes P0-7 together with the `maxLines = 1` on the clock's
+  `Text` in `ui/HomeScreen.kt`. Effect: the clock stays one line at a raised system font
+  scale. This is arithmetic from default font metrics, not a device measurement.
+- **`ColorScheme.inLauncherPalette` in `ui/theme/Theme.kt`.** Every role Material3 reads
+  for a menu is now mapped onto the two-tone palette: `surfaceContainer`,
+  `surfaceContainerHigh`, `surfaceContainerHighest`, `onSurfaceVariant`, `surfaceVariant`,
+  `scrim`, `inverseSurface`, `surfaceTint` (transparent, or elevated surfaces get tinted)
+  and others. Closes P0-1. Effect: the long-press menu renders in the launcher's own tones
+  instead of Material3's default violet-tinted container.
 
 ### Shared components: `ui/Components.kt`
 
-- **`QuietAction` (lines 93-103).** The clickable is now the outermost node and the box
-  carries `defaultMinSize(minHeight = LauncherSpace.touchTarget)`, so the hit area is 48dp
-  while the label keeps its quiet size. The `clip(CircleShape)` is gone, which also removes
-  the ripple that was clipped to a circle inside a wide row. Closes P0-5 and P2-4. Effect:
-  every action meets the platform minimum, and press feedback spans the whole target.
-- **`AppRow` (lines 118-197).** `onLongClickLabel` states the gesture for assistive
-  technology (line 140). `stateDescription` reports "In Essentials" or "Not in Essentials"
-  (lines 144-145). A `defaultMinSize` of 48dp applies to the row (line 146). The long-press
-  menu is anchored to the row's trailing edge through `menuAlignment` (line 174), and the
-  hide item is renamed "Hide and unpin" so the unpin it also performs is stated (line 189).
+- **`QuietAction` in `ui/Components.kt`.** The clickable is now the outermost node and
+  the box carries `defaultMinSize(minHeight = LauncherSpace.touchTarget)`, so the hit area
+  is 48dp while the label keeps its quiet size. The `clip(CircleShape)` is gone, which also
+  removes the ripple that was clipped to a circle inside a wide row. Closes P0-5 and P2-4.
+  Effect: every action meets the platform minimum, and press feedback spans the whole
+  target.
+- **`AppRow` in `ui/Components.kt`.** `onLongClickLabel` states the gesture for assistive
+  technology. `stateDescription` reports "In Essentials" or "Not in Essentials" through the
+  row's `semantics`. A `defaultMinSize` of 48dp applies to the row. The long-press menu is
+  anchored to the row's trailing edge through `menuAlignment`, and the hide item is renamed
+  "Hide and unpin" so the unpin it also performs is stated.
   Closes P1-4, P2-5, and the announcement half of P0-4. The first pass also wrote a trailing
   `Add` / `Remove` affordance behind a `showFavouriteToggle` flag and then deleted it, on the
   ground that no screen passed it and an unrendered parameter is the dead flexibility the
@@ -57,24 +59,24 @@ achievable and section 2 explains why, then substitutes a textual review.
   wired to the app list; see "Findings closed in the second pass".
   Effect: pinning state is reportable, the menu opens under the finger, and hiding no
   longer silently drops a pinned entry.
-- **`ScreenTitle` (lines 76-85).** New. A title level above the rows with a trailing slot
-  for the screen's own action, no container. Effect: "All apps" and "Settings" read as
-  titles rather than as another row.
-- **`ToggleRow` (lines 229-256).** The Material3 `Switch` is gone. The whole row is
+- **`ScreenTitle` in `ui/Components.kt`.** New. A title level above the rows with a
+  trailing slot for the screen's own action, no container. Effect: "All apps" and
+  "Settings" read as titles rather than as another row.
+- **`ToggleRow` in `ui/Components.kt`.** The Material3 `Switch` is gone. The whole row is
   `toggleable` with `role = Role.Switch`, and the state is the word "On" or "Off" whose
   weight and tone both change. Closes P1-9 and P1-12. Effect: the settings screen is text
   throughout, and tapping the label changes the setting. The word is used instead of a
   tick glyph because the default font family does not cover U+2713 and a fallback could
   render tofu.
-- **`ChoiceRow` (lines 264-307).** The selected option now differs by a weight change and
-  a 20dp hairline marker under the label, as well as by colour, and each option is
-  `selectable` with `role = Role.RadioButton` and a 48dp minimum height. Closes P0-5 and
+- **`ChoiceRow` in `ui/Components.kt`.** The selected option now differs by a weight
+  change and a 20dp hairline marker under the label, as well as by colour, and each option
+  is `selectable` with `role = Role.RadioButton` and a 48dp minimum height. Closes P0-5 and
   P0-6. Effect: the active theme and layout are legible without relying on colour, and a
   screen reader can name them.
-- **`AppIcon` (lines 204-219).** The icon box is emitted unconditionally at `Modifier.size`
-  (line 208) and only the `Image` inside it is conditional on the bitmap. Closes P1-7.
+- **`AppIcon` in `ui/Components.kt`.** The icon box is emitted unconditionally at
+  `Modifier.size` and only the `Image` inside it is conditional on the bitmap. Closes P1-7.
   Effect: a resolving icon can no longer shift the label sideways as the list scrolls.
-- **`SecondaryText` (lines 320-327).** The dead `color` parameter is removed; the
+- **`SecondaryText` in `ui/Components.kt`.** The dead `color` parameter is removed; the
   composable reads the palette itself. Closes P2-8. Effect: one way to render secondary
   text.
 - **`EmptyNote`.** Now used only for true empty states. The explanatory paragraphs in
@@ -83,111 +85,109 @@ achievable and section 2 explains why, then substitutes a textual review.
 
 ### Home: `ui/HomeScreen.kt`
 
-- The Essentials empty state is one sentence, "No pinned apps yet." (line 78). Closes
+- The Essentials empty state is one sentence, "No pinned apps yet." Closes
   P1-8.
 - The `Refresh` action is removed from the bottom row; the row is now "All apps" and
-  "Settings" (lines 98-107). Closes P1-1 and, with it, P2-6, because the weighted spacer
+  "Settings". Closes P1-1 and, with it, P2-6, because the weighted spacer
   that produced the second spacing mechanism is gone and `Arrangement.spacedBy` is the only
   one left.
 - The top offset was `LauncherSpace.xl` (40dp) in the first pass, which the audit counted as
   only partly addressing P2-3. The second pass replaced it with a value derived from the real
   window height; see "Findings closed in the second pass".
-- The clock takes `clockSizeSp` and `maxLines = 1` (lines 130-137). Closes P0-7 with the
+- The `Clock` takes `clockSizeSp` and `maxLines = 1`. Closes P0-7 with the
   token change above.
-- The Today block returns early when it has neither an action nor an agenda entry
-  (line 170), so a payload carrying only `practices` does not produce a heading over
+- `TodayBlock` returns early when it has neither an action nor an agenda entry,
+  so a payload carrying only `practices` does not produce a heading over
   nothing. Effect: no empty "Today" heading.
 
 ### App drawer and search: `ui/AppListScreen.kt`
 
-- `.imePadding()` is added after `.systemBarsPadding()` (line 69), in that order, so the
+- `.imePadding()` is added after `.systemBarsPadding()`, in that order, so the
   keyboard height is added above the bars rather than stacked with them. Closes P0-2.
   Effect: the results and the bottom action row stay reachable with the keyboard open.
   This is the one change in the set that depends on real IME behaviour and could not be
   exercised here.
-- The field requests focus on arrival through a `FocusRequester` and `LaunchedEffect`
-  (lines 59, 104). Closes the first half of P0-3.
+- The field requests focus on arrival through a `FocusRequester` and `LaunchedEffect`.
+  Closes the first half of P0-3.
 - `KeyboardOptions` sets `capitalization = None`, `autoCorrectEnabled = false` and
-  `ImeAction.Search` (lines 87-90), and `KeyboardActions(onSearch)` hides the keyboard
-  (line 95). Closes the second half of P0-3. Effect: app names are not rewritten, and the
+  `ImeAction.Search`, and `KeyboardActions(onSearch)` hides the keyboard.
+  Closes the second half of P0-3. Effect: app names are not rewritten, and the
   IME offers Search.
 - A `Clear` action appears only while the query is non-empty and calls
-  `viewModel.clearQuery()` (lines 110-112, `ui/LauncherViewModel.kt:228`). Closes the third
-  half of P0-3. The field is also given the accessible name "Search apps" (line 108), since
-  the "Search" placeholder is a sibling `Text` and carries no semantics of its own. Effect: the query can be reset without leaving the screen.
+  `viewModel.clearQuery()` (`ui/LauncherViewModel.kt`). Closes the third half of P0-3. The
+  field is also given the accessible name "Search apps", since the "Search" placeholder is a
+  sibling `Text` and carries no semantics of its own. Effect: the query can be reset without
+  leaving the screen.
 - The results list draws sticky first-letter headers while the query is empty, derived from
-  the same normalisation the sort uses (`letterOf`, lines 138-141 and 169-175), with a
-  single `#` bucket for digits and symbols. Closes P1-6. Effect: a user can jump to a
-  letter instead of scrolling.
-- The per-row hairline is gone (`AppListRow`, lines 176-187). Closes P1-5. Effect: the drawer reads as
+  the same normalisation the sort uses (`letterOf`), with a single `#` bucket for digits and
+  symbols. Closes P1-6. Effect: a user can jump to a letter instead of scrolling.
+- The per-row hairline is gone (`AppListRow`). Closes P1-5. Effect: the drawer reads as
   one product with Home.
 - The empty state distinguishes loading from empty: `state.isLoading` shows "Looking for
   apps…", a blank query shows "No launchable apps found.", and a query shows "Nothing
-  matches …" (lines 123-132). Closes P1-13. Effect: the drawer does not claim there are no
+  matches …". Closes P1-13. Effect: the drawer does not claim there are no
   apps while the first scan is still running.
 
 ### Settings: `ui/SettingsScreen.kt`
 
-- Hidden apps are named from a key-to-label map built from `state.allApps` (line 47),
-  falling back to `key.substringBefore('/')` only for a key that no longer resolves
-  (line 176). Closes P1-3. Effect: the hidden list reads as app names.
+- Hidden apps are named from a key-to-label map built from `state.allApps`,
+  falling back to `key.substringBefore('/')` only for a key that no longer resolves.
+  Closes P1-3. Effect: the hidden list reads as app names.
 - The Pinned order row keeps Up and Down together as a reorder pair and pushes Unpin away
-  by `LauncherSpace.xl` to the trailing edge (lines 218-253), and each action names the app
-  it acts on through `contentDescription`. With the 48dp `QuietAction`, this closes P1-10.
-  Effect: fewer accidental unpins and a row a screen reader can navigate.
+  by `LauncherSpace.xl` to the trailing edge (`PinnedOrderRow` in `ui/SettingsScreen.kt`),
+  and each action names the app it acts on through `contentDescription`. With the 48dp
+  `QuietAction`, this closes P1-10. Effect: fewer accidental unpins and a row a screen
+  reader can navigate.
 - The three toggles use `ToggleRow` and the two selectors use `ChoiceRow`, as above.
-- The Today copy changed. The note under "Show today" now reads "With this off, Home shows
-  the clock, the date and your pinned apps only." (line 109), and the note under "Connect
+- The Today copy changed. The note under "Show today" became "With this off, Home shows
+  the clock, the date and your pinned apps only.", and the note under "Connect
   Zendo" states that Zendo exposes no planning API, so connecting it fetches nothing and
   the block stays empty. The first pass changed only the copy. The second pass rewrote the
   two notes so the toggle that looks broken explains itself; see "Findings closed in the
   second pass".
-- A "Reopen onboarding" action is added under About (line 202). Closes the reachability half
+- A "Reopen onboarding" action is added under About. Closes the reachability half
   of P1-2. Effect: the first-run explanation is not a one-time, unrecoverable page.
 
 ### Onboarding
 
-- **`ui/OnboardingScreen.kt` (new, 129 lines).** A single scrollable page, not a wizard,
+- **`ui/OnboardingScreen.kt` (new).** A single scrollable page, not a wizard,
   built from primitives. It states what the launcher replaces, that essentials are chosen
   from the app list by holding a finger on an app, that Android owns the Home app setting,
   how to restore the previous Home screen, and that Zendo is optional. It has its own
-  `BackHandler` (line 39), a "Set as
-  Home app" action that opens `Settings.ACTION_HOME_SETTINGS` when the launcher is not
-  default, and a "Got it" action that dismisses it (lines 86-103). Closes P1-2. The page
-  names the long-press explicitly, because the per-row affordance that P0-4 asked for is not
-  shipped (see "Findings closed in the second pass"); it does not describe a control that is
-  not there.
-- **`data/SettingsStore.kt`.** `onboardingSeen` is added to `LauncherSettings` (line 107),
-  read with a default of `false` (line 37) and written with the rest of the settings
-  (line 50). Closes the persistence half of P1-2.
-- **`ui/LauncherViewModel.kt`.** `Screen.ONBOARDING` is a new enum value (line 36), the
-  initial screen is `ONBOARDING` unless `onboardingSeen` is set (line 84), and
-  `dismissOnboarding()` writes the flag and moves to Home (lines 214-217) while
-  `showOnboarding()` reopens it without clearing the flag (line 220). The `stateIn` initial
-  value mirrors `_screen` so the first frame does not flash Home before onboarding
-  (lines 151-155). Effect: a first-run user lands on the explanation. The existing UI tests
-  are unaffected because `resetSettings()` calls `goHome()`, which moves the screen to Home
-  regardless of the first-run flag.
-- `isLoading` is added to `UiState` (line 55) and to the combined state (line 144), starts
-  true (line 94), and is cleared in a `finally` in `enumerate()` (lines 188-197) so a
-  platform query that throws cannot leave the flag set. Closes P1-13 with the drawer
-  change above.
-- `allApps` is added to `UiState` (line 53) as the unfiltered list, which is what the
+  `BackHandler`, a "Set as Home app" action that opens `Settings.ACTION_HOME_SETTINGS` when
+  the launcher is not default, and a "Got it" action that dismisses it. Closes P1-2. The
+  page names the long-press explicitly, because the per-row affordance that P0-4 asked for
+  is not shipped (see "Findings closed in the second pass"); it does not describe a control
+  that is not there.
+- **`data/SettingsStore.kt`.** `onboardingSeen` is added to `LauncherSettings`, read with a
+  default of `false` and written with the rest of the settings. Closes the persistence half
+  of P1-2.
+- **`ui/LauncherViewModel.kt`.** `Screen.ONBOARDING` is a new enum value, the initial
+  screen is `ONBOARDING` unless `onboardingSeen` is set, and `dismissOnboarding()` writes
+  the flag and moves to Home while `showOnboarding()` reopens it without clearing the flag.
+  The `stateIn` initial value mirrors `_screen` so the first frame does not flash Home
+  before onboarding. Effect: a first-run user lands on the explanation. The existing UI
+  tests are unaffected because `resetSettings()` calls `goHome()`, which moves the screen to
+  Home regardless of the first-run flag.
+- `isLoading` is added to `UiState` and to the combined state, starts true, and is cleared
+  in a `finally` in `enumerate()` so a platform query that throws cannot leave the flag set.
+  Closes P1-13 with the drawer change above.
+- `allApps` is added to `UiState` as the unfiltered list, which is what the
   Settings hidden-apps labels are built from. Closes P1-3 with the Settings change above.
-- `clearQuery()` is added (line 228). Closes the clear half of P0-3.
+- `clearQuery()` is added. Closes the clear half of P0-3.
 
 ### Root shell and theming
 
 - **`LauncherActivity.kt`.** `setTheme` selects `Theme_ZendoLauncher_Light` or
   `Theme_ZendoLauncher_Dark` before `super.onCreate()` when the user has chosen an explicit
-  theme, and does nothing for `SYSTEM` (lines 47-53). Closes P0-9. `SystemBarIcons()`
-  (lines 90-101) derives the status-bar and navigation-bar icon appearance from the
+  theme, and does nothing for `SYSTEM`. Closes P0-9. `SystemBarIcons()`
+  derives the status-bar and navigation-bar icon appearance from the
   resolved palette through `WindowCompat.getInsetsController`, keyed on `isDark`. Closes
-  P0-8. The `BackHandler` now excludes `ONBOARDING` as well as `HOME` (line 107), so Back
+  P0-8. The `BackHandler` now excludes `ONBOARDING` as well as `HOME`, so Back
   on onboarding dismisses it rather than dropping into Home unseen.
-- **`res/values/themes.xml`.** One style becomes four: `Theme.ZendoLauncher.Base` (4-8),
-  `.Light` (11-18) and `.Dark` (21-25), with bare `Theme.ZendoLauncher` inheriting Light
-  (line 29). `windowLightStatusBar` and `windowLightNavigationBar` are now set per variant
+- **`res/values/themes.xml`.** One style becomes four: `Theme.ZendoLauncher.Base`,
+  `.Light` and `.Dark`, with bare `Theme.ZendoLauncher` inheriting Light.
+  `windowLightStatusBar` and `windowLightNavigationBar` are now set per variant
   instead of hardcoded, and the latter two carry `tools:targetApi="27"` because the
   attribute is API 27 while the minimum is 26. Closes P0-9 and the XML half of P0-8.
 - **`res/values-night/themes.xml` (new).** Bare `Theme.ZendoLauncher` inherits the Dark
@@ -195,7 +195,7 @@ achievable and section 2 explains why, then substitutes a textual review.
   Closes the default half of P0-9.
 - **`res/values/colors.xml`.** `launcher_window_background` becomes
   `launcher_window_background_light` and `launcher_window_background_dark`, both defined in
-  the unqualified file (lines 3-4). **`res/values-night/colors.xml`.** The night-qualified
+  the unqualified file. **`res/values-night/colors.xml`.** The night-qualified
   window background is deleted; only `ic_launcher_background` remains. Closes P0-9.
 
 ### Tests: `app/src/test/java/com/zendolauncher/ui/LauncherUiTest.kt`
@@ -227,10 +227,10 @@ achievable and section 2 explains why, then substitutes a textual review.
 Four findings were left open by the first pass and are now closed.
 
 - **P0-4, closed.** The audit asked for "a visible, small, text-only affordance to each row
-  in the app list". `AppRow` gains `showPinAction` (`ui/Components.kt:131`), which renders a
-  trailing `Pin` / `Unpin` action (`:175-186`) carrying a per-app `contentDescription` so one
-  repeated word down a list stays distinguishable to a screen reader. `AppListRow` turns it on
-  (`ui/AppListScreen.kt:196`). **Home leaves it off**, and that is deliberate rather than an
+  in the app list". `AppRow` gains `showPinAction` in `ui/Components.kt`, which renders a
+  trailing `Pin` / `Unpin` action carrying a per-app `contentDescription` so one repeated
+  word down a list stays distinguishable to a screen reader. `AppListRow` turns it on
+  (`ui/AppListScreen.kt`). **Home leaves it off**, and that is deliberate rather than an
   omission: every Home row is already pinned, so an `Unpin` on each would be a row of noise
   for a state the 6dp dot already reports. The long press, `onLongClickLabel` and
   `stateDescription` are unchanged, so the gesture still works as a shortcut for anyone who
@@ -238,38 +238,38 @@ Four findings were left open by the first pass and are now closed.
   ships it wired to a screen, which is the difference the audit's P2-8 was pointing at.
 - **P1-11, closed.** Hiding now offers an undo instead of a confirmation, which is what the
   audit recommended as the better fit for the product's tone. `UiState.undoHidden`
-  (`ui/LauncherViewModel.kt:61`) is folded into the state `combine` (`:150`) exactly as
-  `isLoading` is, so the note appears and clears with the rest of the state rather than through
-  a second observation path. `toggleHidden` (`:258`) detects which way the toggle went, cancels
-  any previous timer so a second hide replaces the note rather than racing it, and starts a
-  six-second `viewModelScope` job that clears it. `undoHide` (`:275`) puts the app back and
-  takes the note down. Unhiding clears the note immediately, because the user has already
-  undone the thing it offered. `UndoNote` (`ui/Components.kt:354`) renders it: a line of the
-  page, no container, background or border, with the action held to the trailing edge by a
-  weight spacer. It is drawn above the bottom action row on both screens that can hide an app
-  (`ui/HomeScreen.kt:108-118`, `ui/AppListScreen.kt:152-159`). `targetFor` (`:287`) falls back
-  to the package name when a key outlives the app it names, so the note always has a subject.
-- **P2-3, closed.** The Home top offset is no longer a constant. `topGap`
-  (`ui/HomeScreen.kt:53`) is a fraction of the real window height read from
+  (`ui/LauncherViewModel.kt`) is folded into the state `combine` exactly as `isLoading` is,
+  so the note appears and clears with the rest of the state rather than through a second
+  observation path. `toggleHidden` detects which way the toggle went, cancels any previous
+  timer so a second hide replaces the note rather than racing it, and starts a six-second
+  `viewModelScope` job that clears it. `undoHide` puts the app back and takes the note down.
+  Unhiding clears the note immediately, because the user has already undone the thing it
+  offered. `UndoNote` (`ui/Components.kt`) renders it: a line of the page, no container,
+  background or border, with the action held to the trailing edge by a weight spacer. It is
+  drawn above the bottom action row on both screens that can hide an app (`ui/HomeScreen.kt`,
+  `ui/AppListScreen.kt`). `targetFor` falls back to the package name when a key outlives the
+  app it names, so the note always has a subject.
+- **P2-3, closed.** The Home top offset is no longer a constant. `topGap` in
+  `ui/HomeScreen.kt` is a fraction of the real window height read from
   `LocalWindowInfo.containerSize`, clamped between `LauncherSpace.lg` and `LauncherSpace.xl`
   so a fraction of a very short or very tall window cannot become cramped or absurd.
 - **P2-10, closed as far as it can be.** No Zendo source ships, so the block still cannot
   render and the toggle still changes nothing on screen. What was wrong was the copy: the
   note sat under the *other* toggle, so the control that looks broken never explained itself.
-  The two notes are rewritten and no longer duplicate each other
-  (`ui/SettingsScreen.kt:110-114`, `:122-125`). The first now says Home has a place for the
-  block and that nothing fills it yet, so Home looks the same either way; the second stays
-  Zendo-specific. Both were checked against `UnavailableZendoSource.load()` returning null and
-  against the Home gate requiring both the setting and a non-empty payload.
+  The two notes are rewritten and no longer duplicate each other (`ui/SettingsScreen.kt`).
+  The first now says Home has a place for the block and that nothing fills it yet, so Home
+  looks the same either way; the second stays Zendo-specific. Both were checked against
+  `UnavailableZendoSource.load()` returning null and against the Home gate requiring both
+  the setting and a non-empty payload.
 
 ### Also in the second pass
 
 - **Lint `ConfigurationScreenWidthHeight` cleared.** `HomeScreen` read
   `Configuration.screenWidthDp` for the clock. It now reads the measured container width from
-  `LocalWindowInfo` (`ui/HomeScreen.kt:55`) and passes it to `clockSizeSp` (`:144`, `:154`).
+  `LocalWindowInfo` (`ui/HomeScreen.kt`) and passes it to `clockSizeSp`.
   `configuration.fontScale` is still read, because lint does not flag it and it is the right
   source for a scale.
-- **`clockSizeSp` guarded against a zero width** (`ui/theme/Theme.kt:108-111`). A caller that
+- **`clockSizeSp` guarded against a zero width** (`ui/theme/Theme.kt`). A caller that
   measures the window before layout can hand it `0`, which would compute a negative available
   width and floor the clock at 28sp on a screen with plenty of room.
 - **The four `GradleDependency` warnings are deliberate and stay.** Lint suggests
@@ -323,12 +323,13 @@ long-press (P1-8). The bottom row was "All apps", "Settings" and, only in the ic
 "Refresh" action, with a weighted spacer mixed into `spacedBy(28.dp)` (P1-1, P2-6). The top
 offset was a bare 56dp spacer (P2-3).
 
-After: the clock is sized by `clockSizeSp(configuration.screenWidthDp, configuration.fontScale)`
-and drawn with `maxLines = 1` (`ui/HomeScreen.kt:130-137`). The empty state is "No pinned
-apps yet." (line 78). The bottom row is "All apps" and "Settings", spaced only by
-`Arrangement.spacedBy(LauncherSpace.lg)` (lines 98-107). The top offset is
-`LauncherSpace.xl` (line 60). The Today block, when enabled and given a payload, still
-renders under its own heading and now returns early when it has nothing to show (line 170).
+After: the clock is sized by `clockSizeSp` from the window width measured through
+`LocalWindowInfo` and `configuration.fontScale`, and drawn with `maxLines = 1`
+(`ui/HomeScreen.kt`). The empty state is "No pinned apps yet.". The bottom row is "All apps"
+and "Settings", spaced only by `Arrangement.spacedBy(LauncherSpace.lg)`. The top offset is
+`topGap`, a fraction of the window height clamped between `LauncherSpace.lg` and
+`LauncherSpace.xl` (`ui/HomeScreen.kt`). The Today block, when enabled and given a payload,
+still renders under its own heading and now returns early when it has nothing to show.
 
 ### App drawer and search
 
@@ -338,13 +339,12 @@ field was never focused, had no `KeyboardOptions`, no Search action and no clear
 empty list always read "No launchable apps found." (P1-13).
 
 After: the column consumes `.systemBarsPadding()` then `.imePadding()`
-(`ui/AppListScreen.kt:70-71`). The field takes focus on arrival (lines 59, 104), disables
-autocorrect and auto-capitalisation, requests `ImeAction.Search` and hides the keyboard on
-submit (lines 87-95). A "Clear" action appears while the query is non-empty (lines 110-112).
-The list is grouped under sticky letter headers when the query is blank, with a `#` bucket
-for digits and symbols (lines 138-141, 169-175), and draws no per-row hairline.
-The empty state is "Looking for apps…" while the first scan runs, "No launchable apps
-found." when it has finished, and "Nothing matches …" for a query (lines 123-132).
+(`ui/AppListScreen.kt`). The field takes focus on arrival, disables autocorrect and
+auto-capitalisation, requests `ImeAction.Search` and hides the keyboard on submit. A "Clear"
+action appears while the query is non-empty. The list is grouped under sticky letter headers
+when the query is blank, with a `#` bucket for digits and symbols, and draws no per-row
+hairline. The empty state is "Looking for apps…" while the first scan runs, "No launchable
+apps found." when it has finished, and "Nothing matches …" for a query.
 
 ### Settings
 
@@ -354,12 +354,12 @@ by colour alone (P0-6). Up, Down and Unpin sat 16dp apart at roughly 37dp tall (
 There was no way back to the first-run explanation (P1-2).
 
 After: the hidden list is named from a key-to-label map with a package-name fallback for an
-uninstalled app (`ui/SettingsScreen.kt:47`, 176). Toggles are text rows reading "On" or
-"Off", toggled by the whole row (`ui/Components.kt:245-272`). The selected Theme or Layout
-option carries a weight change and a hairline marker, and is `selectable` as a radio button
-(`ui/Components.kt:280-323`). The pinned-order row keeps Up and Down together and pushes
-Unpin to the trailing edge behind a `LauncherSpace.xl` gap, each action naming its app
-(`ui/SettingsScreen.kt:218-253`). About carries "Reopen onboarding" (line 202).
+uninstalled app (`ui/SettingsScreen.kt`). Toggles are text rows reading "On" or
+"Off", toggled by the whole row (`ToggleRow` in `ui/Components.kt`). The selected Theme or
+Layout option carries a weight change and a hairline marker, and is `selectable` as a radio
+button (`ChoiceRow` in `ui/Components.kt`). The pinned-order row keeps Up and Down together
+and pushes Unpin to the trailing edge behind a `LauncherSpace.xl` gap, each action naming
+its app (`PinnedOrderRow` in `ui/SettingsScreen.kt`). About carries "Reopen onboarding".
 
 ### Onboarding
 
@@ -369,12 +369,12 @@ replaces and how to restore the previous Home screen lived in the README and in 
 inside Settings that a first-run user had no reason to open.
 
 After: a first run lands on `OnboardingScreen` because `_screen` starts at
-`Screen.ONBOARDING` unless `onboardingSeen` is set (`ui/LauncherViewModel.kt:84`). The page
+`Screen.ONBOARDING` unless `onboardingSeen` is set (`ui/LauncherViewModel.kt`). The page
 states what the launcher replaces, that essentials come from the app list, that Android
 owns the Home app setting, how to restore the previous Home screen, and that Zendo is
 optional. It offers "Set as Home app" when the launcher is not default and "Got it" to
-dismiss, and Back dismisses it (`ui/OnboardingScreen.kt:39`, 83-101). It is reachable again
-from Settings.
+dismiss, and Back dismisses it (`ui/OnboardingScreen.kt`). It is reachable again from
+Settings.
 
 ### Cold-start frame
 
@@ -382,15 +382,16 @@ Before: the window background came from `@color/launcher_window_background`, ove
 under `values-night`, so it followed the system night mode while the launcher's own theme
 followed the user's stored choice. A user on a light system who selected Dark, or the
 reverse, saw a full-screen flash of the wrong colour before the first Compose frame. Because
-`android:clearTaskOnLaunch="true"` destroys the task on every return to Home
-(`AndroidManifest.xml:31`), the window was recreated constantly (P0-9).
+the manifest declares the launcher activity with `android:clearTaskOnLaunch="true"`, which
+destroys the task on every return to Home (`AndroidManifest.xml`), the window was recreated
+constantly (P0-9).
 
 After: `LauncherActivity` calls `setTheme` with `Theme_ZendoLauncher_Light` or
 `Theme_ZendoLauncher_Dark` before `super.onCreate()` when the user has chosen one
-(`LauncherActivity.kt:47-53`), and leaves `SYSTEM` on the night-qualified bare theme
-(`res/values-night/themes.xml:3`). The window background and the two icon-appearance flags
+(`LauncherActivity.kt`), and leaves `SYSTEM` on the night-qualified bare theme
+(`res/values-night/themes.xml`). The window background and the two icon-appearance flags
 now come from the same choice, and a post-Compose `SideEffect` keeps the icon appearance in
-step with the resolved palette (`LauncherActivity.kt:90-101`).
+step with the resolved palette (`LauncherActivity.kt`).
 
 ### Limitations
 

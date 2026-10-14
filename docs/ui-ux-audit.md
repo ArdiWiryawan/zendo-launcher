@@ -11,6 +11,13 @@ findings are source inspection plus JVM Compose execution, and where a claim dep
 device behaviour it is labelled as reasoning from platform documentation rather than
 observation.
 
+**This is a snapshot of the code before the redesign.** Every line number and file length
+below describes that revision, not the current one — the redesign changed these files, so a
+citation such as `ui/Components.kt:120` no longer points at the code this audit was reading.
+Where a finding was later addressed, `docs/ui-ux-implementation.md` records what changed and
+`docs/ui-ux-verification.md` records what was verified. The audit is left as written, because
+a report that is edited after the fact to match the result is not an audit.
+
 ## How this was audited
 
 - Direct source inspection of the 12 production files named in the brief, plus
