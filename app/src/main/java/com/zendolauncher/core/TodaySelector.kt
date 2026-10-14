@@ -22,6 +22,11 @@ data class ZendoDayPlan(
  * Zendo's `agenda` is a plain list of strings with no time attached, so an agenda
  * item is shown without a time rather than inventing one. "Selected practices" is
  * not a field Zendo exposes, so practices are left empty instead of guessed.
+ *
+ * A stored day plan carries one agenda string and no task list, so this fills
+ * `nextAgenda` only and leaves `tasks` and `upcoming` at their empty defaults. Those
+ * fields exist on [ZendoToday] for a source that can supply them; filling them here
+ * would be inventing data this source does not have.
  */
 object TodaySelector {
 

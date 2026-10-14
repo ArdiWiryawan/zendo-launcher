@@ -117,6 +117,11 @@ fun QuietAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
  * `showPinAction` is what makes pinning reachable without knowing the long press, so the
  * app list turns it on. Home leaves it off: every row there is already pinned, and an
  * "Unpin" on each one would be a row of noise for a state the dot already reports.
+ *
+ * `longPressMenu` is off on the Home apps page, where the long press is taken by
+ * drag-to-reorder. Both cannot own the same gesture, and reordering is the one the Home
+ * page needs; a row there still reaches pin and hide through the drawer, and the pin
+ * action it already shows.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -131,6 +136,7 @@ fun AppRow(
     modifier: Modifier = Modifier,
     showPinAction: Boolean = false,
     menuAlignment: Alignment.Horizontal = Alignment.End,
+    longPressMenu: Boolean = true,
 ) {
     val palette = LauncherColors.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -142,8 +148,12 @@ fun AppRow(
                 .fillMaxWidth()
                 .combinedClickable(
                     onClick = onClick,
-                    onLongClick = { menuOpen = true },
-                    onLongClickLabel = if (isFavourite) "Remove from Essentials" else "Add to Essentials",
+                    onLongClick = if (longPressMenu) ({ menuOpen = true }) else null,
+                    onLongClickLabel = if (longPressMenu) {
+                        if (isFavourite) "Remove from Essentials" else "Add to Essentials"
+                    } else {
+                        null
+                    },
                     role = Role.Button,
                 )
                 .semantics {
@@ -186,31 +196,35 @@ fun AppRow(
         }
 
         // Anchored to the row's trailing edge by default, so the menu opens under the
-        // finger that summoned it rather than at the row's top-left corner.
-        DropdownMenu(
-            expanded = menuOpen,
-            onDismissRequest = { menuOpen = false },
-            modifier = Modifier.align(menuAlignment + Alignment.Top),
-        ) {
-            DropdownMenuItem(
-                text = {
-                    Text(
-                        if (isFavourite) "Remove from Essentials" else "Add to Essentials",
-                        style = LauncherType.body,
-                    )
-                },
-                onClick = {
-                    menuOpen = false
-                    onToggleFavourite()
-                },
-            )
-            DropdownMenuItem(
-                text = { Text(if (isFavourite) "Hide and unpin" else "Hide app", style = LauncherType.body) },
-                onClick = {
-                    menuOpen = false
-                    onToggleHidden()
-                },
-            )
+        // finger that summoned it rather than at the row's top-left corner. Not composed
+        // at all when the long press belongs to something else, so no menu can open from
+        // a gesture this row never claimed.
+        if (longPressMenu) {
+            DropdownMenu(
+                expanded = menuOpen,
+                onDismissRequest = { menuOpen = false },
+                modifier = Modifier.align(menuAlignment + Alignment.Top),
+            ) {
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            if (isFavourite) "Remove from Essentials" else "Add to Essentials",
+                            style = LauncherType.body,
+                        )
+                    },
+                    onClick = {
+                        menuOpen = false
+                        onToggleFavourite()
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(if (isFavourite) "Hide and unpin" else "Hide app", style = LauncherType.body) },
+                    onClick = {
+                        menuOpen = false
+                        onToggleHidden()
+                    },
+                )
+            }
         }
     }
 }

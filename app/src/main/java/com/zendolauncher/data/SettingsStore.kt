@@ -3,6 +3,10 @@ package com.zendolauncher.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.zendolauncher.core.HomeLayout
+import com.zendolauncher.core.HomeLayoutCodec
+import com.zendolauncher.core.PageConfig
+import com.zendolauncher.core.PageType
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -40,6 +44,10 @@ class SettingsStore(context: Context) {
         windowEnabled = prefs.getBoolean(KEY_WINDOW_ENABLED, false),
         windowStartMinute = prefs.getInt(KEY_WINDOW_START, DEFAULT_WINDOW_START),
         windowEndMinute = prefs.getInt(KEY_WINDOW_END, DEFAULT_WINDOW_END),
+        // Migration runs here, on the read path, because this is the only place the store
+        // ever learns that no layout has been written yet. It is idempotent: once a layout
+        // is stored, the legacy keys are not consulted again. See migrateHome.
+        home = readHome(),
     )
 
     fun update(transform: (LauncherSettings) -> LauncherSettings) {
@@ -60,36 +68,124 @@ class SettingsStore(context: Context) {
             // next unrelated settings write; the gate clamps on read instead.
             putInt(KEY_WINDOW_START, next.windowStartMinute)
             putInt(KEY_WINDOW_END, next.windowEndMinute)
+            putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
+            putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
+            putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
         }
         _settings.value = next
     }
 
+    /**
+     * The stored Home layout, repaired by [HomeLayout.sanitize], or the migrated one on
+     * first read after an update.
+     *
+     * `sanitize` runs on every read and after every mutation rather than at one call site,
+     * which is what makes the store the single source of truth: no composable and no view
+     * model has to know how to clamp a page count or repair a duplicate id.
+     */
+    private fun readHome(): HomeLayout = HomeLayout.sanitize(
+        HomeLayoutCodec.decode(prefs.getString(KEY_HOME_PAGES, null))
+            ?.copy(activePageId = prefs.getString(KEY_HOME_ACTIVE_PAGE, null))
+            ?: migratedHome(),
+    )
+
+    /**
+     * The layout to use when nothing has been stored yet.
+     *
+     * On a fresh install this is simply [HomeLayout.DEFAULT]. On an install that already
+     * had favourites, there is something to lose, so it is carried onto the Launch page —
+     * in the returned layout, never by writing on a read. That is the whole migration: the
+     * legacy keys are read once, folded into a page, and left on disk untouched. A
+     * downgrade to 0.2.3 therefore still finds its `favourites` list exactly as it left it,
+     * and the next write of any setting persists the migrated layout, after which the
+     * legacy keys are simply never consulted again.
+     */
+    private fun migratedHome(): HomeLayout {
+        val legacyFavourites = prefs.getString(KEY_FAVOURITES, "").orEmpty().toKeyList()
+        if (legacyFavourites.isEmpty()) return HomeLayout.DEFAULT
+
+        val default = HomeLayout.DEFAULT
+        val launchPage = default.pages.first { it.type == PageType.APPS }
+        return default.updatePageConfig(
+            launchPage.id,
+            launchPage.config.copy(itemKeys = legacyFavourites),
+        )
+    }
+
     fun toggleFavourite(key: String) = update { current ->
-        val favourites = if (key in current.favourites) {
-            current.favourites - key
+        val layout = current.home
+        // Pinning from the drawer is an arrangement of Home, so it lands on a page that can
+        // actually show it: the active page when it is the apps page, the first apps page
+        // otherwise, and a newly created apps page when there is none at all.
+        val pageId = layout.pinTargetPageId()
+        if (pageId == null) {
+            val withPage = layout.withAppsPage()
+            current.copy(home = withPage.addItem(withPage.pages.last().id, key))
         } else {
-            current.favourites + key
+            val page = layout.page(pageId) ?: return@update current
+            val home = if (key in page.config.itemKeys) {
+                layout.removeItem(pageId, key)
+            } else {
+                // The active page follows the pin, so a pin made from the drawer is
+                // visible on the page the user returns to rather than appearing to do
+                // nothing.
+                layout.addItem(pageId, key).setActivePage(pageId)
+            }
+            current.copy(home = home)
         }
-        current.copy(favourites = favourites)
     }
 
     fun toggleHidden(key: String) = update { current ->
         val hidden = if (key in current.hidden) current.hidden - key else current.hidden + key
-        // A hidden app cannot also be a favourite, or it would be invisible but still ordered.
-        val favourites = if (key in hidden) current.favourites - key else current.favourites
-        current.copy(hidden = hidden, favourites = favourites)
+        // A hidden app cannot also be pinned, on any page, or it would be invisible but
+        // still ordered. Unhiding does not restore it: hiding dropped it, and only the
+        // user knows where it belongs now.
+        val home = if (key in hidden) current.home.removeItemEverywhere(key) else current.home
+        current.copy(hidden = hidden, favourites = current.favourites - key, home = home)
     }
 
+    /**
+     * Moves a pinned app within the page that holds it. A key on no page is a no-op, since
+     * there is no order to disturb.
+     */
     fun moveFavourite(key: String, delta: Int) = update { current ->
-        val index = current.favourites.indexOf(key)
-        if (index < 0) return@update current
-        val target = (index + delta).coerceIn(0, current.favourites.lastIndex)
-        if (target == index) return@update current
-        val reordered = current.favourites.toMutableList()
-        reordered.removeAt(index)
-        reordered.add(target, key)
-        current.copy(favourites = reordered)
+        val page = current.home.pages.firstOrNull { key in it.config.itemKeys } ?: return@update current
+        val index = page.config.itemKeys.indexOf(key)
+        current.copy(home = current.home.moveItem(page.id, index, index + delta))
     }
+
+    // ---- Home pages ----------------------------------------------------------------
+
+    fun setActivePage(id: String) = update { it.copy(home = it.home.setActivePage(id)) }
+
+    /** Adds a page after the active one. Returns its id, or null at [HomeLayout.MAX_PAGES]. */
+    fun addPage(type: PageType = PageType.APPS, name: String? = null): String? {
+        var newId: String? = null
+        update { current ->
+            val result = current.home.addPage(type, name) ?: return@update current
+            newId = result.second
+            current.copy(home = result.first.setActivePage(result.second))
+        }
+        return newId
+    }
+
+    fun removePage(id: String) = update { it.copy(home = it.home.removePage(id)) }
+
+    fun renamePage(id: String, name: String) = update { it.copy(home = it.home.renamePage(id, name)) }
+
+    fun movePage(id: String, toIndex: Int) = update { it.copy(home = it.home.movePage(id, toIndex)) }
+
+    fun setPageType(id: String, type: PageType) = update { current ->
+        // Re-typing keeps the item list, so a Launch page switched to Focus and back finds
+        // its apps still there.
+        current.copy(home = current.home.setType(id, type))
+    }
+
+    fun updatePageConfig(id: String, config: PageConfig) =
+        update { it.copy(home = it.home.updatePageConfig(id, config)) }
+
+    fun movePageItem(pageId: String, from: Int, to: Int) =
+        update { it.copy(home = it.home.moveItem(pageId, from, to)) }
 
     private fun String.toKeyList(): List<String> =
         if (isEmpty()) emptyList() else split(SEPARATOR).filter { it.isNotBlank() }
@@ -110,6 +206,12 @@ class SettingsStore(context: Context) {
         private const val KEY_WINDOW_ENABLED = "access_window_enabled"
         private const val KEY_WINDOW_START = "access_window_start_minute"
         private const val KEY_WINDOW_END = "access_window_end_minute"
+        private const val KEY_HOME_PAGES = "home_pages"
+        private const val KEY_HOME_ACTIVE_PAGE = "home_active_page_id"
+        private const val KEY_HOME_PAGES_VERSION = "home_pages_version"
+
+        /** Advisory, written beside the blob so a future change can tell old from malformed. */
+        const val HOME_PAGES_VERSION = 1
 
         /** 22:00 — a default the user is expected to change, not a recommendation. */
         const val DEFAULT_WINDOW_START = 22 * 60
@@ -136,4 +238,11 @@ data class LauncherSettings(
     val windowEnabled: Boolean = false,
     val windowStartMinute: Int = SettingsStore.DEFAULT_WINDOW_START,
     val windowEndMinute: Int = SettingsStore.DEFAULT_WINDOW_END,
+    /**
+     * The Home layout: one to five ordered pages. Always sanitized on read and after every
+     * mutation, so a consumer can trust the page count, the ids, the names and the active
+     * id without checking any of them. [favourites] above is the pre-pages flat list and is
+     * kept only so a downgrade still finds it; nothing reads it for display any more.
+     */
+    val home: HomeLayout = HomeLayout.DEFAULT,
 )

@@ -18,6 +18,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.LauncherActivity
+import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.model.LaunchTarget
@@ -65,6 +66,12 @@ class LauncherUiTest {
         viewModel.setClock24h(true)
         viewModel.setZendoEnabled(false)
         viewModel.setPauseEnabled(false)
+        // Home is a pager and the active page is persisted, so a test that swiped away would
+        // otherwise leave the next one looking at whatever page it stopped on. The stored id
+        // is written first, then the pager is moved, because the move is what the effect
+        // acts on. Page 0 is the Today page, which is what the default layout starts on.
+        viewModel.onPagerSettled(0)
+        viewModel.goToPage(0)
         viewModel.goHome()
         rule.waitForIdle()
     }
@@ -97,14 +104,19 @@ class LauncherUiTest {
 
     @Test
     fun homeScreen_composes_andShowsClockAndDate() {
-        rule.onNodeWithText("Essentials").assertIsDisplayed()
+        rule.onNodeWithText("Highlight").performScrollTo().assertIsDisplayed()
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
         rule.onAllNodes(textMatching(datePattern)).assertCountEquals(1)
     }
 
     @Test
-    fun homeScreen_showsEssentialsEmptyState_andBottomActions() {
-        rule.onNodeWithText("No pinned apps yet.").assertIsDisplayed()
+    fun homeScreen_showsTodayEmptyStates_andBottomActions() {
+        // Home is a pager now, so page 1 is the Today page. Its three planner sections have
+        // no backing source, and each says so rather than showing an invented row. The page
+        // scrolls, so the sections below the clock are scrolled into view before asserting.
+        rule.onNodeWithText("Nothing from your planner today.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("No tasks from your planner today.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Nothing upcoming from your planner.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("All apps").assertIsDisplayed()
         rule.onNodeWithText("Settings").assertIsDisplayed()
     }
@@ -125,7 +137,7 @@ class LauncherUiTest {
         rule.onNodeWithText("Home").performClick()
         rule.waitForIdle()
         assertEquals(Screen.HOME, viewModel.state.value.screen)
-        rule.onNodeWithText("Essentials").assertIsDisplayed()
+        rule.onNodeWithText("Highlight").assertIsDisplayed()
     }
 
     @Test
@@ -186,24 +198,30 @@ class LauncherUiTest {
 
     @Test
     fun todayBlock_absentWithDefaultUnavailableSource_andScreenStillRenders() {
-        // Defaults: todayEnabled = true, zendoEnabled = false -> nothing to show.
+        // Defaults: todayEnabled = true, zendoEnabled = false -> nothing to show. The Today
+        // page's planner sections are gated by todayEnabled, and with no source each one
+        // renders an honest empty state rather than an invented row. The clock is the page's
+        // own and is unaffected by any of it.
         assertTrue(viewModel.state.value.settings.todayEnabled)
         assertFalse(viewModel.state.value.settings.zendoEnabled)
-        rule.onAllNodesWithText("Today").assertCountEquals(0)
-        rule.onNodeWithText("Essentials").assertIsDisplayed()
+        rule.onNodeWithText("Highlight").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Nothing from your planner today.").performScrollTo().assertIsDisplayed()
+        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
 
         // Turning the Zendo source on cannot produce content: the only shipped
         // source is UnavailableZendoSource, which always returns null.
         viewModel.setZendoEnabled(true)
         rule.waitForIdle()
-        rule.onAllNodesWithText("Today").assertCountEquals(0)
-        rule.onNodeWithText("Essentials").assertIsDisplayed()
+        rule.onNodeWithText("Nothing from your planner today.").performScrollTo().assertIsDisplayed()
+        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
 
-        // Turning the section off keeps the screen rendering too.
+        // Turning the section off removes the planner sections entirely, and the page still
+        // renders its clock and its date.
         viewModel.setTodayEnabled(false)
         rule.waitForIdle()
-        rule.onAllNodesWithText("Today").assertCountEquals(0)
-        rule.onNodeWithText("Essentials").assertIsDisplayed()
+        rule.onAllNodesWithText("Highlight").assertCountEquals(0)
+        rule.onAllNodesWithText("Nothing from your planner today.").assertCountEquals(0)
+        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
     }
 
     @Test
@@ -406,6 +424,102 @@ class LauncherUiTest {
         // One repeated word down a list is indistinguishable to a screen reader, so the
         // action names the app it acts on.
         rule.onNodeWithContentDescription("Pin Notes").assertIsDisplayed()
+    }
+
+    /**
+     * The Back contract for Home, in the order the user experiences it. Edit mode is the
+     * only layer Home has, and Back leaves it one stage at a time; the `false` return is
+     * what makes the last case true, because it means nothing of ours handled the press.
+     */
+    @Test
+    fun back_leavesEditMode_andPlainHomeClaimsNothing() {
+        assertFalse(viewModel.back())
+        assertEquals(Screen.HOME, viewModel.state.value.screen)
+
+        viewModel.enterPageEdit()
+        rule.waitForIdle()
+        assertTrue(viewModel.state.value.pageEditing)
+
+        assertTrue(viewModel.back())
+        rule.waitForIdle()
+        assertFalse(viewModel.state.value.pageEditing)
+        assertEquals(Screen.HOME, viewModel.state.value.screen)
+
+        // Nothing open: Back must not be claimed. The activity is untouched too, so this is
+        // not a case of the view model answering for a handler that would have exited.
+        assertFalse(viewModel.back())
+        assertFalse(rule.activity.isFinishing)
+    }
+
+    /**
+     * A page that is not the active one still resolves its own rows, and every page renders
+     * something true: the Focus page's unbuilt sections say so in words.
+     */
+    @Test
+    fun focusPage_rendersHonestEmptyStates() {
+        viewModel.goToPage(2)
+        rule.waitForIdle()
+        assertEquals("p_focus", viewModel.state.value.settings.home.activePageId)
+
+        rule.onNodeWithText("Focus session").assertIsDisplayed()
+        rule.onNodeWithText("Sessions are not built yet. Nothing here runs a timer or blocks apps.")
+            .performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Usage summary is not built yet. This app does not read usage statistics.")
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * The Launch page keeps the apps it was migrated with. Robolectric finds no installed
+     * apps, so no row can be resolved; what must hold is that the page exists, is reachable
+     * and states its own emptiness rather than borrowing another page's.
+     */
+    @Test
+    fun launchPage_showsItsOwnEmptyState() {
+        viewModel.goToPage(1)
+        rule.waitForIdle()
+        assertEquals("p_launch", viewModel.state.value.settings.home.activePageId)
+
+        rule.onNodeWithText("Essentials").assertIsDisplayed()
+        rule.onNodeWithText("No pinned apps here yet. Open All apps and pin the ones you want.")
+            .performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * Renames and reorders are written to the store, so this test puts back what it changes:
+     * the layout lives in SharedPreferences, which Robolectric keeps for the whole JVM, and a
+     * page left renamed or out of order would be read by whichever test runs next. The
+     * last-page-removal rule is a pure model rule and is covered there instead.
+     */
+    @Test
+    fun editMode_renamesAndReordersPages_andPutsThemBack() {
+        viewModel.enterPageEdit()
+        rule.waitForIdle()
+        // The bar's controls are the only way out of editing, so the name is not enough:
+        // it has to be a control that is actually there.
+        rule.onNodeWithText("Done").assertIsDisplayed()
+
+        viewModel.renamePage("p_focus", "Deep work")
+        rule.waitForIdle()
+        assertEquals("Deep work", viewModel.state.value.settings.home.page("p_focus")?.name)
+        viewModel.renamePage("p_focus", "Focus")
+        rule.waitForIdle()
+
+        viewModel.movePage("p_focus", -1)
+        rule.waitForIdle()
+        assertEquals(
+            listOf("p_today", "p_focus", "p_launch"),
+            viewModel.state.value.settings.home.pages.map { it.id },
+        )
+        viewModel.movePage("p_focus", 2)
+        rule.waitForIdle()
+        assertEquals(
+            HomeLayout.DEFAULT.pages.map { it.id },
+            viewModel.state.value.settings.home.pages.map { it.id },
+        )
+
+        viewModel.leavePageEdit()
+        rule.waitForIdle()
+        assertFalse(viewModel.state.value.pageEditing)
     }
 
     /**

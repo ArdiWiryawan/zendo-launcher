@@ -5,6 +5,7 @@ import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zendolauncher.core.AppQuery
+import com.zendolauncher.data.FocusNoteStore
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
@@ -67,14 +68,38 @@ data class UiState(
      * the pause dialog is up; launching it is the only way out besides cancelling.
      */
     val pendingPause: LaunchTarget? = null,
+    /**
+     * Whether Home is arranging its pages rather than using them.
+     *
+     * A boolean rather than an enum because there is exactly one thing that can be edited:
+     * the set of pages. A *page's contents* are already editable from Settings, where the
+     * pinned list lives, so a second per-page editor here would be a second surface for
+     * the same operation. This is the whole state edit mode needs.
+     */
+    val pageEditing: Boolean = false,
+    /**
+     * The page the pager should move to, or null when there is nowhere to go. Cleared by
+     * the view once it has arrived, so a later recomposition cannot drag the user back to a
+     * page they have since swiped away from.
+     */
+    val pagerTargetPage: Int? = null,
+    /** The Focus page's one line. Empty is the normal state, not a failure. */
+    val focusNote: String = "",
 )
 
-private data class Lists(
+/** The four app lists, grouped only so [`lists`]'s `combine` stays within its arity. */
+private data class AppLists(
     val favourites: List<LaunchTarget>,
     val results: List<LaunchTarget>,
     val visibleApps: List<LaunchTarget>,
     val allApps: List<LaunchTarget>,
+)
+
+private data class Lists(
+    val apps: AppLists,
     val screen: Screen,
+    val pageEditing: Boolean,
+    val pagerTargetPage: Int?,
 )
 
 private data class Prefs(
@@ -82,6 +107,7 @@ private data class Prefs(
     val query: String,
     val shortcutAccess: Boolean,
     val isDefaultHome: Boolean,
+    val focusNote: String,
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -90,6 +116,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val appRepository = AppRepository(application)
     private val shortcutRepository = ShortcutRepository(application)
     private val settingsStore = SettingsStore(application)
+    private val focusNoteStore = FocusNoteStore(application)
     private val appLauncher = AppLauncher(application)
 
     /** Swap this for a Supabase-backed implementation once the backend allows it. */
@@ -123,6 +150,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      */
     private val _pendingPause = MutableStateFlow<LaunchTarget?>(null)
 
+    /**
+     * Home's own view state. Plain view state, not preferences: leaving edit mode is not a
+     * setting the user made, so nothing here is written anywhere and a relaunch starts in
+     * browsing.
+     */
+    private val _pageEditing = MutableStateFlow(false)
+    private val _pagerTargetPage = MutableStateFlow<Int?>(null)
+
     /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
     private var settingsReturn: Screen = Screen.HOME
 
@@ -140,9 +175,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             AppQuery.visible(apps, settings.hidden)
         }
 
+    /**
+     * The active page's own app list, resolved against everything visible. This is what
+     * Home shows, so a page's contents are its config and nothing else — the flat legacy
+     * favourites list is never consulted here.
+     */
     private val favourites: Flow<List<LaunchTarget>> =
         combine(visibleApps, settingsStore.settings) { apps, settings ->
-            AppQuery.favourites(settings.favourites, apps)
+            val layout = settings.home
+            val active = layout.page(layout.activePageId ?: "") ?: layout.pages.firstOrNull()
+            AppQuery.favourites(active?.config?.itemKeys.orEmpty(), apps)
         }
 
     private val results: Flow<List<LaunchTarget>> =
@@ -155,14 +197,24 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             if (enabled) flow { emit(zendoSource.load()) } else flowOf(null)
         }
 
+    /**
+     * The four app lists, grouped only so the `combine` below stays within its typed
+     * arity. Nothing else reads this.
+     */
+    private val appLists: Flow<AppLists> =
+        combine(favourites, results, visibleApps, allApps) { favourites, results, visibleApps, allApps ->
+            AppLists(favourites, results, visibleApps, allApps)
+        }
+
     private val lists: Flow<Lists> =
-        combine(favourites, results, visibleApps, allApps, _screen) { favourites, results, visibleApps, allApps, screen ->
-            Lists(favourites, results, visibleApps, allApps, screen)
+        combine(appLists, _screen, _pageEditing, _pagerTargetPage) { apps, screen, pageEditing, pagerTarget ->
+            Lists(apps, screen, pageEditing, pagerTarget)
         }
 
     private val prefs: Flow<Prefs> =
-        combine(settingsStore.settings, _query, shortcutRepository.available, _isDefaultHome) { settings, query, shortcutAccess, isDefaultHome ->
-            Prefs(settings, query, shortcutAccess, isDefaultHome)
+        combine(settingsStore.settings, _query, shortcutRepository.available, _isDefaultHome, focusNoteStore.note) {
+                settings, query, shortcutAccess, isDefaultHome, focusNote ->
+            Prefs(settings, query, shortcutAccess, isDefaultHome, focusNote)
         }
 
     private val base: Flow<UiState> =
@@ -171,16 +223,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 screen = lists.screen,
                 query = prefs.query,
                 settings = prefs.settings,
-                favourites = lists.favourites,
-                results = lists.results,
-                visibleApps = lists.visibleApps,
+                favourites = lists.apps.favourites,
+                results = lists.apps.results,
+                visibleApps = lists.apps.visibleApps,
                 shortcutAccess = prefs.shortcutAccess,
                 isDefaultHome = prefs.isDefaultHome,
                 zendo = zendo,
-                allApps = lists.allApps,
+                allApps = lists.apps.allApps,
                 undoHidden = undoHidden,
                 isLoading = isLoading,
-                pendingPause = _pendingPause.value,
+                pageEditing = lists.pageEditing,
+                pagerTargetPage = lists.pagerTargetPage,
+                focusNote = prefs.focusNote,
             )
         }
 
@@ -263,6 +317,116 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         settingsReturn = Screen.HOME
         _query.value = ""
     }
+
+    // ---- Home: paging ---------------------------------------------------------------
+
+    /**
+     * The pager has settled on [index]. Records the page the user swiped to, and clears the
+     * one-shot destination.
+     *
+     * Called from the *settled* page rather than from every scroll offset: the current page
+     * changes at the halfway mark of a fling, and storing it there would persist a page the
+     * user then abandoned.
+     */
+    fun onPagerSettled(index: Int) {
+        settingsStore.settings.value.home.pages.getOrNull(index)?.let { settingsStore.setActivePage(it.id) }
+        _pagerTargetPage.value = null
+    }
+
+    /**
+     * Moves the pager to a page by index, for the routes that are not a swipe: the page
+     * indicator, and "add a page, then go to it". The stored active id is written by the
+     * settled callback, so this only has to move the pager.
+     */
+    fun goToPage(index: Int) {
+        val layout = settingsStore.settings.value.home
+        if (index in layout.pages.indices) _pagerTargetPage.value = index
+    }
+
+    // ---- Home: edit mode ------------------------------------------------------------
+
+    /** Enters page editing. Reached from the bottom bar and from Settings. */
+    fun enterPageEdit() { _pageEditing.value = true }
+
+    /** Leaves page editing. Also the first thing Back does while editing. */
+    fun leavePageEdit() { _pageEditing.value = false }
+
+    /**
+     * Back's whole decision for the launcher, in the order the user experiences it: the
+     * pause dialog, then whichever screen is on top, then edit mode.
+     *
+     * Returning false means "there is nothing of mine to close", and the activity then does
+     * what it did before this feature existed. A launcher must not treat Back on plain Home
+     * as a way out of itself, and it must not slide the pager: neither is a layer, and both
+     * would be a surprise.
+     */
+    fun back(): Boolean {
+        if (_pendingPause.value != null) {
+            cancelPause()
+            return true
+        }
+        when (_screen.value) {
+            Screen.ONBOARDING -> {
+                dismissOnboarding()
+                return true
+            }
+            Screen.SETTINGS -> {
+                backFromSettings()
+                return true
+            }
+            Screen.APPS -> {
+                goHome()
+                return true
+            }
+            Screen.HOME -> Unit
+        }
+        if (_pageEditing.value) {
+            leavePageEdit()
+            return true
+        }
+        return false
+    }
+
+    // ---- Home: pages ----------------------------------------------------------------
+
+    /** Adds a page after the active one and moves to it. Null at the page limit. */
+    fun addPage(): String? {
+        val id = settingsStore.addPage() ?: return null
+        _pagerTargetPage.value = settingsStore.settings.value.home.pages.indexOfFirst { it.id == id }
+        return id
+    }
+
+    fun removePage(id: String) = settingsStore.removePage(id)
+
+    fun renamePage(id: String, name: String) = settingsStore.renamePage(id, name)
+
+    /** Moves a page one slot. The store clamps, so the ends are simply no-ops. */
+    fun movePage(id: String, delta: Int) {
+        val index = settingsStore.settings.value.home.pages.indexOfFirst { it.id == id }
+        if (index >= 0) settingsStore.movePage(id, index + delta)
+    }
+
+    /**
+     * Moves the pinned app named by [key] one slot inside [pageId].
+     *
+     * By key rather than by index because the drag that calls this recomposes the list
+     * between slots: the index the row had when the gesture started is stale by the time
+     * the next slot is crossed, and the key is not.
+     */
+    fun moveItemBy(pageId: String, key: String, delta: Int) {
+        val keys = settingsStore.settings.value.home.page(pageId)?.config?.itemKeys ?: return
+        val from = keys.indexOf(key)
+        if (from >= 0) settingsStore.movePageItem(pageId, from, from + delta)
+    }
+
+    fun movePageItem(pageId: String, from: Int, to: Int) = settingsStore.movePageItem(pageId, from, to)
+
+    fun moveFavourite(key: String, delta: Int) = settingsStore.moveFavourite(key, delta)
+
+    // ---- Focus page ---------------------------------------------------------------
+
+    /** Stores the Focus page's note. Written on every keystroke; there is no save step. */
+    fun setFocusNote(note: String) { focusNoteStore.write(note) }
 
     /** Leaves onboarding for good: the seen flag is what keeps goHome() from returning here. */
     fun dismissOnboarding() {
@@ -365,8 +529,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 activityName = key.substringAfter('/', "").ifEmpty { null },
                 label = key.substringBefore('/'),
             )
-
-    fun moveFavourite(key: String, delta: Int) = settingsStore.moveFavourite(key, delta)
 
     fun setTheme(theme: ThemeMode) = settingsStore.update { it.copy(theme = theme) }
 

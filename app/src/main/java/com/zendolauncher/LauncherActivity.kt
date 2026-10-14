@@ -106,6 +106,14 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
     // Home is a back-stack root: Back from a secondary screen returns home. Onboarding
     // owns its own BackHandler so Back dismisses it rather than dropping into Home unseen.
     // Back from Settings returns to the drawer when entered from it, keeping the query.
+    // One handler for everything Back can close. It is registered after the screen-level
+    // handlers below, so on the drawer and in Settings those still win — the ordering is
+    // the drawer's, unchanged. On Home it is the only one enabled, and it answers in the
+    // order the user experiences: the pause dialog, then edit mode, one stage at a time.
+    // Its false branch is the point of it: with nothing of ours open, Home claims nothing,
+    // so Back does what it did before this existed. It never slides the pager and it never
+    // exits the launcher — neither is a layer.
+    BackHandler { viewModel.back() }
     BackHandler(enabled = state.screen == Screen.SETTINGS) {
         viewModel.backFromSettings()
     }
