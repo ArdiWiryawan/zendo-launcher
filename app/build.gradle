@@ -19,8 +19,8 @@ android {
         applicationId 'com.zendolauncher'
         minSdk 26
         targetSdk 36
-        versionCode 3
-        versionName '0.2.1'
+        versionCode 4
+        versionName '0.2.2'
     }
 
     if (hasReleaseSigning) {
@@ -58,6 +58,9 @@ android {
 
     buildFeatures {
         compose true
+        // The About line reads BuildConfig.VERSION_NAME rather than a literal, so it cannot
+        // drift from defaultConfig the way the hardcoded "0.2.0" did.
+        buildConfig true
     }
 
     packaging {

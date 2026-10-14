@@ -16,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.zendolauncher.BuildConfig
 import com.zendolauncher.LauncherActivity
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
@@ -278,6 +279,20 @@ class LauncherUiTest {
         rule.onNodeWithText("No pinned apps.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("No hidden apps.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("About").performScrollTo().assertIsDisplayed()
+    }
+
+    /**
+     * The About line shipped a hardcoded "0.2.0" and went stale the first time the version
+     * was raised, so a user on 0.2.1 was told they were on 0.2.0. It now reads the version
+     * the build actually carries; this asserts the two cannot drift apart again.
+     */
+    @Test
+    fun aboutLine_reportsTheVersionTheBuildCarries() {
+        viewModel.openSettings()
+        rule.waitForIdle()
+        rule.onNodeWithText(
+            "Zendo Launcher ${BuildConfig.VERSION_NAME}, a standalone monochrome home screen.",
+        ).performScrollTo().assertIsDisplayed()
     }
 
     /**

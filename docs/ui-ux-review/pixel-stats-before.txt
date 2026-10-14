@@ -1,0 +1,5 @@
+before-home-light.png 1080x2400 distinct=366 nonBackground=40126 ink=35785 bg=#FFF7F7F5 sha256=d60b2f04f11d87d6e50a323d4ea12ea16b55ca80b6e9e9b69a7c730b87f0fa69
+before-home-dark.png 1080x2400 distinct=372 nonBackground=39890 ink=36387 bg=#FF0B0B0C sha256=26c9d773371b4feab0587c04c9df1aa7ed277e66a07791ac8cfbcfecc0b72949
+before-apps.png 1080x2400 distinct=368 nonBackground=17489 ink=13396 bg=#FF0B0B0C sha256=71568e9d35dd822794fd7909387dad26b2cd2bf7abe0e061686dfd0b17663dc4
+before-apps-search.png 1080x2400 distinct=370 nonBackground=15144 ink=11392 bg=#FF0B0B0C sha256=edf3d019848e976f7e7bc00a3f04df62f99056717a2b9c910e42565ae59ea905
+before-settings.png 1080x2400 distinct=489 nonBackground=142786 ink=123224 bg=#FF0B0B0C sha256=44f7e77fa98a7c9d92c4741cd2d2fd55346f4a49e207514510edd164020363af

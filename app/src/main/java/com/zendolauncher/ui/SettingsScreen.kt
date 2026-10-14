@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import com.zendolauncher.BuildConfig
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.theme.LauncherColors
@@ -200,7 +201,9 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("About")
             Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText("Zendo Launcher 0.2.0, a standalone monochrome home screen.")
+            SecondaryText(
+                "Zendo Launcher ${BuildConfig.VERSION_NAME}, a standalone monochrome home screen.",
+            )
             Spacer(Modifier.height(LauncherSpace.sm))
             // Onboarding is the only place the app explains what it replaces and how to get
             // back, so it stays reachable after the first run rather than being shown once.

@@ -13,10 +13,12 @@ a device.
 Local build, Windows, `./gradlew.bat --no-daemon`, after deleting `app/build/kotlin` and
 `build/kotlin` and stopping stale Gradle daemons:
 
-- `testDebugUnitTest`: BUILD SUCCESSFUL. 37 tests, 0 failures, 0 errors, 0 skipped. Counted
+- `testDebugUnitTest`: BUILD SUCCESSFUL. 39 tests, 0 failures, 0 errors, 0 skipped. Counted
   from `app/build/test-results/testDebugUnitTest/*.xml`: `core/AppQueryTest` 9,
-  `core/TodaySelectorTest` 6, `ui/LauncherUiTest` 22. The UI suite grew from 18 to 22 in the
-  second pass; the four new tests are named in `docs/ui-ux-implementation.md`.
+  `core/TodaySelectorTest` 6, `ui/LauncherUiTest` 23, `ui/ScreenshotCaptureTest` 1. The UI
+  suite grew from 18 to 23 across the two passes; the five new tests are named in
+  `docs/ui-ux-implementation.md`. The capture harness counts as a test because it asserts
+  on each image it produces rather than only writing it.
 - `lintDebug`: BUILD SUCCESSFUL. Report at `app/build/reports/lint-results-debug.xml`.
   4 issues, all `severity="Warning"`, 0 errors: 4 x `GradleDependency`. The
   `ConfigurationScreenWidthHeight` warning was cleared in the second pass, because
@@ -27,7 +29,7 @@ Local build, Windows, `./gradlew.bat --no-daemon`, after deleting `app/build/kot
   `app/src/main/res/values/themes.xml`. That is why
   the current report has no errors.
 - `assembleDebug`: BUILD SUCCESSFUL. `app/build/outputs/apk/debug/app-debug.apk`,
-  11,717,817 bytes, sha256 `5059157c…`.
+  11,717,817 bytes, sha256 `3a4f5f53…`. Version 0.2.2, versionCode 4.
 
 **APK content check.** The dex and `resources.arsc` inside the APK were read directly with
 Python's `zipfile`. Present in the dex: `Reopen onboarding`, `Looking for apps`,
@@ -72,15 +74,37 @@ that evidence is stated.
 | 13 | Cold-start enumeration ordering preserved | `ui/LauncherViewModel.kt` still registers the package callbacks and enumerates on `Dispatchers.IO` after the first frame (audit, "Cold start"); the new `isLoading` flag is cleared in a `finally` block in `LauncherViewModel`. `appList_loadingFlag_clearsAfterEnumeration` passes, which is the guard against the flag sticking. | PASS |
 | 14 | Deliberate behaviours named in the audit are unchanged: Back handling and the minute-boundary clock tick | Source read: `LauncherActivity` still enables `BackHandler` only off Home (now also off onboarding), and the clock still computes `delay(1_000L * (60 - current.second))` rather than waking every second. `LauncherUiTest` asserts the clock renders as a single node in both 12-hour and 24-hour form, but no test presses Back and none observes the tick timing. | PASS for the clock rendering and the source read; NOT VERIFIED for Back and for the tick timing |
 
-## 3. What could not be verified
+## 3. Visual evidence
 
-The redesign was never seen running. The following were not exercised, and no statement in
+`docs/ui-ux-review/` holds eleven PNGs — six of the shipped design, five of the revision
+before it — captured from the real Compose UI at both commits, with a README recording the
+method, the per-image pixel statistics, and what the images do not show.
+
+They were produced by drawing the window's content view into a software bitmap with
+`View.draw(Canvas)`. The obvious API, `captureToImage()`, does not work here: it routes
+through `WindowCapture.forceRedraw`, which waits on a PixelCopy that never completes under
+Robolectric and throws `ComposeTimeoutException` after two seconds. An earlier attempt used
+it, produced flat images, and concluded that Robolectric could not rasterise text. That
+conclusion was wrong and the images were deleted on the strength of it. The replacement
+harness asserts on each capture in-process — distinct colours, pixels differing from the
+modal background, strong-ink pixels, and a SHA-256 unique across the run — so a flat capture
+fails the test rather than being shipped.
+
+What the images establish: the screens compose, text renders, and the two revisions differ in
+the ways `docs/ui-ux-implementation.md` describes. What they do not establish is on the
+README, and the largest item is that Robolectric returns no installed apps, so every screen
+in both sets is its empty state.
+
+## 4. What could not be verified
+
+The redesign has never run on hardware. The following were not exercised, and no statement in
 this report or in `docs/ui-ux-implementation.md` should be read as evidence that the
-interface works or looks right.
+interface works or looks right on a device.
 
 - **No device and no emulator.** Every run was a JVM run. The Compose UI executed under
   Robolectric, which composes the real screens but draws them through a software rasteriser,
-  not a display.
+  not a display. The captures in `docs/ui-ux-review/` are that rasteriser's output, at a
+  chosen 360x800dp xxhdpi qualifier.
 - **No real font scale.** Robolectric composes at the default scale. The `clockSizeSp`
   shrink (P0-7) is arithmetic from default font metrics and was not observed at a raised
   system font scale.
@@ -92,21 +116,16 @@ interface works or looks right.
   role, P1-4 state description, P1-12 row toggle) are read from the semantics each composable
   declares in source, not from what a screen reader announces.
 - **No real `LauncherApps` app list.** Every test runs against an empty list. List density,
-  the sticky letter headers at 100 or more rows (P1-6), and the removal of the per-row
-  hairline (P1-5) are unverified at real density.
+  the sticky letter headers at 100 or more rows (P1-6), the removal of the per-row hairline
+  (P1-5), and the row-level work the redesign added — the drawer's `Pin` action, the
+  favourite dot, the icon layout — are unverified at real density and are not shown by any
+  capture.
 - **No PWA or shortcut discovery exercised.** `ShortcutRepository` runs only against the
   Robolectric platform, which returns no shortcuts.
-- **No visual confirmation of the result, and no before-and-after screenshots.**
-  `docs/ui-ux-review/` was not created. A Robolectric screenshot harness was written, and it
-  captured 720x1600 PNGs, but decoding them showed zero non-background pixels: the native
-  graphics mode rasterised backgrounds and hairlines and drew no text glyphs at all. Three of
-  the captures were byte-identical, sharing one SHA-256. The harness's own non-blank guard
-  could not detect this, because a solid background satisfies a check for non-background
-  pixels. The harness and every image were deleted rather than shipped as misleading
-  evidence. For a text-first launcher these images carried no information, and their absence
-  is why this report contains no visual claim.
+- **No transient states captured.** The row long-press menu is a separate window and would
+  need its own capture path; the undo note and the loading state are not in any image.
 
-## 4. Findings still open
+## 5. Findings still open
 
 The first pass left four findings open. The second pass closed three of them in code
 (P0-4's affordance, P1-11's undo, P2-3's fixed offset) and closed P2-10's copy; each is
@@ -132,12 +151,16 @@ design decision.
   The long press, `onLongClickLabel` and `stateDescription` are unchanged. This is an
   accepted, recorded decision, not an oversight.
 
-## 5. Honesty statement
+## 6. Honesty statement
 
-What is proven: the code compiles, the 37 JVM tests pass, lint reports no errors and four
-warnings, the APK built in this session contains the strings and resources the redesign
-introduced, and CI reproduces all three tasks on a second machine for two commits.
+What is proven: the code compiles, the 39 JVM tests pass, lint reports no errors and four
+warnings, the APK built in this session carries the version the build declares and the
+strings the redesign introduced, CI reproduces all three tasks on a second machine, and
+eleven captures in `docs/ui-ux-review/` show the real Compose UI rendering text at both
+revisions with the pixel assertions to back them.
 
 What is not proven: that the interface looks good, that it feels premium, or that it works on
-a real device. No screen was ever rendered for a person to look at. The redesign is verified
-as a change that builds and passes its tests, not as a change that has been seen to work.
+a real device. The captures are a software rasteriser's output at one chosen qualifier, taken
+on empty state — they show that the screens compose and that text draws, not how the product
+behaves in a hand. The redesign is verified as a change that builds, passes its tests, and
+renders; it has not been used.

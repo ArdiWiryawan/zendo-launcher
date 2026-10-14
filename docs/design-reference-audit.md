@@ -193,32 +193,34 @@ from their READMEs, which do not render their screens.
 
 ## What this means for Zendo Launcher
 
-Each principle below is already applied in the current implementation, or is the target of the
-redesign. Each names the reference it came from.
+Each principle below names the reference it came from and the shipped code it now maps onto.
 
 - **Text-first rows with one hairline as the default list unit.** From Blank Spaces Launcher
   ("No icons, no badges, no clutter") and minimal-launcher ("text-first Home screen"). Applied:
-  `AppRow` renders a label and a separator, and the icon box is opt-in behind `LayoutMode`.
+  `AppRow` renders a label, the icon box is opt-in behind `LayoutMode`, and the separator is
+  drawn between rows rather than under every row.
 - **A single large focal element, the clock, and nothing else competing with it.** From
   Light Phone's framing of the phone as a simple device, and SyncTasks' "no other
   distractions". Applied: the clock is the only large text in the type scale
-  (`ui/theme/Theme.kt:61-66`); the audit's P0-7 exists to keep it from breaking.
+  (`LauncherType.clock` in `ui/theme/Theme.kt`); the audit's P0-7 exists to keep it from
+  breaking.
 - **A small curated Home plus a searchable long tail one gesture away.** From
   minimal-launcher's Home and drawer split, and KISS's search-first thesis. Applied: the
-  Essentials list on Home, the app list behind "All apps" (`ui/HomeScreen.kt:98`,
-  `ui/LauncherViewModel.kt:165`).
+  Essentials list on Home, the app list behind "All apps" (`QuietAction("All apps")` in
+  `ui/HomeScreen.kt`, `openApps()` in `ui/LauncherViewModel.kt`).
 - **Search first, browse second, and make typing the fastest path.** From KISS ("Browsing for
-  apps is and should be secondary"). Partly applied: `core/AppQuery.kt` ranks exact, prefix,
-  word-start, contains, then initials. Not yet applied at the surface: the audit's P0-3 lists
-  what the search field is still missing.
+  apps is and should be secondary"). Applied: `core/AppQuery.kt` ranks exact, prefix,
+  word-start, contains, then initials, and the search field takes focus on arrival, turns off
+  autocorrect and auto-capitalisation, offers an IME Search action, and carries a Clear action
+  and the accessible name "Search apps", which is what the audit's P0-3 listed.
 - **Default to empty and let the user opt apps in.** From CCLauncher ("App Hiding by Default")
   and Olauncher's refusal to ship widgets and weather in the base product. Applied: a fresh
   install shows an empty Essentials list and a hidden-apps mechanism
-  (`data/SettingsStore.kt:62-67`).
+  (`toggleHidden` in `data/SettingsStore.kt`).
 - **Two fixed palettes, no accent colour, no theme gallery.** From the cosmetic-bug pattern in
   Blank Spaces' reviews, and from minimal-launcher's accent colour being the one thing its
-  README offers that cuts against this direction. Applied: `DarkPalette` and `LightPalette`
-  carry two text tones and one separator (`ui/theme/Theme.kt:32-46`).
+  README offers that cuts against this direction. Applied: `DarkPalette` and `LightPalette` in
+  `ui/theme/Theme.kt` carry two text tones and one separator.
 - **Depth in settings rather than on the home screen.** From Olauncher ("a few niche features
   are available but hidden") and Dumb Phone's separate launcher sets. Applied: a single
   Settings screen holds every preference; nothing on Home configures anything.
@@ -231,8 +233,9 @@ redesign. Each names the reference it came from.
   current implementation does not fully meet: the Today toggle is wired correctly but has no
   visible effect while the only Zendo source returns null. See P2-10 in `docs/ui-ux-audit.md`.
 - **Say what the launcher is before the user has to ask.** From Blank Spaces' "setup takes 60
-  seconds" and Light Phone's framing of the change as the product. Not yet applied: there is
-  no onboarding screen. See P1-2 in `docs/ui-ux-audit.md`.
+  seconds" and Light Phone's framing of the change as the product. Applied: `OnboardingScreen`
+  is the first-run surface, and Settings offers "Reopen onboarding" so the explanation stays
+  reachable afterwards. See P1-2 in `docs/ui-ux-audit.md`.
 
 ## What this product must not become
 

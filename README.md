@@ -54,7 +54,7 @@ All apps   Settings
 
 The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing to install.
 
-**Latest debug build:** [Releases → Zendo Launcher 0.2.1 (debug test build)](https://github.com/ArdiWiryawan/zendo-launcher/releases/tag/debug-0.2.1)
+**Latest debug build:** [Releases → Zendo Launcher 0.2.2 (debug test build)](https://github.com/ArdiWiryawan/zendo-launcher/releases/tag/debug-0.2.2)
 — download `ZendoLauncher-debug.apk` directly, no unzipping.
 
 To build a fresh one yourself:
@@ -64,7 +64,7 @@ To build a fresh one yourself:
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
-Pushing a tag like `v0.2.1` builds a signed release APK and attaches it to a GitHub
+Pushing a tag like `v0.2.2` builds a signed release APK and attaches it to a GitHub
 Release, once release signing secrets are configured. See
 [docs/build-and-release.md](docs/build-and-release.md).
 
@@ -140,10 +140,12 @@ on its own, and it can always be changed back.
 | --- | --- |
 | [docs/opensource-review.md](docs/opensource-review.md) | Licence audit of the launcher projects reviewed before writing any code |
 | [docs/design-reference-audit.md](docs/design-reference-audit.md) | Visual references inspected, and the design decisions taken from them |
+| [docs/design-system.md](docs/design-system.md) | The design system as built: palette, type scale, spacing, surface treatment, icons, interaction states |
 | [docs/zendo-integration.md](docs/zendo-integration.md) | Verified Zendo data contract, and what a real integration would need |
 | [docs/ui-ux-audit.md](docs/ui-ux-audit.md) | Source-level audit of the shipped UI: the problems found, and what could not be verified |
 | [docs/ui-ux-implementation.md](docs/ui-ux-implementation.md) | What the redesign changed, which finding each change closes, and the before-and-after |
 | [docs/ui-ux-verification.md](docs/ui-ux-verification.md) | What was mechanically verified, the regression checklist, and what remains open |
+| [docs/ui-ux-review/](docs/ui-ux-review/README.md) | Before-and-after screenshots of the redesign, and what they do and do not show |
 | [docs/build-and-release.md](docs/build-and-release.md) | Building, downloading artifacts, signing, troubleshooting |
 
 ## Licence

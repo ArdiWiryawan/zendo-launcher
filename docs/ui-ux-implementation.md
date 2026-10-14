@@ -9,9 +9,8 @@ parent `2ac913a`). Nothing is described that the diff does not show. Findings ar
 their id in `docs/ui-ux-audit.md`. Source locations are named by symbol rather than by line
 number, so they do not rot as the source is edited.
 
-The register of section 2 is deliberately narrower than the spec asked for. The spec asked
-for before-and-after screenshots under `docs/ui-ux-review/`. That deliverable was not
-achievable and section 2 explains why, then substitutes a textual review.
+Section 2 is the before-and-after review, which now rests on real captures in
+`docs/ui-ux-review/` as well as on a per-screen account of behaviour.
 
 ## 1. Implementation summary
 
@@ -164,9 +163,9 @@ achievable and section 2 explains why, then substitutes a textual review.
   how to restore the previous Home screen, and that Zendo is optional. It has its own
   `BackHandler`, a "Set as Home app" action that opens `Settings.ACTION_HOME_SETTINGS` when
   the launcher is not default, and a "Got it" action that dismisses it. Closes P1-2. The
-  page names the long-press explicitly, because the per-row affordance that P0-4 asked for
-  is not shipped (see "Findings closed in the second pass"); it does not describe a control
-  that is not there.
+  page names the long press as the way to add an app to Essentials from the drawer, where
+  the visible `Pin` action is the other path (see "Findings closed in the second pass"). It
+  describes only controls that exist.
 - **`data/SettingsStore.kt`.** `onboardingSeen` is added to `LauncherSettings`, read with a
   default of `false` and written with the rest of the settings. Closes the persistence half
   of P1-2.
@@ -286,11 +285,19 @@ Four findings were left open by the first pass and are now closed.
   outright with `Dependency 'androidx.compose.ui:ui-android:1.12.1' requires Android Gradle
   plugin 9.1.0 or higher`. That was tried and reverted. `app/build.gradle` now records the
   reason at the dependency block. The correct order is to raise the toolchain first.
-- **Tests.** `ui/LauncherUiTest` goes from 18 to 22: `hideApp_offersUndo_andUndoPutsTheAppBack`,
-  `unhide_takesDownTheUndoOffer`, `appRow_showsPinAction_whenTheDrawerAsksForIt` and
-  `appRow_hidesPinAction_onHomeRows`. The last two render the real `AppRow` with the activity's
-  own view model, so they exercise the shipped composable rather than a stand-in. No existing
-  assertion was changed or removed.
+- **Tests.** `ui/LauncherUiTest` goes from 18 to 23: `hideApp_offersUndo_andUndoPutsTheAppBack`,
+  `unhide_takesDownTheUndoOffer`, `appRow_showsPinAction_whenTheDrawerAsksForIt`,
+  `appRow_hidesPinAction_onHomeRows`, and `aboutLine_reportsTheVersionTheBuildCarries`. The
+  first four render the real `AppRow` with the activity's own view model, so they exercise the
+  shipped composable rather than a stand-in. No existing assertion was changed or removed.
+- **The About line stopped hardcoding the version.** It read "Zendo Launcher 0.2.0" as a
+  string literal and went stale the first time `versionName` was raised, so a user on 0.2.1
+  was told they were on 0.2.0. It now reads `BuildConfig.VERSION_NAME`, which required turning
+  on `buildConfig` in `app/build.gradle`, and the new test asserts the rendered line against
+  the same constant so the two cannot drift apart again. This was found by an adversarial
+  re-read of the docs against the source, not by a test — which is the argument for the test.
+- **The screenshot deliverable was completed.** `docs/ui-ux-review/` now exists; see section 2
+  and the review's own README.
 
 ### Correction to the first pass
 
@@ -304,24 +311,33 @@ Four findings were left open by the first pass and are now closed.
 
 ## 2. Before-and-after review
 
-### Deliverable status: screenshots not produced
+### Deliverable status: screenshots produced
 
-The spec asked for `docs/ui-ux-review/` containing before-and-after screenshots. That
-deliverable was not achievable and the directory was not created.
+The spec asked for `docs/ui-ux-review/` containing before-and-after screenshots. The
+directory now exists with eleven PNGs — six of the shipped design, five of the revision
+before it — captured from the real Compose UI at both commits, plus a README recording how
+they were made and what they do not show.
 
-A Robolectric-based screenshot harness was written and run. It captured 720x1600 PNGs.
-Decoding the captures showed they contained zero non-background pixels: Robolectric's
-native graphics mode rasterised the Compose layout (backgrounds and hairlines) but drew no
-text glyphs at all. Three of the captures were byte-identical, with the same SHA-256. For a
-text-first launcher these images carry no information about the interface, and the
-harness's own non-blank guard could not detect the failure, because a solid background
-satisfies a check for non-background pixels. The harness and every image were deleted
-rather than shipped as misleading evidence. `app/src/test/java/com/zendolauncher/ui/ScreenshotTest.kt`
-no longer exists.
+The first attempt failed and is worth recording, because the failure was a wrong diagnosis
+rather than a limitation. It used `captureToImage()` and produced flat images, which was
+read as "Robolectric cannot rasterise text". It cannot: `captureToImage()` routes through
+`WindowCapture.forceRedraw`, which waits on a PixelCopy that never completes under
+Robolectric and throws `ComposeTimeoutException` after two seconds. The Compose tree was
+never at fault. Drawing the window's content view into a software bitmap with
+`View.draw(Canvas)` renders text normally.
 
-What follows is the textual substitute. It states, per screen, the behaviour recorded in
-the audit and the behaviour the source now implements. It does not describe visual
-appearance that was not seen.
+That was established on a minimal case — `Text("ABCDEFG")` at 64sp — before any launcher
+screen was trusted, and the harness now asserts on each capture in-process: distinct
+colours, pixels differing from the modal background, strong-ink pixels, and a SHA-256
+unique across the run. The last check is the one the first attempt lacked, which is why it
+shipped three byte-identical images without noticing.
+
+The images are of the empty states, because Robolectric returns no installed apps and no
+Zendo source ships. `docs/ui-ux-review/README.md` states that limit in full rather than
+leaving it to be discovered.
+
+What follows remains as the per-screen account of behaviour, which the images do not carry
+on their own: an image shows the empty state, not what a row does when it is pressed.
 
 ### Home
 

@@ -11,12 +11,18 @@ findings are source inspection plus JVM Compose execution, and where a claim dep
 device behaviour it is labelled as reasoning from platform documentation rather than
 observation.
 
-**This is a snapshot of the code before the redesign.** Every line number and file length
-below describes that revision, not the current one — the redesign changed these files, so a
-citation such as `ui/Components.kt:120` no longer points at the code this audit was reading.
-Where a finding was later addressed, `docs/ui-ux-implementation.md` records what changed and
-`docs/ui-ux-verification.md` records what was verified. The audit is left as written, because
-a report that is edited after the fact to match the result is not an audit.
+**The findings describe the code as it was before the redesign.** Every line number and file
+length below belongs to that revision, not the current one — the redesign changed these
+files, so a citation such as `ui/Components.kt:120` no longer points at the code this audit
+was reading. Findings are left as written, because a report edited after the fact to match
+its result is not an audit.
+
+Two things sit outside that rule, and both are marked where they occur. `P0-9` was found
+while implementing the redesign and its `Recommended improvement` records the fix as shipped
+rather than as a proposal; it is the only finding written that way. And
+`docs/ui-ux-implementation.md` records what each finding's fix actually was, while
+`docs/ui-ux-verification.md` records what was mechanically verified — read those two for the
+current state, and this file for what was wrong.
 
 ## How this was audited
 
@@ -65,6 +71,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   for its default content colour. Neither role is set by the theme, so the menu renders in
   Material3's default tonal container (a grey, slightly violet-tinted surface) with
   default-variant text, on a launcher whose entire identity is two monochrome tones.
+- **Priority:** P0
 - **Evidence:** `ui/Components.kt:123` renders `DropdownMenu(expanded = menuOpen, ...)`.
   `ui/theme/Theme.kt:82-102` sets exactly seven roles on each branch:
   `background, surface, onBackground, onSurface, primary, onPrimary, outline`. There is no
@@ -97,6 +104,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   resize, but at `targetSdk 36` the window does not resize for the IME, so the inset has to
   be consumed in Compose. It is not. The search results list and the bottom action row are
   laid out behind the keyboard whenever the field is focused.
+- **Priority:** P0
 - **Evidence:** `AndroidManifest.xml:38` sets `android:windowSoftInputMode="adjustResize"`.
   `LauncherActivity.kt:33` calls `enableEdgeToEdge()`. `app/build.gradle:21` sets
   `targetSdk 36` and `:16` sets `compileSdk 36`. `ui/AppListScreen.kt:29-35` applies
@@ -127,6 +135,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   It has no clear affordance, so the only way to reset the query is to leave the screen. It
   also has no accessible name: the placeholder "Search" is a separate `Text` node, so the
   field itself is announced without a label.
+- **Priority:** P0
 - **Evidence:** `ui/AppListScreen.kt:38-51` is the whole field. There is no
   `focusRequester`, no `LaunchedEffect { requestFocus() }`, no `keyboardOptions`, no
   `keyboardActions`, and no trailing clear control. The placeholder is the
@@ -156,6 +165,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   row. There is no visible affordance on the row, and no `onLongClickLabel`, so assistive
   technology announces nothing about the gesture. A user who never long-presses can never
   build a Home screen.
+- **Priority:** P0
 - **Evidence:** `ui/Components.kt:96-100` attaches
   `combinedClickable(onClick = onClick, onLongClick = { menuOpen = true }, role = Role.Button)`
   with no `onLongClickLabel`. The row renders only the label text and, when already pinned, a
@@ -185,6 +195,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   than the 48dp minimum touch target. `QuietAction` is the app's only navigation control,
   so this affects every screen change and every pinned-order action. The Theme and Layout
   options are the only way to change either setting.
+- **Priority:** P0
 - **Evidence:** `ui/Components.kt:61-71` renders `QuietAction` as a `Text` styled
   `LauncherType.action` with `.padding(vertical = 10.dp, horizontal = 2.dp)`. That style is
   14.sp (`ui/theme/Theme.kt:72`) with no explicit `lineHeight`, so the text line is roughly
@@ -210,6 +221,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the selected option differs from the others only in text colour.
   There is no marker, no weight change, and no shape change. A user who cannot distinguish
   the two tones cannot tell which theme or layout is active.
+- **Priority:** P0
 - **Evidence:** `ui/SettingsScreen.kt:244` sets
   `color = if (value == selected) palette.primary else palette.secondary`. The two tones are
   `#F2F2F0` against `#8A8A88` in dark mode and `#111112` against `#6E6E6C` in light
@@ -236,6 +248,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the clock is fixed at 60.sp with no autosizing and no `maxLines`,
   and it sits in a row with the AM/PM suffix. At a large system font scale the string is
   wider than the text column and the row clips instead of shrinking.
+- **Priority:** P0
 - **Evidence:** `ui/theme/Theme.kt:61-66` defines `clock` as `fontSize = 60.sp`,
   `fontWeight = FontWeight.Light`, `letterSpacing = (-1.5).sp`, with no `lineHeight` and no
   autosize configuration. `ui/HomeScreen.kt:124-125` renders it as
@@ -268,6 +281,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   colour is chosen from the system dark-mode setting. The launcher's own theme comes from the
   user's stored preference. When the two disagree, the status-bar icons are drawn in the
   wrong contrast against the launcher's background.
+- **Priority:** P0
 - **Evidence:** `LauncherActivity.kt:33` calls `enableEdgeToEdge()` with no
   `statusBarStyle` or `navigationBarStyle`. The in-app theme is applied from stored state at
   `LauncherActivity.kt:37`: `LauncherTheme(mode = state.settings.theme)`. The stored value is
@@ -297,6 +311,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   app-controlled: the user picks Light, Dark, or System in Settings, independently of the
   system setting. When the two disagree the first frame of every cold start is the wrong
   colour.
+- **Priority:** P0
 - **Evidence:** before this change, `app/src/main/res/values/themes.xml` declared a single
   `Theme.ZendoLauncher` whose `android:windowBackground` was
   `@color/launcher_window_background`, and the only override of that colour was in
@@ -344,6 +359,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   shown in the app list. The two are unrelated. It is also redundant: both repositories
   already refresh themselves when packages change, so the manual control is a fallback that
   exists in two places with two different visibility rules.
+- **Priority:** P1
 - **Evidence:** `ui/HomeScreen.kt:101-103` reads
   `if (state.settings.layout == LayoutMode.ICON_TEXT) { QuietAction("Refresh", ...) }`.
   `platform/ShortcutRepository.kt:33-39` and `platform/AppRepository.kt:31-37` both register a
@@ -367,6 +383,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** nothing explains what the launcher changes, how to make it the
   default Home app, how to reach the app list, how to return to the previous launcher, or
   that the launcher is optional. A first-run user lands on an empty Home screen.
+- **Priority:** P1
 - **Evidence:** `Screen` has three values and none of them is a first-run state
   (`ui/LauncherViewModel.kt:36`). `UiState` carries no first-run flag
   (`ui/LauncherViewModel.kt:38-48`). The only place the information exists is the README and
@@ -388,6 +405,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Screen / component:** the Hidden apps section of Settings.
 - **Observed problem:** the hidden list shows package identifiers rather than app names. The
   labels exist and are already loaded; they are dropped before the UI sees them.
+- **Priority:** P1
 - **Evidence:** `ui/SettingsScreen.kt:174` renders `key.substringBefore('/')`, so the list
   shows `com.whatsapp`, `com.android.chrome`. The filter that causes this is
   `ui/LauncherViewModel.kt:84-87`, `AppQuery.visible(apps, settings.hidden)`, applied before
@@ -412,6 +430,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the only confirmation that an app was pinned is a 6dp dot. The row
   carries no `stateDescription` or `contentDescription` for it, so assistive technology
   cannot report favourite status at all.
+- **Priority:** P1
 - **Evidence:** `ui/Components.kt:113-120` renders the marker as
   `Box(Modifier.size(6.dp).clip(CircleShape).background(LauncherColors.current.secondary))`.
   The enclosing row's `combinedClickable` at `:96-100` sets only `role = Role.Button`. There
@@ -433,6 +452,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the drawer draws a separator under every row of a list that can hold
   100 or more apps, while the identical row on Home draws none. One component has two
   treatments, and a hundred separators is decoration rather than structure.
+- **Priority:** P1
 - **Evidence:** `ui/AppListScreen.kt:81` calls `Hairline()` inside the `items` block, after
   every `AppRow`. `ui/HomeScreen.kt:76-85` calls the same `AppRow` with no separator. The
   separator token is 1dp (`ui/Components.kt:41-48`).
@@ -451,6 +471,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Screen / component:** the app list.
 - **Observed problem:** the drawer is one flat list. Nothing helps a user find an app without
   typing, even though the list is already ordered alphabetically.
+- **Priority:** P1
 - **Evidence:** `ui/AppListScreen.kt:70-83` is a single `LazyColumn` with `items(list, key = ...)`
   and no grouping, no sticky header, and no index rail. The ordering that a header would
   expose already exists: `core/AppQuery.kt:27-28`, `alphabetical`, sorts by
@@ -472,6 +493,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the icon composable renders nothing until the bitmap resolves, and
   the icon box is the only part of the row that is conditional on the bitmap, so the label
   moves sideways as icons resolve one by one while the list scrolls.
+- **Priority:** P1
 - **Evidence:** `ui/Components.kt:149-162` renders `bitmap?.let { Image(...) }` with no
   placeholder and no fixed-size container; the bitmap arrives from
   `produceState<Bitmap?>(initialValue = null, target.key)` at `:151`, and a null bitmap
@@ -498,6 +520,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the empty state is two sentences, the second of which exists only to
   teach the long-press that P0-4 says should not be the only path. Once P0-4 is fixed, the
   sentence is wrong as well as long.
+- **Priority:** P1
 - **Evidence:** `ui/HomeScreen.kt:73` renders
   `EmptyNote("Nothing pinned yet. Open All apps and long-press an app to add it here.")`.
   The brief's design direction allows one sentence or less for an empty state.
@@ -517,6 +540,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the loudest control in the product is a full Material3 pill switch,
   restyled to monochrome. It is the only control with a filled track and a moving thumb, and
   it is inconsistent with a text-first launcher whose other controls are text.
+- **Priority:** P1
 - **Evidence:** `ui/SettingsScreen.kt:213-224` renders a Material3 `Switch` with an explicit
   `SwitchDefaults.colors(...)`. The rest of the settings UI is text and hairlines
   (`:60-100`). The switch is used at `:83-87`, `:92-96`, and `:105-109`.
@@ -539,6 +563,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** "Up", "Down", and "Unpin" are three text actions separated by 16dp,
   each roughly 37dp tall, with only 2dp of horizontal padding inside each. The targets are
   close together, and one of them, "Unpin", is destructive.
+- **Priority:** P1
 - **Evidence:** `ui/SettingsScreen.kt:150-154` lays the three out with
   `Arrangement.spacedBy(16.dp)`. `QuietAction` adds `padding(vertical = 10.dp, horizontal = 2.dp)`
   (`ui/Components.kt:69`), so the visual gap between adjacent targets is 16dp and each target
@@ -561,6 +586,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   removes the app from Essentials, so one mis-tap on a menu that opens from a long-press
   removes the app from both lists. Reversing it requires finding the app by package name in
   Settings (see P1-3).
+- **Priority:** P1
 - **Evidence:** `ui/Components.kt:136-142` renders the "Hide app" `DropdownMenuItem` with
   `onClick = { menuOpen = false; onToggleHidden() }`, no confirmation. `data/SettingsStore.kt:62-67`
   shows `toggleHidden` also removing the key from `favourites`:
@@ -581,6 +607,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Screen / component:** `ToggleRow`, used by all three settings toggles.
 - **Observed problem:** the row is not clickable. Only the switch at the end of the row
   responds to a tap, so a user who taps the label "24-hour clock" gets nothing.
+- **Priority:** P1
 - **Evidence:** `ui/SettingsScreen.kt:204-212` renders the row as
   `Row(Modifier.fillMaxWidth().padding(vertical = 2.dp))` with no `clickable` and no
   `toggleable`. The label is a plain `Text` with `Modifier.weight(1f)` at `:212`, and the only
@@ -604,6 +631,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the list is empty until the background enumeration finishes, and the
   screen cannot tell "still loading" from "nothing installed". It shows the definitive message
   "No launchable apps found." for both.
+- **Priority:** P1
 - **Evidence:** `ui/AppListScreen.kt:65-68` renders the empty note whenever `list.isEmpty()`.
   The list is `state.results`, derived from `visibleApps`
   (`ui/LauncherViewModel.kt:84-87`, `:94-95`), which is built from the repository flows that
@@ -631,9 +659,11 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   section.
 - **Observed problem:** the section style is 11sp with 1.2sp tracking. It is the smallest text
   in the app and it scales badly at large font settings, where its tracking grows with it.
+- **Priority:** P2
 - **Evidence:** `ui/theme/Theme.kt:68` defines `section` as `fontSize = 11.sp`,
   `fontWeight = FontWeight.Medium`, `letterSpacing = 1.2.sp`. `ui/Components.kt:51-58`
   renders it in the secondary tone.
+- **Why it creates friction:** the smallest text in the app is the label that names each section, so the line a user reads to orient themselves is the hardest to read, and its tracking grows with the font scale instead of the text simply getting larger.
 - **Recommended improvement:** raise it to 12sp and keep the tracking, or drop the tracking and
   rely on the tone. 12sp reads better without becoming loud, and it stays closer to the
   readable minimum.
@@ -647,11 +677,13 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** spacing is inline literals with no named scale. Fourteen distinct
   values are in use: 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 24, 28, 40, 44, and 56 dp. The one
   consistent value is the 24dp gutter, used on all three screens.
+- **Priority:** P2
 - **Evidence:** examples across the codebase: `ui/HomeScreen.kt:52` (56), `:54` (6), `:63`
   and `:68` (44), `:88` (40), `:94` (24 and 18), `:95` (28); `ui/AppListScreen.kt:36` (28),
   `:53` (12), `:55` (20), `:86` (16); `ui/SettingsScreen.kt:49` (28), `:56` (24), `:72` (14),
   `:97` (6). The 24dp gutter appears at `ui/HomeScreen.kt:50`, `ui/AppListScreen.kt:34`, and
   `ui/SettingsScreen.kt:47`.
+- **Why it creates friction:** with fourteen separate gap values and no shared scale, spacing differs from one screen and one block to the next, so the layout reads as uneven even though no single gap is wrong.
 - **Recommended improvement:** define one small set of named values and use it. The brief's
   design direction asks for this explicitly, and the values already cluster: 4, 8, 12, 16,
   24, 32, 48 would cover every current use with a handful of literals retired.
@@ -665,8 +697,10 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the first element is a fixed 56dp spacer inside the system-bar
   padding, so the clock's position depends on a number that was chosen by eye rather than
   measured from the inset.
+- **Priority:** P2
 - **Evidence:** `ui/HomeScreen.kt:52` is `Spacer(Modifier.height(56.dp))`, the first child of
   the column that already has `.systemBarsPadding()` at `:43`.
+- **Why it creates friction:** the clock is the anchor of the Home screen and it sits at a height that comes from a number chosen by eye, so the same phone places it differently as the status-bar height changes.
 - **Recommended improvement:** replace the constant with a fraction of the available height, or
   with a value derived from the inset plus a token from the spacing scale, so the block sits
   consistently on short and tall screens.
@@ -680,11 +714,13 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the modifier order clips to a circle before the padding and before the
   clickable, so the press feedback is a circle sized to the node's shorter dimension, centred
   in a target that may be much wider. On a long label the ends of the target have no feedback.
+- **Priority:** P2
 - **Evidence:** `ui/Components.kt:66-69` orders the modifiers
   `.clip(CircleShape).combinedClickable(...).padding(vertical = 10.dp, horizontal = 2.dp)`.
   The clip applies to the node's full bounds, which are as wide as the label plus 4dp, so a
   label such as "Open Home app settings" (`ui/SettingsScreen.kt:127`) produces a circle much
   narrower than the tappable row.
+- **Why it creates friction:** a wide action such as "Open Home app settings" shows its press feedback in the middle of the target only, so a tap near either end looks like it did nothing even though it registered.
 - **Recommended improvement:** use a shape that matches the row, or drop the clip and let the
   ripple fill the node. A hairline-bounded rectangle would fit the product better than a
   circle.
@@ -696,8 +732,10 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Screen / component:** the `AppRow` menu.
 - **Observed problem:** the menu is anchored to a full-width box, so it opens at the top-left
   of the row rather than near the finger or the trailing edge where the user long-pressed.
+- **Priority:** P2
 - **Evidence:** `ui/Components.kt:91` is `Box(modifier.fillMaxWidth())`, and the
   `DropdownMenu` at `:123` is a child of that box with no offset and no anchor of its own.
+- **Why it creates friction:** the menu opens at the row's corner rather than under the finger, so after a long press the user has to look away from where they pressed to find what they opened.
 - **Recommended improvement:** anchor the menu to the row's trailing edge, or offset it toward
   the touch point, so it opens where the user's attention is.
 - **Expected user benefit:** the menu appears adjacent to the finger, which is the standard
@@ -709,9 +747,11 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Screen / component:** the Home bottom action row.
 - **Observed problem:** the row uses both uniform spacing and a weighted spacer, so the gap
   before the pushed element is the sum of both and differs from every other gap in the row.
+- **Priority:** P2
 - **Evidence:** `ui/HomeScreen.kt:91-96` sets `horizontalArrangement = Arrangement.spacedBy(28.dp)`
   and the row contains `Spacer(Modifier.weight(1f))` at `:100`, between "Settings" and the
   conditional "Refresh".
+- **Why it creates friction:** the gap before the pushed action is the sum of the row spacing and the weighted spacer, so it is wider than every other gap in the row and the bottom bar reads as misaligned.
 - **Recommended improvement:** pick one. Either let `spacedBy` do the work and drop the
   spacer, or drop `spacedBy` and place explicit spacers. Removing "Refresh" per P1-1 also
   removes the need for the weighted spacer.
@@ -724,10 +764,12 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** it is used both for true empty states and for long explanatory
   paragraphs, at the same 13sp secondary tone. A paragraph of about 280 characters reads as
   a hint line.
+- **Priority:** P2
 - **Evidence:** `ui/Components.kt:165-172` is a single 13sp `Text` with 4dp vertical padding.
   True empty states use it at `ui/HomeScreen.kt:73`, `ui/AppListScreen.kt:66`, and
   `ui/SettingsScreen.kt:145`, `:164`. Long explanations use it at
   `ui/SettingsScreen.kt:98-100`, `:111-114`, and `:132-139`.
+- **Why it creates friction:** a paragraph of explanation renders at the same size and tone as "No pinned apps yet.", so help text reads as a hint line and the true empty states stop standing out.
 - **Recommended improvement:** keep `EmptyNote` for empty states and give explanatory copy its
   own treatment, or shorten the explanations to a single line each.
 - **Expected user benefit:** empty states and help text become distinguishable, and the
@@ -741,10 +783,12 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Observed problem:** the composable exposes a `color` parameter whose default reads a
   `CompositionLocal`, and no caller ever overrides it. The parameter is a second way to do
   what the surrounding `LauncherColors.current` already does.
+- **Priority:** P2
 - **Evidence:** `ui/Components.kt:175` declares
   `fun SecondaryText(text: String, modifier: Modifier = Modifier, color: Color = LauncherColors.current.secondary)`.
   Every call site passes only text: `ui/HomeScreen.kt:157`, `:164`, `:171`;
   `ui/SettingsScreen.kt:119`, `:188`, `:197`.
+- **Why it creates friction:** the two-tone rule is what carries the whole hierarchy, and this parameter leaves it enforceable only by memory: the first caller that passes a colour makes secondary text look different on one screen and nowhere else.
 - **Recommended improvement:** remove the parameter and read the palette inside the composable,
   matching `SectionHeading` at `ui/Components.kt:51-58`, which does exactly that.
 - **Expected user benefit:** one way to render secondary text, and no parameter that invites a
@@ -756,9 +800,11 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
 - **Screen / component:** the app list and the two Settings lists.
 - **Observed problem:** the separator is emitted after each row rather than between rows, so a
   rule is drawn under the last item, closing a list that is still open.
+- **Priority:** P2
 - **Evidence:** `ui/AppListScreen.kt:81` calls `Hairline()` inside the `items` block.
   `ui/SettingsScreen.kt:156` and `:181` call it after each row inside the two `forEach`
   loops.
+- **Why it creates friction:** a rule is drawn under the last item, so a list that is still open appears to have ended and a user can stop scrolling before the final row.
 - **Recommended improvement:** draw the separator above each row except the first, or accept
   the whitespace-only treatment recommended in P1-5 and remove these rules entirely.
 - **Expected user benefit:** lists do not appear to end mid-screen.
@@ -771,6 +817,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   Today block on it, but the block also requires a Zendo payload, and the only shipped source
   always returns null. So the section never renders and the toggle changes nothing on screen,
   in either position.
+- **Priority:** P2
 - **Evidence:** `ui/SettingsScreen.kt:92-96` renders the toggle bound to
   `state.settings.todayEnabled`. `ui/HomeScreen.kt:61-66` gates the block on
   `if (state.settings.todayEnabled) { state.zendo?.let { ... } }`. `state.zendo` comes from
@@ -778,6 +825,7 @@ scroll affordance. `Screen` is a three-value enum (`HOME, APPS, SETTINGS`) at
   `UnavailableZendoSource` (`ui/LauncherViewModel.kt:73`). The Settings copy already states
   this at `ui/SettingsScreen.kt:111-114`, and `docs/zendo-integration.md` confirms no planning
   API exists.
+- **Why it creates friction:** the user flips the toggle and nothing on the screen changes, so a control that is wired correctly reads as broken, which is the one thing a launcher this quiet cannot afford.
 - **Recommended improvement:** leave the code as it is, since the wiring is correct and will
   work when a source ships, but adjust the copy so the toggle does not imply a visible result
   today. The adjacent note at `ui/SettingsScreen.kt:98-100` currently says turning it off
