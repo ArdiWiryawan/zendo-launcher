@@ -47,9 +47,10 @@ and the second pass's strings in its dex, so the published artifact is that buil
 `assembleDebug` on every push to `main`. The run for commit `22273c1` completed `success`
 (run 38422283353, 2m59s); the run for `36a2381` completed `success` (run 38422959857,
 2m19s); the run for the second pass, commit `dadc1b3`, completed `success`
-(run 38490289011). The same three tasks therefore pass on a second machine against a clean
-checkout, and the second pass's APK was published from that run rather than from this
-machine.
+(run 38490289011); the run for the completion pass, commit `ea9ee7a`, completed
+`success` (run 38503574228). The same three tasks therefore pass on a second machine
+against a clean checkout, and each published APK came from the CI run for its own commit
+rather than from a local build.
 
 ## 2. Regression checklist
 
@@ -67,7 +68,7 @@ that evidence is stated.
 | 6 | Hidden apps still hidden | `AppQuery.visible` is unchanged and `core/AppQueryTest`'s `hidden apps are removed` passes. `SettingsScreen` now names the hidden entries from `state.allApps` (P1-3), which is a label change, not a filtering change. | PASS |
 | 7 | Favourites order preserved | `AppQuery.favourites` is unchanged and `core/AppQueryTest`'s `favourites keep user order and drop stale keys` and `favourites can hold a shortcut key` both pass. | PASS |
 | 8 | Theme persists, and the monochrome palette is unchanged | `settings_themeChoice_updatesState` passes: selecting "Dark" then "Light" moves the stored `ThemeMode`. The palette values are still `primary` `0xFFF2F2F0` / `0xFF8A8A88` and `0xFF111112` / `0xFF6E6E6C` in `ui/theme/Theme.kt`; the redesign diff adds scheme roles and does not change them. | PASS |
-| 9 | The build process still works | `testDebugUnitTest`, `lintDebug` and `assembleDebug` all BUILD SUCCESSFUL locally, and the same three tasks pass in CI on commits `22273c1`, `36a2381` and `dadc1b3`. | PASS |
+| 9 | The build process still works | `testDebugUnitTest`, `lintDebug` and `assembleDebug` all BUILD SUCCESSFUL locally, and the same three tasks pass in CI on commits `22273c1`, `36a2381`, `dadc1b3` and `ea9ee7a`. | PASS |
 | 10 | No runtime permissions added | `AndroidManifest.xml` was read in full. It declares no `uses-permission` element at all, so it requests no runtime permission and no `INTERNET`. | PASS |
 | 11 | No network use | Same read: no `INTERNET` permission is declared, so the app cannot open a socket. A search of `app/src/main` and `app/build.gradle` for `INTERNET`, `okhttp`, `retrofit`, `ktor`, `HttpURLConnection` and `URL(` returns nothing. | PASS |
 | 12 | No data leaves the device | Follows from item 11: without `INTERNET` the platform denies network access to this process, so no stored preference or app list can be transmitted. | PASS |
