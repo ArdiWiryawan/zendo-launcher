@@ -115,8 +115,8 @@ What remains is one finding that cannot be closed from this repository, and one 
 design decision.
 
 - **P2-10, "Show today" still has no visible effect.** Not closable here. The toggle is
-  bound to `state.settings.todayEnabled` and `HomeScreen` gates the block on it
-  (the `todayEnabled` gate in `ui/HomeScreen.kt`), but the block also needs a `state.zendo` payload, and the only
+  bound to `state.settings.todayEnabled`, and `ui/HomeScreen.kt` gates the block on that
+  setting, but the block also needs a `state.zendo` payload, and the only
   shipped source is `UnavailableZendoSource` in `ui/LauncherViewModel.kt`, which
   returns null. The second pass fixed what was actually wrong — the note sat under the
   *other* toggle, so the control that looks broken never explained itself — and the two
