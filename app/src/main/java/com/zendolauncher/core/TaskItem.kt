@@ -3,6 +3,7 @@ package com.zendolauncher.core
 /**
  * A small practical task. Stored locally, never auto-created from calendar
  * events. [showOnHome] lets the user choose which tasks appear in the Home summary.
+ * [notes] is optional free text; [dueDateMillis] an optional wall-clock due date.
  */
 data class TaskItem(
     val id: String,
@@ -12,6 +13,7 @@ data class TaskItem(
     val updatedAt: Long = System.currentTimeMillis(),
     val dueDateMillis: Long? = null,
     val showOnHome: Boolean = true,
+    val notes: String = "",
 ) {
     companion object {
         fun newId(): String = "t_" + java.util.UUID.randomUUID().toString().replace("-", "")

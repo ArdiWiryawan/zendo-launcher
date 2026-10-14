@@ -73,7 +73,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.3.0` (versionCode 7). See the releases list
+The newest build is currently `debug-0.3.1` (versionCode 8). See the releases list
 for its sha256.
 
 To build a fresh one yourself:

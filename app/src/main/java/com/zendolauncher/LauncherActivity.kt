@@ -21,12 +21,14 @@ import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.AppListScreen
 import com.zendolauncher.ui.CalendarScreen
+import com.zendolauncher.ui.HighlightEditorScreen
 import com.zendolauncher.ui.HomeScreen
 import com.zendolauncher.ui.LauncherViewModel
 import com.zendolauncher.ui.OnboardingScreen
 import com.zendolauncher.ui.PauseDialog
 import com.zendolauncher.ui.Screen
 import com.zendolauncher.ui.SettingsScreen
+import com.zendolauncher.ui.TaskEditorScreen
 import com.zendolauncher.ui.WallpaperScreen
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherTheme
@@ -122,14 +124,29 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
     BackHandler(enabled = state.screen == Screen.HOME && state.pageEditing) {
         viewModel.leavePageEdit()
     }
-    BackHandler(enabled = state.showAllHighlights) {
+    BackHandler(enabled = state.screen == Screen.HOME && state.showAllHighlights) {
         viewModel.closeAllHighlights()
     }
-    BackHandler(enabled = state.showAllTasks) {
+    BackHandler(enabled = state.screen == Screen.HOME && state.showAllTasks) {
         viewModel.closeAllTasks()
     }
-    BackHandler(enabled = state.showHighlightEditor) {
-        viewModel.dismissHighlightEditor()
+    BackHandler(enabled = state.screen == Screen.HIGHLIGHT_EDITOR) {
+        viewModel.backFromHighlightEditor()
+    }
+    BackHandler(enabled = state.screen == Screen.TASK_EDITOR) {
+        viewModel.backFromTaskEditor()
+    }
+    BackHandler(enabled = state.showDiscardHighlight) {
+        viewModel.cancelDiscardHighlight()
+    }
+    BackHandler(enabled = state.showDiscardTask) {
+        viewModel.cancelDiscardTask()
+    }
+    BackHandler(enabled = state.confirmDeleteHighlightId != null) {
+        viewModel.cancelDeleteHighlight()
+    }
+    BackHandler(enabled = state.confirmDeleteTaskId != null) {
+        viewModel.cancelDeleteTask()
     }
     BackHandler(enabled = state.pendingPause != null) {
         viewModel.cancelPause()
@@ -147,6 +164,8 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
             Screen.SETTINGS -> SettingsScreen(viewModel, state)
             Screen.WALLPAPERS -> WallpaperScreen(viewModel, state)
             Screen.CALENDAR -> CalendarScreen(viewModel, state)
+            Screen.HIGHLIGHT_EDITOR -> HighlightEditorScreen(viewModel, state)
+            Screen.TASK_EDITOR -> TaskEditorScreen(viewModel, state)
         }
         // Launcher-level pre-launch only: the dialog interposes here, over whichever
         // list the tap came from, and Home underneath is untouched.

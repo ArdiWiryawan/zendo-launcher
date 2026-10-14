@@ -51,7 +51,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, WALLPAPERS, CALENDAR }
+enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, WALLPAPERS, CALENDAR, HIGHLIGHT_EDITOR, TASK_EDITOR }
 
 data class UiState(
     val screen: Screen = Screen.HOME,
@@ -112,12 +112,30 @@ data class UiState(
     val wallpaperTarget: WallpaperTarget = WallpaperTarget.BOTH,
     val wallpaperApplying: Boolean = false,
     val wallpaperMessage: String? = null,
-    // ---- Overlays (ephemeral) --------------------------------------------------
-    val showHighlightEditor: Boolean = false,
+    // ---- Overlays and editors (ephemeral) ----------------------------------------
     val editingHighlightId: String? = null,
+    /** Draft title in the full-screen highlight editor. Lives here so rotation keeps it. */
+    val highlightTitle: String = "",
+    /** Draft body in the full-screen highlight editor. */
+    val highlightNote: String = "",
+    /** Whether the draft wants primary status. */
+    val highlightPin: Boolean = false,
+    /** Validation message in the highlight editor, or null. */
+    val highlightError: String? = null,
+    /** Discard-unsaved-changes confirm over the highlight editor. */
+    val showDiscardHighlight: Boolean = false,
+    /** Id awaiting delete confirmation in the highlights list, or null. */
+    val confirmDeleteHighlightId: String? = null,
     val showAllHighlights: Boolean = false,
     val showAllTasks: Boolean = false,
     val editingTaskId: String? = null,
+    /** Draft fields in the full-screen task editor. */
+    val taskTitle: String = "",
+    val taskDueMillis: Long? = null,
+    val taskNotes: String = "",
+    val taskEditorError: String? = null,
+    val showDiscardTask: Boolean = false,
+    val confirmDeleteTaskId: String? = null,
 )
 
 /** The four app lists, grouped only so [`lists`]'s `combine` stays within its arity. */
@@ -202,11 +220,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _calendarPermission = MutableStateFlow(false)
     private val _wallpaperApplying = MutableStateFlow(false)
     private val _wallpaperMessage = MutableStateFlow<String?>(null)
-    private val _showHighlightEditor = MutableStateFlow(false)
+    // Highlight editor drafts live here (not in the composable) so rotation and a
+    // transient interruption keep the user's text.
     private val _editingHighlightId = MutableStateFlow<String?>(null)
+    private val _highlightTitle = MutableStateFlow("")
+    private val _highlightNote = MutableStateFlow("")
+    private val _highlightPin = MutableStateFlow(false)
+    private val _highlightError = MutableStateFlow<String?>(null)
+    private val _showDiscardHighlight = MutableStateFlow(false)
+    private val _confirmDeleteHighlight = MutableStateFlow<String?>(null)
     private val _showAllHighlights = MutableStateFlow(false)
     private val _showAllTasks = MutableStateFlow(false)
+    // Task editor drafts, same reason.
     private val _editingTaskId = MutableStateFlow<String?>(null)
+    private val _taskTitle = MutableStateFlow("")
+    private val _taskDue = MutableStateFlow<Long?>(null)
+    private val _taskNotes = MutableStateFlow("")
+    private val _taskError = MutableStateFlow<String?>(null)
+    private val _showDiscardTask = MutableStateFlow(false)
+    private val _confirmDeleteTask = MutableStateFlow<String?>(null)
 
     /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
     private var settingsReturn: Screen = Screen.HOME
@@ -299,11 +331,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val wallpaperTarget: WallpaperTarget,
         val applying: Boolean,
         val message: String?,
-        val showEditor: Boolean,
         val editingId: String?,
+        val draftTitle: String,
+        val draftNote: String,
+        val draftPin: Boolean,
+        val draftError: String?,
+        val showDiscardH: Boolean,
+        val confirmDelH: String?,
         val showAllH: Boolean,
         val showAllT: Boolean,
         val editingTask: String?,
+        val taskTitle: String,
+        val taskDue: Long?,
+        val taskNotes: String,
+        val taskError: String?,
+        val showDiscardT: Boolean,
+        val confirmDelT: String?,
     )
 
     private val today: Flow<TodayBundle> = combine(
@@ -317,11 +360,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         wallpaperStore.target,
         _wallpaperApplying,
         _wallpaperMessage,
-        _showHighlightEditor,
         _editingHighlightId,
+        _highlightTitle,
+        _highlightNote,
+        _highlightPin,
+        _highlightError,
+        _showDiscardHighlight,
+        _confirmDeleteHighlight,
         _showAllHighlights,
         _showAllTasks,
         _editingTaskId,
+        _taskTitle,
+        _taskDue,
+        _taskNotes,
+        _taskError,
+        _showDiscardTask,
+        _confirmDeleteTask,
     ) { args: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         TodayBundle(
@@ -335,11 +389,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             wallpaperTarget = args[7] as WallpaperTarget,
             applying = args[8] as Boolean,
             message = args[9] as String?,
-            showEditor = args[10] as Boolean,
-            editingId = args[11] as String?,
-            showAllH = args[12] as Boolean,
-            showAllT = args[13] as Boolean,
-            editingTask = args[14] as String?,
+            editingId = args[10] as String?,
+            draftTitle = args[11] as String,
+            draftNote = args[12] as String,
+            draftPin = args[13] as Boolean,
+            draftError = args[14] as String?,
+            showDiscardH = args[15] as Boolean,
+            confirmDelH = args[16] as String?,
+            showAllH = args[17] as Boolean,
+            showAllT = args[18] as Boolean,
+            editingTask = args[19] as String?,
+            taskTitle = args[20] as String,
+            taskDue = args[21] as Long?,
+            taskNotes = args[22] as String,
+            taskError = args[23] as String?,
+            showDiscardT = args[24] as Boolean,
+            confirmDelT = args[25] as String?,
         )
     }
 
@@ -357,11 +422,22 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 wallpaperTarget = t.wallpaperTarget,
                 wallpaperApplying = t.applying,
                 wallpaperMessage = t.message,
-                showHighlightEditor = t.showEditor,
                 editingHighlightId = t.editingId,
+                highlightTitle = t.draftTitle,
+                highlightNote = t.draftNote,
+                highlightPin = t.draftPin,
+                highlightError = t.draftError,
+                showDiscardHighlight = t.showDiscardH,
+                confirmDeleteHighlightId = t.confirmDelH,
                 showAllHighlights = t.showAllH,
                 showAllTasks = t.showAllT,
                 editingTaskId = t.editingTask,
+                taskTitle = t.taskTitle,
+                taskDueMillis = t.taskDue,
+                taskNotes = t.taskNotes,
+                taskEditorError = t.taskError,
+                showDiscardTask = t.showDiscardT,
+                confirmDeleteTaskId = t.confirmDelT,
             )
         }.stateIn(
             viewModelScope,
@@ -485,8 +561,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun leavePageEdit() { _pageEditing.value = false }
 
     /**
-     * Back's whole decision for the launcher, in the order the user experiences it: the
-     * pause dialog, then whichever screen is on top, then edit mode.
+     * Back's whole decision for the launcher, in the order the user experiences it:
+     * the pause dialog, then confirms, then whichever screen is on top, then the
+     * list dialogs, then edit mode.
      *
      * Returning false means "there is nothing of mine to close", and the activity then does
      * what it did before this feature existed. A launcher must not treat Back on plain Home
@@ -498,17 +575,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             cancelPause()
             return true
         }
-        // Overlays first: they are layers above whichever screen opened them.
-        if (_showHighlightEditor.value) {
-            dismissHighlightEditor()
+        if (_showDiscardHighlight.value) {
+            _showDiscardHighlight.value = false
             return true
         }
-        if (_showAllHighlights.value) {
-            _showAllHighlights.value = false
+        if (_showDiscardTask.value) {
+            _showDiscardTask.value = false
             return true
         }
-        if (_showAllTasks.value) {
-            _showAllTasks.value = false
+        if (_confirmDeleteHighlight.value != null) {
+            _confirmDeleteHighlight.value = null
+            return true
+        }
+        if (_confirmDeleteTask.value != null) {
+            _confirmDeleteTask.value = null
             return true
         }
         when (_screen.value) {
@@ -528,7 +608,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 goHome()
                 return true
             }
+            Screen.HIGHLIGHT_EDITOR -> {
+                backFromHighlightEditor()
+                return true
+            }
+            Screen.TASK_EDITOR -> {
+                backFromTaskEditor()
+                return true
+            }
             Screen.HOME -> Unit
+        }
+        // List dialogs live on Home: they are layers above the page.
+        if (_showAllHighlights.value) {
+            _showAllHighlights.value = false
+            return true
+        }
+        if (_showAllTasks.value) {
+            _showAllTasks.value = false
+            _editingTaskId.value = null
+            return true
         }
         if (_pageEditing.value) {
             leavePageEdit()
@@ -718,27 +816,108 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     // ---- Highlights (persistent, never auto-erased) ---------------------------------
 
+    /**
+     * Opens the full-screen highlight editor. Drafts are seeded here so rotation
+     * and transient interruptions keep the user's text; the store is written only
+     * on Save, never per keystroke (one keystroke must never create a record).
+     */
     fun openHighlightEditor(id: String? = null) {
-        _editingHighlightId.value = id
-        _showHighlightEditor.value = true
+        val existing = highlightStore.highlights.value.firstOrNull { it.id == id }
+        _editingHighlightId.value = existing?.id
+        _highlightTitle.value = existing?.title.orEmpty()
+        _highlightNote.value = existing?.note.orEmpty()
+        _highlightPin.value = existing?.isPrimary ?: highlightStore.highlights.value.none { !it.archived }
+        _highlightError.value = null
+        _showDiscardHighlight.value = false
+        _showAllHighlights.value = false
+        _screen.value = Screen.HIGHLIGHT_EDITOR
     }
 
-    fun dismissHighlightEditor() {
-        _showHighlightEditor.value = false
-        _editingHighlightId.value = null
+    fun updateHighlightDraft(title: String, note: String, pin: Boolean) {
+        _highlightTitle.value = title
+        _highlightNote.value = note
+        _highlightPin.value = pin
+        if (_highlightError.value != null && (title.isNotBlank() || note.isNotBlank())) {
+            _highlightError.value = null
+        }
     }
 
-    fun saveHighlight(title: String, note: String, pinAsPrimary: Boolean) {
+    /** True when the draft differs from the saved record (or is non-empty when new). */
+    fun isHighlightDirty(): Boolean {
+        val existing = highlightStore.highlights.value.firstOrNull { it.id == _editingHighlightId.value }
+        return if (existing == null) {
+            _highlightTitle.value.isNotBlank() || _highlightNote.value.isNotBlank()
+        } else {
+            _highlightTitle.value != existing.title ||
+                _highlightNote.value != existing.note ||
+                (_highlightPin.value && !existing.isPrimary)
+        }
+    }
+
+    /**
+     * Saves the draft. Title is optional: when blank but the body is not, the
+     * first line of the body becomes the title (like a paper note). A fully
+     * empty draft refuses with an inline error and the editor stays open, so no
+     * input is ever lost to a silent no-op.
+     */
+    fun saveHighlight(): Boolean {
+        val title = _highlightTitle.value.trim()
+        val note = _highlightNote.value.trim()
+        if (title.isEmpty() && note.isEmpty()) {
+            _highlightError.value = "Add a title or some thoughts first."
+            return false
+        }
+        val effectiveTitle = title.ifEmpty { note.lineSequence().first().take(80) }
         val id = _editingHighlightId.value
-        highlightStore.upsert(title, note, id, pinAsPrimary)
-        dismissHighlightEditor()
+        val saved = highlightStore.upsert(effectiveTitle, note, id, _highlightPin.value)
+        if (saved == null) {
+            _highlightError.value = "Could not save. Try again."
+            return false
+        }
+        clearHighlightDraft()
+        _screen.value = Screen.HOME
+        return true
+    }
+
+    /** Back from the editor: unsaved work asks, clean state returns Home. */
+    fun backFromHighlightEditor() {
+        if (isHighlightDirty()) {
+            _showDiscardHighlight.value = true
+        } else {
+            clearHighlightDraft()
+            _screen.value = Screen.HOME
+        }
+    }
+
+    fun cancelDiscardHighlight() { _showDiscardHighlight.value = false }
+
+    fun discardHighlight() {
+        _showDiscardHighlight.value = false
+        clearHighlightDraft()
+        _screen.value = Screen.HOME
+    }
+
+    private fun clearHighlightDraft() {
+        _editingHighlightId.value = null
+        _highlightTitle.value = ""
+        _highlightNote.value = ""
+        _highlightPin.value = false
+        _highlightError.value = null
+        _showDiscardHighlight.value = false
     }
 
     fun pinHighlight(id: String) = highlightStore.pinAsPrimary(id)
 
     fun archiveHighlight(id: String, archived: Boolean = true) = highlightStore.archive(id, archived)
 
-    fun deleteHighlight(id: String) = highlightStore.delete(id)
+    fun requestDeleteHighlight(id: String) { _confirmDeleteHighlight.value = id }
+
+    fun cancelDeleteHighlight() { _confirmDeleteHighlight.value = null }
+
+    fun confirmDeleteHighlight() {
+        _confirmDeleteHighlight.value?.let { highlightStore.delete(it) }
+        _confirmDeleteHighlight.value = null
+    }
 
     fun openAllHighlights() { _showAllHighlights.value = true }
 
@@ -746,26 +925,108 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     // ---- Tasks ----------------------------------------------------------------------
 
+    /** Quick Add: one line, immediate, clears. Blank input is ignored, never stored. */
     fun addTask(title: String) = taskStore.add(title)
 
     fun toggleTask(id: String) = taskStore.toggleDone(id)
 
     fun renameTask(id: String, title: String) = taskStore.rename(id, title)
 
-    fun deleteTask(id: String) = taskStore.delete(id)
-
     fun setTaskVisible(id: String, show: Boolean) = taskStore.setShowOnHome(id, show)
+
+    fun requestDeleteTask(id: String) { _confirmDeleteTask.value = id }
+
+    fun cancelDeleteTask() { _confirmDeleteTask.value = null }
+
+    fun confirmDeleteTask() {
+        _confirmDeleteTask.value?.let { taskStore.delete(it) }
+        _confirmDeleteTask.value = null
+    }
 
     fun openAllTasks() { _showAllTasks.value = true }
 
-    fun closeAllTasks() { _showAllTasks.value = false }
-
-    fun openTaskEditor(id: String?) {
-        _editingTaskId.value = id
-        _showAllTasks.value = true
+    fun closeAllTasks() {
+        _showAllTasks.value = false
+        _editingTaskId.value = null
     }
 
-    fun closeTaskEditor() { _editingTaskId.value = null }
+    /**
+     * Opens the full-screen task editor (title + optional due date + notes).
+     * Only title is required; due date and notes stay optional and are never
+     * invented when the user leaves them empty.
+     */
+    fun openTaskEditor(id: String?) {
+        val existing = taskStore.tasks.value.firstOrNull { it.id == id }
+        _editingTaskId.value = existing?.id
+        _taskTitle.value = existing?.title.orEmpty()
+        _taskDue.value = existing?.dueDateMillis
+        _taskNotes.value = existing?.notes.orEmpty()
+        _taskError.value = null
+        _showDiscardTask.value = false
+        _showAllTasks.value = false
+        _screen.value = Screen.TASK_EDITOR
+    }
+
+    fun updateTaskDraft(title: String, dueMillis: Long?, notes: String) {
+        _taskTitle.value = title
+        _taskDue.value = dueMillis
+        _taskNotes.value = notes
+        if (_taskError.value != null && title.isNotBlank()) _taskError.value = null
+    }
+
+    fun isTaskDirty(): Boolean {
+        val existing = taskStore.tasks.value.firstOrNull { it.id == _editingTaskId.value }
+        return if (existing == null) {
+            _taskTitle.value.isNotBlank() || _taskNotes.value.isNotBlank() || _taskDue.value != null
+        } else {
+            _taskTitle.value != existing.title ||
+                _taskDue.value != existing.dueDateMillis ||
+                _taskNotes.value != existing.notes
+        }
+    }
+
+    /** Saves the task editor. Blank title refuses with an inline error; nothing is lost. */
+    fun saveTask(): Boolean {
+        val saved = taskStore.updateDetails(
+            _editingTaskId.value,
+            _taskTitle.value,
+            _taskDue.value,
+            _taskNotes.value,
+        )
+        if (saved == null) {
+            _taskError.value = "Give the task a title first."
+            return false
+        }
+        clearTaskDraft()
+        _screen.value = Screen.HOME
+        return true
+    }
+
+    fun backFromTaskEditor() {
+        if (isTaskDirty()) {
+            _showDiscardTask.value = true
+        } else {
+            clearTaskDraft()
+            _screen.value = Screen.HOME
+        }
+    }
+
+    fun cancelDiscardTask() { _showDiscardTask.value = false }
+
+    fun discardTask() {
+        _showDiscardTask.value = false
+        clearTaskDraft()
+        _screen.value = Screen.HOME
+    }
+
+    private fun clearTaskDraft() {
+        _editingTaskId.value = null
+        _taskTitle.value = ""
+        _taskDue.value = null
+        _taskNotes.value = ""
+        _taskError.value = null
+        _showDiscardTask.value = false
+    }
 
     // ---- Calendar (read-only device provider) ---------------------------------------
 
@@ -844,6 +1105,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun clearWallpaperMessage() { _wallpaperMessage.value = null }
 
     fun applyWallpaper() {
+        // A second tap while the first is still running must not start a duplicate
+        // operation: the UI already swaps the button for status text, and this is the
+        // second line of defence for the frame in between.
+        if (_wallpaperApplying.value) return
         val template = WallpaperTemplates.byId(wallpaperStore.selectedId.value) ?: run {
             _wallpaperMessage.value = "Choose a wallpaper first."
             return

@@ -25,7 +25,26 @@ sealed interface WallpaperApplyResult {
     data class Failed(val message: String) : WallpaperApplyResult
 }
 
+/** What the device reports about wallpaper before any write is attempted. */
+internal data class WallpaperCapability(
+    val supported: Boolean = true,
+    val allowed: Boolean = true,
+)
+
 object WallpaperApplier {
+
+    /**
+     * A returned wallpaper ID of 0 or less means the system did not confirm the
+     * write (per the setBitmap/setResource contract), so it must not read as success.
+     */
+    internal fun isConfirmed(wallpaperId: Int): Boolean = wallpaperId > 0
+
+    /** Pre-write capability probe. Unknown (exception) reads as capable, never as a block. */
+    internal fun probe(manager: WallpaperManager): WallpaperCapability {
+        val supported = runCatching { manager.isWallpaperSupported }.getOrDefault(true)
+        val allowed = runCatching { manager.isSetWallpaperAllowed }.getOrDefault(true)
+        return WallpaperCapability(supported, allowed)
+    }
 
     fun render(template: WallpaperTemplate, width: Int = 1080, height: Int = 1920): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -85,6 +104,15 @@ object WallpaperApplier {
         } catch (e: Exception) {
             return WallpaperApplyResult.Failed("Wallpaper service unavailable.")
         }
+        // Capability first: a TV without wallpaper support or a managed profile that
+        // forbids setting it must read as a clear message, not a silent no-op.
+        val capability = probe(manager)
+        if (!capability.supported) {
+            return WallpaperApplyResult.Failed("Wallpapers are not supported on this device.")
+        }
+        if (!capability.allowed) {
+            return WallpaperApplyResult.Failed("Your device policy does not allow changing the wallpaper.")
+        }
         val bitmap = try {
             render(template)
         } catch (e: Exception) {
@@ -93,16 +121,18 @@ object WallpaperApplier {
         return try {
             when (target) {
                 WallpaperTarget.HOME -> {
-                    manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
-                    WallpaperApplyResult.Applied
+                    val id = manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
+                    if (isConfirmed(id)) WallpaperApplyResult.Applied
+                    else WallpaperApplyResult.Failed("The system did not confirm the wallpaper.")
                 }
                 WallpaperTarget.LOCK -> {
                     if (Build.VERSION.SDK_INT < 24) {
                         return WallpaperApplyResult.Failed("Lock wallpaper needs Android 7.0+.")
                     }
                     try {
-                        manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
-                        WallpaperApplyResult.Applied
+                        val id = manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
+                        if (isConfirmed(id)) WallpaperApplyResult.Applied
+                        else WallpaperApplyResult.Failed("The system did not confirm the lock wallpaper.")
                     } catch (e: Exception) {
                         WallpaperApplyResult.Failed("Lock wallpaper not supported on this device.")
                     }
@@ -112,13 +142,17 @@ object WallpaperApplier {
                     var lockOk = true
                     var lockMessage: String? = null
                     try {
-                        manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM)
+                        homeOk = isConfirmed(manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_SYSTEM))
+                        if (!homeOk) {
+                            return WallpaperApplyResult.Failed("The system did not confirm the wallpaper.")
+                        }
                     } catch (e: Exception) {
                         homeOk = false
                     }
                     if (Build.VERSION.SDK_INT >= 24) {
                         try {
-                            manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK)
+                            lockOk = isConfirmed(manager.setBitmap(bitmap, null, true, WallpaperManager.FLAG_LOCK))
+                            if (!lockOk) lockMessage = "Lock target not confirmed here; Home was applied."
                         } catch (e: Exception) {
                             lockOk = false
                             lockMessage = "Lock target not supported here; Home was applied."

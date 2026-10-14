@@ -1,5 +1,83 @@
 # Implementation Report
 
+## 0.3.1 — Lock-screen diagnosis, full-screen editors, task details
+
+Tree state: versionName 0.3.1 / versionCode 8 (`app/build.gradle`).
+Method: source trace + `testDebugUnitTest` + `lintDebug` + `assembleDebug` locally,
+plus CI Build APK. No physical-device run claimed.
+
+### Root cause (wallpaper)
+
+The direct-apply path was structurally sound (button → VM → `WallpaperApplier`
+→ correct `FLAG_SYSTEM`/`FLAG_LOCK`, messages only after the call). The audit
+found and fixed three real defects: (1) `setBitmap`'s returned wallpaper ID
+was ignored, so a non-positive ID could read as success — now gated by
+`isConfirmed(id) = id > 0`; (2) no pre-write capability checks — `probe()`
+now reads `isWallpaperSupported()` / `isSetWallpaperAllowed()` first with
+plain per-case messages and no new permissions; (3) no in-VM duplicate guard
+for the frame before recomposition swaps the button. Full analysis in
+`docs/lock-screen-root-cause.md`. No fake lock screen exists or was added.
+
+### Files changed (vs 0.3.0)
+
+New: `platform/WallpaperApplierTest.kt`, `data/HighlightStorePersistenceTest.kt`,
+`data/TaskStorePersistenceTest.kt`, `ui/EditorStateTest.kt`,
+`ui/Editors.kt` (`HighlightEditorScreen`, `TaskEditorScreen`), docs
+`lock-screen-root-cause.md`, `highlights-and-tasks-ux.md`.
+
+Changed: `platform/WallpaperApplier.kt` (capability probe, ID confirmation),
+`core/TaskItem.kt` (+`notes`), `data/TaskStore.kt` (notes codec,
+`updateDetails`), `ui/LauncherViewModel.kt` (`Screen.HIGHLIGHT_EDITOR` /
+`TASK_EDITOR`, VM-held drafts, validation, discard/delete confirms,
+double-apply guard, extended Back order), `LauncherActivity.kt` (editor +
+confirm handlers, new screen branches), `ui/HighlightOverlays.kt` (lists +
+delete confirms; editor moved out), `ui/Editors.kt`, `data/TaskStoreCodecTest.kt`
+(notes/due cases), `app/build.gradle` (0.3.1/8).
+
+Kept deliberately: `Highlight.sanitizeAll` (blank titles still dropped at the
+storage boundary; the title-optional rule lives in `saveHighlight`, which
+derives from the body first line), `renameTask`, list-dialog structure.
+
+### Features implemented
+
+- Full-screen highlight editor: autofocus title (optional), 200dp multiline
+  body, primary toggle, Archive/Delete for existing, inline validation that
+  keeps the editor open, rotation-safe drafts, discard confirm.
+- Full-screen task editor: required title (Done saves), optional due date via
+  system picker with Clear, optional notes; Quick Add unchanged.
+- Delete confirmations naming the record (highlights + tasks); archive stays
+  one-tap (restorable).
+- Wallpaper: capability probe, return-ID confirmation, double-apply guard.
+
+### Build and test results
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 180 tests, 0 failures (160 carried
+  over + 20 new: 6 wallpaper diagnostics, 3 highlight persistence, 4 task
+  codec/persistence, 7 editor state-machine).
+- `:app:lintDebug` run; `abortOnError false` per project config.
+- `:app:assembleDebug` BUILD SUCCESSFUL (local). APK at
+  `app/build/outputs/apk/debug/app-debug.apk`, staged to `dist/` on CI.
+- Regression note: `EditorStateTest` initially failed 6/7 because `state`
+  shares `WhileSubscribed` with no collector in plain unit tests (only the
+  initial value was ever visible) and the Robolectric main looper is not
+  pumped — fixed with an eager collector + `idleMainLooper()` after actions.
+  No production code changed for this; the tests now assert the real flow.
+
+### Known issues
+
+- Robolectric shadows stand in for `WallpaperManager`; OEM `FLAG_LOCK`
+  behavior unverified without hardware (user checklist in
+  `docs/lock-screen-root-cause.md`).
+- Editor drafts survive rotation but not process death.
+- Due date is date-only; no notifications.
+
+### Physical device testing status
+
+Not performed in this pass. Required user actions: run the wallpaper checklist
+per device and confirm editor keyboard behavior with the real IME.
+
+---
+
 ## 0.3.0 — Today dashboard, wallpaper gallery, calendar agenda, gesture ownership
 
 Tree state: versionName 0.3.0 / versionCode 7 (`app/build.gradle`), compileSdk 36 / minSdk 26 / targetSdk 36.

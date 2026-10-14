@@ -169,7 +169,9 @@ fun WallpaperScreen(viewModel: LauncherViewModel, state: UiState) {
                     SecondaryText(it)
                 }
                 if (state.wallpaperMessage?.contains("not supported", ignoreCase = true) == true ||
-                    state.wallpaperMessage?.contains("needs Android", ignoreCase = true) == true
+                    state.wallpaperMessage?.contains("needs Android", ignoreCase = true) == true ||
+                    state.wallpaperMessage?.contains("did not confirm", ignoreCase = true) == true ||
+                    state.wallpaperMessage?.contains("not allow", ignoreCase = true) == true
                 ) {
                     QuietAction("Open system picker instead", onClick = {
                         try {

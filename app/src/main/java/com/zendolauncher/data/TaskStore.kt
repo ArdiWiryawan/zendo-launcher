@@ -56,6 +56,41 @@ class TaskStore(context: Context) {
         )
     }
 
+    /**
+     * Full detail save from the task editor. Blank title is refused (returns false)
+     * so the editor stays open with the user's text instead of closing on nothing.
+     */
+    fun updateDetails(id: String?, title: String, dueDateMillis: Long?, notes: String): TaskItem? {
+        val t = title.trim()
+        if (t.isEmpty()) return null
+        val now = System.currentTimeMillis()
+        val current = _tasks.value.toMutableList()
+        val result: TaskItem
+        if (id != null) {
+            val index = current.indexOfFirst { it.id == id }
+            if (index < 0) return null
+            result = current[index].copy(
+                title = t,
+                dueDateMillis = dueDateMillis,
+                notes = notes.trim(),
+                updatedAt = now,
+            )
+            current[index] = result
+        } else {
+            result = TaskItem(
+                id = TaskItem.newId(),
+                title = t,
+                createdAt = now,
+                updatedAt = now,
+                dueDateMillis = dueDateMillis,
+                notes = notes.trim(),
+            )
+            current.add(0, result)
+        }
+        persist(current)
+        return result
+    }
+
     fun delete(id: String) {
         persist(_tasks.value.filterNot { it.id == id })
     }
@@ -79,6 +114,7 @@ class TaskStore(context: Context) {
                     .put("updatedAt", t.updatedAt)
                     .put("showOnHome", t.showOnHome)
                 t.dueDateMillis?.let { o.put("dueDateMillis", it) }
+                if (t.notes.isNotBlank()) o.put("notes", t.notes)
                 array.put(o)
             }
             return array.toString()
@@ -102,6 +138,7 @@ class TaskStore(context: Context) {
                         updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                         dueDateMillis = if (o.has("dueDateMillis")) o.optLong("dueDateMillis") else null,
                         showOnHome = o.optBoolean("showOnHome", true),
+                        notes = o.optString("notes", ""),
                     )
                 }
                 out
