@@ -20,12 +20,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.AppListScreen
+import com.zendolauncher.ui.CalendarScreen
 import com.zendolauncher.ui.HomeScreen
 import com.zendolauncher.ui.LauncherViewModel
 import com.zendolauncher.ui.OnboardingScreen
 import com.zendolauncher.ui.PauseDialog
 import com.zendolauncher.ui.Screen
 import com.zendolauncher.ui.SettingsScreen
+import com.zendolauncher.ui.WallpaperScreen
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherTheme
 
@@ -103,22 +105,34 @@ private fun SystemBarIcons() {
 
 @Composable
 private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.ui.UiState) {
-    // Home is a back-stack root: Back from a secondary screen returns home. Onboarding
-    // owns its own BackHandler so Back dismisses it rather than dropping into Home unseen.
-    // Back from Settings returns to the drawer when entered from it, keeping the query.
-    // One handler for everything Back can close. It is registered after the screen-level
-    // handlers below, so on the drawer and in Settings those still win — the ordering is
-    // the drawer's, unchanged. On Home it is the only one enabled, and it answers in the
-    // order the user experiences: the pause dialog, then edit mode, one stage at a time.
-    // Its false branch is the point of it: with nothing of ours open, Home claims nothing,
-    // so Back does what it did before this existed. It never slides the pager and it never
-    // exits the launcher — neither is a layer.
-    BackHandler { viewModel.back() }
+    // Back ownership, most-specific last (last registered wins):
+    // screens first, then Home edit mode, then ephemeral overlays, then pause dialog.
+    // Plain Home registers nothing, so Back falls to the system: no meaningless slide,
+    // no duplicate Home destination, no pager move, and no conflict with edge-back.
+    // Onboarding owns its own handler in its screen.
     BackHandler(enabled = state.screen == Screen.SETTINGS) {
         viewModel.backFromSettings()
     }
     BackHandler(enabled = state.screen == Screen.APPS) {
         viewModel.goHome()
+    }
+    BackHandler(enabled = state.screen == Screen.WALLPAPERS || state.screen == Screen.CALENDAR) {
+        viewModel.goHome()
+    }
+    BackHandler(enabled = state.screen == Screen.HOME && state.pageEditing) {
+        viewModel.leavePageEdit()
+    }
+    BackHandler(enabled = state.showAllHighlights) {
+        viewModel.closeAllHighlights()
+    }
+    BackHandler(enabled = state.showAllTasks) {
+        viewModel.closeAllTasks()
+    }
+    BackHandler(enabled = state.showHighlightEditor) {
+        viewModel.dismissHighlightEditor()
+    }
+    BackHandler(enabled = state.pendingPause != null) {
+        viewModel.cancelPause()
     }
 
     Box(
@@ -131,6 +145,8 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
             Screen.HOME -> HomeScreen(viewModel, state)
             Screen.APPS -> AppListScreen(viewModel, state)
             Screen.SETTINGS -> SettingsScreen(viewModel, state)
+            Screen.WALLPAPERS -> WallpaperScreen(viewModel, state)
+            Screen.CALENDAR -> CalendarScreen(viewModel, state)
         }
         // Launcher-level pre-launch only: the dialog interposes here, over whichever
         // list the tap came from, and Home underneath is untouched.

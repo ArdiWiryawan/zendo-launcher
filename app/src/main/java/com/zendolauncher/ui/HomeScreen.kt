@@ -3,6 +3,7 @@ package com.zendolauncher.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,9 +57,6 @@ import androidx.compose.ui.zIndex
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.HomePage
 import com.zendolauncher.core.PageType
-import com.zendolauncher.model.AgendaItem
-import com.zendolauncher.model.LaunchTarget
-import com.zendolauncher.model.TodayTask
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
@@ -68,9 +66,6 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-
-/** How many tasks the Today page shows. More than a few is a list, not a glance. */
-private const val TODAY_TASK_LIMIT = 3
 
 /**
  * The launcher's most important surface, and its job is to let the user act and leave.
@@ -101,9 +96,13 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
     // One-shot programmatic move. A scroll that comes to rest lands on the page it reached
     // and clears the target through the settled-page effect above, which is also what keeps
     // this from firing again: the state that drove it is gone by the next recomposition.
-    LaunchedEffect(state.pagerTargetPage) {
+    // Reduce-motion jumps instead of animating.
+    LaunchedEffect(state.pagerTargetPage, state.settings.reduceMotion) {
         val target = state.pagerTargetPage ?: return@LaunchedEffect
-        if (target in 0 until pagerState.pageCount) pagerState.animateScrollToPage(target)
+        if (target in 0 until pagerState.pageCount) {
+            if (state.settings.reduceMotion) pagerState.scrollToPage(target)
+            else pagerState.animateScrollToPage(target)
+        }
     }
 
     Column(
@@ -126,7 +125,7 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                userScrollEnabled = pages.size > 1,
+                userScrollEnabled = pages.size > 1 && state.settings.pagingEnabled,
             ) { index ->
                 val page = pages.getOrNull(index) ?: return@HorizontalPager
                 // Keyed on the page id so a page's own remembered state — the focus note's
@@ -169,9 +168,13 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 }
             }
         } else {
+            // Swipe-up chrome: the bottom bar owns the vertical swipe so scrollable
+            // page content keeps its gesture. Taps still reach the actions; a deliberate
+            // upward drag opens the drawer instead.
             Row(
                 Modifier
                     .fillMaxWidth()
+                    .swipeUpToOpen(state.settings.swipeUpEnabled) { viewModel.openApps() }
                     .padding(horizontal = LauncherSpace.gutter, vertical = LauncherSpace.md),
                 horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
                 verticalAlignment = Alignment.CenterVertically,
@@ -181,6 +184,36 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 QuietAction("Settings", onClick = { viewModel.openSettings(Screen.HOME) })
             }
         }
+    }
+
+    // Persistent Today overlays: highlight editor + full lists. Dialogs, so Back
+    // closes them via viewModel.back() before anything else on Home.
+    HighlightOverlays(viewModel, state)
+}
+
+/**
+ * Vertical swipe detector for chrome rows. Only fires on a deliberate upward drag
+ * past the touch slop + threshold; taps pass through to the row's actions.
+ */
+private fun Modifier.swipeUpToOpen(enabled: Boolean, onSwipeUp: () -> Unit): Modifier {
+    if (!enabled) return this
+    return this.pointerInput(onSwipeUp) {
+        var accumulated = 0f
+        detectVerticalDragGestures(
+            onDragStart = { accumulated = 0f },
+            onVerticalDrag = { change, dragAmount ->
+                accumulated += dragAmount
+                // Consume only once the gesture is clearly a swipe, so taps still click.
+                if (accumulated < -120f) {
+                    change.consume()
+                }
+            },
+            onDragEnd = {
+                if (accumulated < -120f) onSwipeUp()
+                accumulated = 0f
+            },
+            onDragCancel = { accumulated = 0f },
+        )
     }
 }
 
@@ -198,9 +231,9 @@ private fun PageBody(page: HomePage, viewModel: LauncherViewModel, state: UiStat
 // ---- Today -------------------------------------------------------------------------
 
 /**
- * Date first, then the day's context reduced to what changes what the user does next, then
- * one route onward. Nothing here is invented: with no planner connected the highlight,
- * tasks and upcoming sections each say so in their own words rather than leaving a gap.
+ * Date first, then Highlights / Tasks / Upcoming from local stores + device calendar.
+ * Persistent: highlights stay until edited/archived, tasks keep completion, upcoming
+ * reads the device provider when permission is granted. Nothing is invented.
  */
 @Composable
 private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
@@ -215,7 +248,6 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
     val topGap = (heightDp * 0.06f).coerceIn(LauncherSpace.lg, LauncherSpace.xl)
     // Measured here and handed to the clock, which needs the same width to size itself.
     val widthDp = with(density) { windowInfo.containerSize.width.toDp().value }
-    val today = state.zendo
 
     Column(
         Modifier
@@ -233,37 +265,17 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
             style = LauncherType.date,
             color = palette.secondary,
         )
+        Spacer(Modifier.height(LauncherSpace.xs))
+        Text(text = "Today.", style = LauncherType.title, color = palette.primary)
 
         if (state.settings.todayEnabled) {
-            Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Highlight")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            val highlight = today?.let { it.mainAction ?: it.highlight }
-            if (highlight == null) {
-                EmptyNote("Nothing from your planner today.")
-            } else {
-                Text(text = highlight, style = LauncherType.body, color = palette.primary)
-            }
-
-            Spacer(Modifier.height(LauncherSpace.lg))
-            SectionHeading("Tasks")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            val tasks = today?.tasks.orEmpty()
-            if (tasks.isEmpty()) {
-                EmptyNote("No tasks from your planner today.")
-            } else {
-                tasks.take(TODAY_TASK_LIMIT).forEach { TaskLine(it) }
-            }
-
-            Spacer(Modifier.height(LauncherSpace.lg))
-            SectionHeading("Upcoming")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            val upcoming = today?.let { listOfNotNull(it.nextAgenda) + it.upcoming }.orEmpty()
-            if (upcoming.isEmpty()) {
-                EmptyNote("Nothing upcoming from your planner.")
-            } else {
-                upcoming.forEach { SecondaryText(it.display()) }
-            }
+            Spacer(Modifier.height(LauncherSpace.md))
+            Hairline()
+            Spacer(Modifier.height(LauncherSpace.md))
+            TodayDashboard(viewModel, state)
+        } else {
+            Spacer(Modifier.height(LauncherSpace.md))
+            EmptyNote("Today is hidden. Turn on Show today in Settings to see highlights, tasks and upcoming.")
         }
 
         // The shortcut exists only when a Focus page does. It moves the pager and nothing
@@ -277,28 +289,6 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
         Spacer(Modifier.height(LauncherSpace.xl))
     }
 }
-
-/** A task line reads only: nothing in this app owns the state a tick would change. */
-@Composable
-private fun TaskLine(task: TodayTask) {
-    val palette = LauncherColors.current
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(vertical = LauncherSpace.xs),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = task.title,
-            style = LauncherType.body,
-            color = if (task.done) palette.secondary else palette.primary,
-            modifier = Modifier.weight(1f),
-        )
-        if (task.done) SecondaryText("Done")
-    }
-}
-
-private fun AgendaItem.display(): String = if (time.isNullOrBlank()) title else "$title · $time"
 
 // ---- Launch ------------------------------------------------------------------------
 

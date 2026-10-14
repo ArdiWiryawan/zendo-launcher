@@ -179,7 +179,7 @@ class PauseGateTest {
     fun wallpaperRow_resolvesSystemWallpaperPicker() {
         vm.openSettings()
         rule.waitForIdle()
-        rule.onNodeWithText("Wallpaper").performScrollTo().performClick()
+        rule.onNodeWithText("Wallpaper (system picker)").performScrollTo().performClick()
         rule.waitForIdle()
 
         val started = shadowOf(rule.activity).nextStartedActivity

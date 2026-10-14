@@ -112,12 +112,13 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 onCheckedChange = { viewModel.setTodayEnabled(it) },
             )
             Spacer(Modifier.height(LauncherSpace.xs))
-            // The toggle that looks broken explains itself here rather than under the
-            // other one: turning it on cannot change the screen while nothing fills the block.
             SecondaryText(
-                "Home has a place for the Today block, between the date and your pinned apps. " +
-                    "Nothing fills it yet, so Home looks the same either way.",
+                "Today shows your highlights, tasks and upcoming events. " +
+                    "Highlights stay until you archive them; tasks keep their state; " +
+                    "upcoming reads your device calendar only when you allow it.",
             )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            QuietAction("Open calendar") { viewModel.openCalendar() }
             Spacer(Modifier.height(LauncherSpace.md))
             ToggleRow(
                 label = "Connect Zendo",
@@ -129,6 +130,45 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 "Zendo exposes no planning API yet, so connecting it fetches nothing. " +
                     "The launcher works fully without it.",
             )
+
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Wallpapers")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText(
+                "Quiet grayscale templates. Preview first — nothing is applied until the system reports success.",
+            )
+            QuietAction("Open wallpaper gallery") { viewModel.openWallpapers() }
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText(
+                "Lock wallpaper depends on the device. This sets only the background, never the lock itself.",
+            )
+
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Gestures")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            ToggleRow(
+                label = "Horizontal swipe pages Home",
+                checked = state.settings.pagingEnabled,
+                onCheckedChange = { viewModel.setPagingEnabled(it) },
+            )
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText("A deliberate sideways swipe moves to the next Home page. Off keeps pages tappable via dots.")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            ToggleRow(
+                label = "Swipe up on bottom bar opens drawer",
+                checked = state.settings.swipeUpEnabled,
+                onCheckedChange = { viewModel.setSwipeUpEnabled(it) },
+            )
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText("Scrollable content keeps its gesture; only the bottom bar owns the swipe. Buttons always work.")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            ToggleRow(
+                label = "Reduce launcher transitions",
+                checked = state.settings.reduceMotion,
+                onCheckedChange = { viewModel.setReduceMotion(it) },
+            )
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText("Programmatic page jumps stop animating. Swipes still follow your finger.")
 
             Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("Home app")
@@ -245,7 +285,7 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             QuietAction("Sound & notifications") {
                 openSystemSettings(context, Settings.ACTION_SOUND_SETTINGS)
             }
-            QuietAction("Wallpaper") {
+            QuietAction("Wallpaper (system picker)") {
                 openSystemSettings(context, Intent.ACTION_SET_WALLPAPER)
             }
 
@@ -253,9 +293,11 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             SectionHeading("Privacy")
             Spacer(Modifier.height(LauncherSpace.sm))
             SecondaryText(
-                "Everything stays on this device. Your app list, pinned apps, hidden apps and theme are stored " +
-                    "locally and are never uploaded. The launcher requests no runtime permissions and does not " +
-                    "use the internet. App discovery uses the system's LauncherApps service.",
+                "Everything stays on this device. Your app list, pinned apps, hidden apps, theme, " +
+                    "highlights, tasks and wallpaper choice are stored locally and are never uploaded. " +
+                    "The launcher does not use the internet. App discovery uses the system's LauncherApps service. " +
+                    "Calendar is read-only from your device provider, only after you allow it, and only for the weeks you view. " +
+                    "Wallpaper apply uses the system's WallpaperManager for bundled grayscale templates.",
             )
 
             Spacer(Modifier.height(LauncherSpace.xl))

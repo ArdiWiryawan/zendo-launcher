@@ -104,19 +104,18 @@ class LauncherUiTest {
 
     @Test
     fun homeScreen_composes_andShowsClockAndDate() {
-        rule.onNodeWithText("Highlight").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
         rule.onAllNodes(textMatching(datePattern)).assertCountEquals(1)
     }
 
     @Test
     fun homeScreen_showsTodayEmptyStates_andBottomActions() {
-        // Home is a pager now, so page 1 is the Today page. Its three planner sections have
-        // no backing source, and each says so rather than showing an invented row. The page
-        // scrolls, so the sections below the clock are scrolled into view before asserting.
-        rule.onNodeWithText("Nothing from your planner today.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("No tasks from your planner today.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Nothing upcoming from your planner.").performScrollTo().assertIsDisplayed()
+        // Today dashboard is local and persistent: highlights, tasks and upcoming each
+        // render an honest empty state rather than invented rows.
+        rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("No tasks yet. Add the first one below.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Calendar access is off. Upcoming stays empty until you allow it.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("All apps").assertIsDisplayed()
         rule.onNodeWithText("Settings").assertIsDisplayed()
     }
@@ -137,7 +136,7 @@ class LauncherUiTest {
         rule.onNodeWithText("Home").performClick()
         rule.waitForIdle()
         assertEquals(Screen.HOME, viewModel.state.value.screen)
-        rule.onNodeWithText("Highlight").assertIsDisplayed()
+        rule.onNodeWithText("Highlights").assertIsDisplayed()
     }
 
     @Test
@@ -198,29 +197,29 @@ class LauncherUiTest {
 
     @Test
     fun todayBlock_absentWithDefaultUnavailableSource_andScreenStillRenders() {
-        // Defaults: todayEnabled = true, zendoEnabled = false -> nothing to show. The Today
-        // page's planner sections are gated by todayEnabled, and with no source each one
-        // renders an honest empty state rather than an invented row. The clock is the page's
-        // own and is unaffected by any of it.
+        // Defaults: todayEnabled = true, zendoEnabled = false. The Today dashboard is
+        // local now (highlights/tasks/calendar), so Zendo state cannot change it.
+        // The clock is the page's own and is unaffected by any of it.
         assertTrue(viewModel.state.value.settings.todayEnabled)
         assertFalse(viewModel.state.value.settings.zendoEnabled)
-        rule.onNodeWithText("Highlight").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Nothing from your planner today.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
 
         // Turning the Zendo source on cannot produce content: the only shipped
-        // source is UnavailableZendoSource, which always returns null.
+        // source is UnavailableZendoSource, which always returns null. The local
+        // dashboard is unchanged.
         viewModel.setZendoEnabled(true)
         rule.waitForIdle()
-        rule.onNodeWithText("Nothing from your planner today.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
 
-        // Turning the section off removes the planner sections entirely, and the page still
+        // Turning the section off removes the dashboard entirely, and the page still
         // renders its clock and its date.
         viewModel.setTodayEnabled(false)
         rule.waitForIdle()
-        rule.onAllNodesWithText("Highlight").assertCountEquals(0)
-        rule.onAllNodesWithText("Nothing from your planner today.").assertCountEquals(0)
+        rule.onAllNodesWithText("Highlights").assertCountEquals(0)
+        rule.onAllNodesWithText("Write your priority here. It stays until you edit or archive it.").assertCountEquals(0)
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
     }
 

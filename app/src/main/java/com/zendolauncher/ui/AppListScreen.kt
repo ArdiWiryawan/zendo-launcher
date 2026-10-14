@@ -1,6 +1,7 @@
 package com.zendolauncher.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -81,8 +83,30 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
             .padding(horizontal = LauncherSpace.gutter),
     ) {
         Spacer(Modifier.height(LauncherSpace.lg))
-        ScreenTitle("All apps") { QuietAction("Home", onClick = { viewModel.goHome() }) }
-        Spacer(Modifier.height(LauncherSpace.md))
+        // Swipe-down chrome: the header owns the downward swipe so the scrolling list
+        // keeps its gesture. A deliberate pull returns to the same Home page.
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .pointerInput(viewModel) {
+                    var accumulated = 0f
+                    detectVerticalDragGestures(
+                        onDragStart = { accumulated = 0f },
+                        onVerticalDrag = { change, dragAmount ->
+                            accumulated += dragAmount
+                            if (accumulated > 120f) change.consume()
+                        },
+                        onDragEnd = {
+                            if (accumulated > 120f) viewModel.goHome()
+                            accumulated = 0f
+                        },
+                        onDragCancel = { accumulated = 0f },
+                    )
+                },
+        ) {
+            ScreenTitle("All apps") { QuietAction("Home", onClick = { viewModel.goHome() }) }
+            Spacer(Modifier.height(LauncherSpace.md))
+        }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
             BasicTextField(
@@ -200,11 +224,16 @@ internal fun letterOf(label: String): String {
 /** One row of the drawer. No separator: at this length a rule per row is texture. */
 @Composable
 private fun AppListRow(viewModel: LauncherViewModel, state: UiState, target: LaunchTarget) {
+    // Pin state is whether the key lives on any Home page — the legacy flat favourites
+    // list is migration-only and is never updated after migration.
+    val pinnedKeys = remember(state.settings.home) {
+        state.settings.home.pages.flatMap { it.config.itemKeys }.toSet()
+    }
     AppRow(
         viewModel = viewModel,
         target = target,
         layout = state.settings.layout,
-        isFavourite = target.key in state.settings.favourites,
+        isFavourite = target.key in pinnedKeys,
         onClick = { viewModel.launch(target) },
         onToggleFavourite = { viewModel.toggleFavourite(target.key) },
         onToggleHidden = { viewModel.toggleHidden(target.key) },

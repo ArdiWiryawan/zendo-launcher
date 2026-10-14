@@ -1,6 +1,82 @@
 # Implementation Report
 
-Tree state: versionName 0.2.4 (`app/build.gradle:23`), compileSdk 36 / minSdk 26 / targetSdk 36 (`app/build.gradle:16-21`).
+## 0.3.0 — Today dashboard, wallpaper gallery, calendar agenda, gesture ownership
+
+Tree state: versionName 0.3.0 / versionCode 7 (`app/build.gradle`), compileSdk 36 / minSdk 26 / targetSdk 36.
+Method: source read + `testDebugUnitTest` + `lintDebug` run locally. No device/emulator run claimed.
+Unit suite: 160 tests pass (`testDebugUnitTest`, BUILD SUCCESSFUL).
+
+### Files changed (vs 0.2.4)
+
+New: `core/Highlight.kt`, `core/TaskItem.kt`, `core/WallpaperTemplate.kt`,
+`core/CalendarWeek.kt`, `data/HighlightStore.kt`, `data/TaskStore.kt`,
+`data/WallpaperStore.kt`, `platform/WallpaperApplier.kt`,
+`platform/CalendarRepository.kt`, `model/CalendarEvent.kt`,
+`ui/TodayDashboard.kt`, `ui/HighlightOverlays.kt`, `ui/CalendarScreen.kt`,
+`ui/WallpaperScreen.kt`, docs `wallpaper-and-lock-screen.md`,
+`today-dashboard-and-calendar.md`, `interaction-behavior.md`.
+New tests: `core/HighlightTest`, `core/TaskItemTest`, `core/CalendarWeekTest`,
+`core/WallpaperTemplatesTest`, `data/HighlightStoreCodecTest`,
+`data/TaskStoreCodecTest`.
+
+Changed: `AndroidManifest.xml` (+`SET_WALLPAPER` normal, +`READ_CALENDAR` runtime,
+both documented), `data/SettingsStore.kt` (+`swipeUpEnabled`, +`pagingEnabled`,
++`reduceMotion`, +`shownCalendarIds`), `ui/LauncherViewModel.kt`
+(`Screen.WALLPAPERS/CALENDAR`, TodayBundle combine, highlight/task/calendar/
+wallpaper/gesture functions, overlay-aware `back()`), `LauncherActivity.kt`
+(per-layer BackHandlers, plain Home claims nothing; new screen branches),
+`ui/HomeScreen.kt` (TodayPage → persistent dashboard, swipe-up chrome,
+reduce-motion paging, highlight overlays), `ui/AppListScreen.kt` (header
+swipe-down, pin state from Home pages not the legacy flat list),
+`ui/SettingsScreen.kt` (Today/Wallpapers/Gestures copy, system-picker rename,
+privacy copy), `app/build.gradle` (0.3.0/7), tests (`LauncherUiTest`,
+`PauseGateTest` updated to the new copy).
+
+### Features implemented
+
+- Today dashboard with persistent Highlights (pin/archive/restore/delete) and
+  Tasks (add/toggle/rename/hide-on-Home/delete, done count), plus Upcoming
+  from the device calendar with permission-gated empty states.
+- Calendar screen with Monday-first week strip, selectable dates, agenda,
+  multi-calendar toggles, refresh, and best-effort system-calendar intent.
+- Wallpaper gallery (10 grayscale templates, All/Solid/Subtle, selected
+  state, Home/Lock mini previews, Home/Lock/Both target, API-reported
+  success only, system-picker fallback).
+- Back ownership fix (no always-on handler; plain Home falls through),
+  swipe-up (bottom bar) / swipe-down (drawer header) with scroll precedence,
+  paging + reduce-motion settings.
+
+### Partially implemented / deferred
+
+- Native `AppWidgetHost` hosting (needs bind permission + host lifecycle);
+  served as an honest in-launcher agenda instead. `PageType.WIDGET` stays a
+  recognized empty state.
+- No calendar event creation/editing (read-only is the shipped scope).
+- No OEM-verified lock behavior, gesture-edge widths, or provider quirks.
+
+### Build and test results
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 160 tests, 0 failures.
+- `:app:lintDebug` run; `abortOnError false` per project config.
+- `:app:assembleDebug` BUILD SUCCESSFUL (local). APK at
+  `app/build/outputs/apk/debug/app-debug.apk`, staged to `dist/` on CI.
+- Manual device tests still required: Back on Home does nothing; drawer Back
+  keeps page; paging vs vertical scroll; highlights/tasks survive restart;
+  calendar granted/denied/revoked + empty + multi-event days; wallpaper
+  Home/Lock/Both + cancel/fail + picker fallback; large text + small screens.
+
+### Known problems
+
+- Robolectric discovers no installed apps: enumeration, shortcut gating,
+  undo timer, and real calendar rows are source-verified only.
+- Lock `FLAG_LOCK` honored or ignored per device; combined Both may be
+  Partial on some ROMs (reported honestly in UI).
+- `dist/` contains a local debug APK; no signed release (signing secrets not
+  configured).
+
+---
+
+Tree state (prior): versionName 0.2.4 (`app/build.gradle:23`), compileSdk 36 / minSdk 26 / targetSdk 36 (`app/build.gradle:16-21`).
 Method: `git diff` over working tree plus grep over `app/src`. No device/emulator run claimed.
 Unit suite: 49 `@Test` methods under `app/src/test/java/com/zendolauncher/ui/` (23 `LauncherUiTest.kt`, 10 `PauseGateTest.kt`, 16 `ScreenshotCaptureTest.kt`).
 

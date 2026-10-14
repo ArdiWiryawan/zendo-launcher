@@ -3,11 +3,18 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
-      No runtime permissions are requested. App discovery uses the LauncherApps
-      system service; this <queries> block is what lets the launcher see packages
-      that expose a MAIN/LAUNCHER activity on API 30+. QUERY_ALL_PACKAGES is
-      deliberately NOT used.
+      App discovery uses the LauncherApps system service; this <queries> block is what
+      lets the launcher see packages that expose a MAIN/LAUNCHER activity on API 30+.
+      QUERY_ALL_PACKAGES is deliberately NOT used.
+
+      Optional permissions, each requested only when its feature is used:
+      - SET_WALLPAPER (normal, auto-granted): direct apply of bundled templates.
+        The system picker fallback needs no permission.
+      - READ_CALENDAR (runtime): Upcoming / Calendar agenda. Asked only when the user
+        opens a calendar feature, never at startup. All calendar use is read-only and offline.
     -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

@@ -48,10 +48,21 @@ All apps   Settings
   for it, but Zendo publishes no planning API, so connecting it fetches nothing and the
   block never appears. See [docs/zendo-integration.md](docs/zendo-integration.md) for the
   verified data contract and the backend change required.
+- **Today dashboard, local and persistent.** Highlights stay until you archive them,
+  tasks keep their completion state, and Upcoming reads your device calendar
+  only after you allow it.
+- **Wallpaper gallery.** Ten quiet grayscale templates with preview and
+  Home / Lock screen / Both targets, applied through `WallpaperManager` with
+  a system-picker fallback. The lock background is set where the device
+  honors it; the lock itself stays with Android.
+- **Calendar agenda.** Monday-first week strip, selectable dates, multi-calendar
+  toggles, and a best-effort system-calendar intent. Read-only and offline.
 - **Light and dark**, both monochrome. Text-first by default, optional icon-plus-text.
   The window background and the status and navigation bar icons follow the theme you
   chose, not the system's night setting.
-- **Everything is local.** No account, no network use, no runtime permissions.
+- **Everything is local.** No account, no network use. Calendar permission is
+  requested only when you open a calendar feature; wallpaper uses the normal
+  `SET_WALLPAPER` permission for direct apply (the picker fallback needs none).
 
 ## Download the APK
 
@@ -62,7 +73,8 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.2.4` (versionCode 6, sha256 `30b40e93…`).
+The newest build is currently `debug-0.3.0` (versionCode 7). See the releases list
+for its sha256.
 
 To build a fresh one yourself:
 
@@ -71,7 +83,7 @@ To build a fresh one yourself:
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
-Pushing a tag like `v0.2.4` builds a signed release APK and attaches it to a GitHub
+Pushing a tag like `v0.3.0` builds a signed release APK and attaches it to a GitHub
 Release, once release signing secrets are configured. See
 [docs/build-and-release.md](docs/build-and-release.md).
 
@@ -122,7 +134,8 @@ on its own, and it can always be changed back.
   honest future fix.
 - **Shortcut labels only.** A pinned shortcut is shown with its label; the launcher does
   not ask for the shortcut icon permission it would need to draw it in the icon layout.
-- **No widget support, no app-blocking.** Nothing here claims to block apps system-wide.
+- **No widget hosting, no app-blocking.** The calendar is an in-launcher agenda, not
+  hosted third-party widgets. Nothing here claims to block apps system-wide.
   Anything like that would need a real, verifiable mechanism and a transparent permission
   request, so it is not in this version.
 - **Zendo integration is a boundary, not a feature yet.** Zendo exposes no planning API
@@ -132,12 +145,16 @@ on its own, and it can always be changed back.
 
 ## Privacy
 
-- The launcher requests **no runtime permissions** and does not declare the `INTERNET`
-  permission.
+- The launcher does not declare the `INTERNET` permission. Calendar access
+  (`READ_CALENDAR`) is requested only when you open a calendar feature, is
+  read-only against the on-device provider, and never uploads anything.
+  Wallpaper apply uses `SET_WALLPAPER` (normal, auto-granted); the system-picker
+  fallback needs no permission.
 - Your app list is discovered through the system's `LauncherApps` service, which is how
   Android intends launchers to work. `QUERY_ALL_PACKAGES` is not used; a narrow `<queries>`
   entry for `MAIN`/`LAUNCHER` activities is.
-- Pinned apps, hidden apps, theme, layout and clock format are stored in local
+- Pinned apps, hidden apps, theme, layout, clock format, highlights, tasks,
+  wallpaper choice and calendar visibility are stored in local
   `SharedPreferences` on the device. They are never uploaded, and app backups exclude them.
 - Nothing is sent anywhere. There is no analytics, no account and no remote config.
 
@@ -154,6 +171,10 @@ on its own, and it can always be changed back.
 | [docs/ui-ux-verification.md](docs/ui-ux-verification.md) | What was mechanically verified, the regression checklist, and what remains open |
 | [docs/ui-ux-review/](docs/ui-ux-review/README.md) | Before-and-after screenshots of the redesign, and what they do and do not show |
 | [docs/build-and-release.md](docs/build-and-release.md) | Building, downloading artifacts, signing, troubleshooting |
+| [docs/wallpaper-and-lock-screen.md](docs/wallpaper-and-lock-screen.md) | Wallpaper templates, preview/apply flow, lock-screen capabilities and limits |
+| [docs/today-dashboard-and-calendar.md](docs/today-dashboard-and-calendar.md) | Highlights/tasks models, calendar source, agenda layouts, permissions |
+| [docs/interaction-behavior.md](docs/interaction-behavior.md) | Back, swipe/scroll ownership, paging, drawer, device differences |
+| [docs/implementation-report.md](docs/implementation-report.md) | Files changed, test results, known problems |
 
 ## Licence
 

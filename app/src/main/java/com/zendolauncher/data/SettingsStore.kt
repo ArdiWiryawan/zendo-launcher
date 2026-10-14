@@ -44,6 +44,11 @@ class SettingsStore(context: Context) {
         windowEnabled = prefs.getBoolean(KEY_WINDOW_ENABLED, false),
         windowStartMinute = prefs.getInt(KEY_WINDOW_START, DEFAULT_WINDOW_START),
         windowEndMinute = prefs.getInt(KEY_WINDOW_END, DEFAULT_WINDOW_END),
+        swipeUpEnabled = prefs.getBoolean(KEY_SWIPE_UP, true),
+        pagingEnabled = prefs.getBoolean(KEY_PAGING, true),
+        reduceMotion = prefs.getBoolean(KEY_REDUCE_MOTION, false),
+        shownCalendarIds = prefs.getStringSet(KEY_SHOWN_CALENDARS, null)?.mapNotNull { it.toLongOrNull() }?.toSet()
+            ?: emptySet(),
         // Migration runs here, on the read path, because this is the only place the store
         // ever learns that no layout has been written yet. It is idempotent: once a layout
         // is stored, the legacy keys are not consulted again. See migrateHome.
@@ -68,6 +73,10 @@ class SettingsStore(context: Context) {
             // next unrelated settings write; the gate clamps on read instead.
             putInt(KEY_WINDOW_START, next.windowStartMinute)
             putInt(KEY_WINDOW_END, next.windowEndMinute)
+            putBoolean(KEY_SWIPE_UP, next.swipeUpEnabled)
+            putBoolean(KEY_PAGING, next.pagingEnabled)
+            putBoolean(KEY_REDUCE_MOTION, next.reduceMotion)
+            putStringSet(KEY_SHOWN_CALENDARS, HashSet(next.shownCalendarIds.map { it.toString() }))
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
             putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
             putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
@@ -209,6 +218,10 @@ class SettingsStore(context: Context) {
         private const val KEY_HOME_PAGES = "home_pages"
         private const val KEY_HOME_ACTIVE_PAGE = "home_active_page_id"
         private const val KEY_HOME_PAGES_VERSION = "home_pages_version"
+        private const val KEY_SWIPE_UP = "swipe_up_enabled"
+        private const val KEY_PAGING = "paging_enabled"
+        private const val KEY_REDUCE_MOTION = "reduce_motion"
+        private const val KEY_SHOWN_CALENDARS = "shown_calendar_ids"
 
         /** Advisory, written beside the blob so a future change can tell old from malformed. */
         const val HOME_PAGES_VERSION = 1
@@ -245,4 +258,15 @@ data class LauncherSettings(
      * kept only so a downgrade still finds it; nothing reads it for display any more.
      */
     val home: HomeLayout = HomeLayout.DEFAULT,
+    /** Swipe up on Home chrome opens the drawer. Enabled by default. */
+    val swipeUpEnabled: Boolean = true,
+    /** Horizontal swipe pages Home. Enabled by default. */
+    val pagingEnabled: Boolean = true,
+    /** When on, programmatic page moves jump instead of animating. */
+    val reduceMotion: Boolean = false,
+    /**
+     * Calendar ids to show. Empty means all visible calendars. The selection UI writes
+     * ids here; the query filters on them.
+     */
+    val shownCalendarIds: Set<Long> = emptySet(),
 )
