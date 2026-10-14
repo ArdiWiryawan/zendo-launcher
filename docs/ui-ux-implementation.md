@@ -122,7 +122,11 @@ achievable and section 2 explains why, then substitutes a textual review.
   the same normalisation the sort uses (`letterOf`), with a single `#` bucket for digits and
   symbols. Closes P1-6. Effect: a user can jump to a letter instead of scrolling.
 - The per-row hairline is gone (`AppListRow`). Closes P1-5. Effect: the drawer reads as
-  one product with Home.
+  one product with Home. This also settles P2-9 for this list, which asked for the
+  separator to move above each row except the first or for the rules to go entirely; the
+  audit named the whitespace-only treatment as the alternative, and that is what shipped.
+  The `Hairline` that remains in this file is a rule under the search field, which divides
+  the field from the list rather than closing the list.
 - The empty state distinguishes loading from empty: `state.isLoading` shows "Looking for
   apps…", a blank query shows "No launchable apps found.", and a query shows "Nothing
   matches …". Closes P1-13. Effect: the drawer does not claim there are no
@@ -139,6 +143,10 @@ achievable and section 2 explains why, then substitutes a textual review.
   `QuietAction`, this closes P1-10. Effect: fewer accidental unpins and a row a screen
   reader can navigate.
 - The three toggles use `ToggleRow` and the two selectors use `ChoiceRow`, as above.
+- The two lists that do keep separators — pinned order and hidden apps — now draw each one
+  above a row rather than below it, so the rule no longer closes a list that is still open.
+  Closes P2-9 for this screen. Effect: a list that continues past the last visible row no
+  longer looks finished.
 - The Today copy changed. The note under "Show today" became "With this off, Home shows
   the clock, the date and your pinned apps only.", and the note under "Connect
   Zendo" states that Zendo exposes no planning API, so connecting it fetches nothing and
