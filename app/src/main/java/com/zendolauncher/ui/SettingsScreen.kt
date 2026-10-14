@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.zendolauncher.BuildConfig
+import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.theme.LauncherColors
@@ -220,6 +221,9 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 }
             }
 
+            Spacer(Modifier.height(LauncherSpace.md))
+            AccessWindowSection(viewModel, state.settings)
+
             Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("System settings")
             Spacer(Modifier.height(LauncherSpace.sm))
@@ -315,6 +319,66 @@ private fun PinnedOrderRow(
         )
     }
 }
+
+/**
+ * The access window as one compact block: the switch, the two ends, and the sentence
+ * that keeps the feature honest.
+ *
+ * It sits inside Intentional Pause rather than getting its own heading, because it has
+ * no effect on its own — it narrows a gate the section above already turns on. A window
+ * with the pause off is a setting that does nothing, so the copy opens with that
+ * condition instead of letting the user discover it by tapping an app.
+ *
+ * The ends are stepped in 30-minute increments. Entry is by tapping rather than typing:
+ * a text field would need a keyboard, parsing and a validation story to accept a range
+ * that [AccessWindow] already understands exactly.
+ */
+@Composable
+private fun AccessWindowSection(viewModel: LauncherViewModel, settings: LauncherSettings) {
+    Spacer(Modifier.height(LauncherSpace.md))
+    ToggleRow(
+        label = "Limit to a time window",
+        checked = settings.windowEnabled,
+        onCheckedChange = { viewModel.setWindowEnabled(it) },
+    )
+    Spacer(Modifier.height(LauncherSpace.xs))
+    SecondaryText(
+        "While this is on, a checked app opens straight through during the window below " +
+            "and takes the pause for the rest of the day — so the window is the stretch " +
+            "in which the pause is skipped. A window that ends before it starts is read " +
+            "as crossing midnight, so 22:00 to 02:00 works as written.",
+    )
+    Spacer(Modifier.height(LauncherSpace.sm))
+    StepperRow(
+        label = "Opens at",
+        valueText = AccessWindow.format(settings.windowStartMinute),
+        decreaseLabel = "Earlier",
+        increaseLabel = "Later",
+        onDecrease = { viewModel.setWindowStart(settings.windowStartMinute - WINDOW_STEP_MINUTES) },
+        onIncrease = { viewModel.setWindowStart(settings.windowStartMinute + WINDOW_STEP_MINUTES) },
+    )
+    StepperRow(
+        label = "Closes at",
+        valueText = AccessWindow.format(settings.windowEndMinute),
+        decreaseLabel = "Earlier",
+        increaseLabel = "Later",
+        onDecrease = { viewModel.setWindowEnd(settings.windowEndMinute - WINDOW_STEP_MINUTES) },
+        onIncrease = { viewModel.setWindowEnd(settings.windowEndMinute + WINDOW_STEP_MINUTES) },
+    )
+    Spacer(Modifier.height(LauncherSpace.xs))
+    // Said plainly, because the alternative is a user who believes they have locked
+    // themselves out system-wide and cannot work out why nothing else changed.
+    SecondaryText(
+        "The time is read once, when you tap an app here. Nothing runs in the background " +
+            "and nothing is scheduled, so a window that has passed does not close an app " +
+            "that is already open — and this gates launches from Zendo Launcher only. It " +
+            "does not block apps system-wide, and opening the same app from another " +
+            "launcher or from a notification is untouched.",
+    )
+}
+
+/** Half-hour steps: fine enough to place a window, coarse enough to reach by tapping. */
+private const val WINDOW_STEP_MINUTES = 30
 
 private fun openSystemSettings(context: Context, action: String, fallbackAction: String? = null) {
     try {

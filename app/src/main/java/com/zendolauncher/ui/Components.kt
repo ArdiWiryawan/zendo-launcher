@@ -325,6 +325,64 @@ fun <T> ChoiceRow(
     }
 }
 
+/**
+ * A numeric value adjusted in place, one step per tap. The value between the two actions
+ * is the control's readout and its accessible value at once.
+ *
+ * Deliberately not a text field and not a Material time picker: typing needs a keyboard
+ * and validation for what is a 24-hour range, and a picker dialog is the loudest surface
+ * this app would own. Two words either side of a number say the same thing in the visual
+ * language the rest of Settings already uses.
+ *
+ * The action labels are passed in rather than generated, because they can run past the
+ * row at a raised font scale; when that happens the caller supplies the short form.
+ */
+@Composable
+fun StepperRow(
+    label: String,
+    valueText: String,
+    onDecrease: () -> Unit,
+    onIncrease: () -> Unit,
+    decreaseLabel: String,
+    increaseLabel: String,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LauncherColors.current
+    Row(
+        modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = LauncherSpace.touchTarget),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            style = LauncherType.body,
+            color = palette.primary,
+            modifier = Modifier.weight(1f),
+        )
+        QuietAction(
+            text = decreaseLabel,
+            onClick = onDecrease,
+            modifier = Modifier.semantics { contentDescription = "$decreaseLabel $label" },
+        )
+        Text(
+            text = valueText,
+            style = LauncherType.action,
+            color = palette.primary,
+            // The readout is not itself clickable, so a screen reader would otherwise
+            // reach the two actions without ever being told what they are changing.
+            modifier = Modifier
+                .padding(horizontal = LauncherSpace.md)
+                .semantics { contentDescription = "$label $valueText" },
+        )
+        QuietAction(
+            text = increaseLabel,
+            onClick = onIncrease,
+            modifier = Modifier.semantics { contentDescription = "$increaseLabel $label" },
+        )
+    }
+}
+
 @Composable
 fun EmptyNote(text: String, modifier: Modifier = Modifier) {
     Text(

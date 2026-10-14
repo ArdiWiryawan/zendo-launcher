@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Quiet hour, light surfaces: the same horizon and two halves with tones inverted, so
+  the pair reads as one idea rather than two drawings.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:fillColor="#FF6E6E6C"
+        android:pathData="M6,23.5H42V24.5H6Z" />
+    <path
+        android:fillColor="#FF111112"
+        android:pathData="M12,23.5A12,12 0 0 1 36,23.5Z" />
+    <path
+        android:fillColor="#FFE2E2DE"
+        android:pathData="M36,24.5A12,12 0 0 1 12,24.5Z" />
+</vector>

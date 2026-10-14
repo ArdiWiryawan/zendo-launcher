@@ -37,6 +37,9 @@ class SettingsStore(context: Context) {
         onboardingSeen = prefs.getBoolean(KEY_ONBOARDING_SEEN, false),
         distract = prefs.getStringSet(KEY_DISTRACT, null)?.toSet() ?: emptySet(),
         pauseEnabled = prefs.getBoolean(KEY_PAUSE, false),
+        windowEnabled = prefs.getBoolean(KEY_WINDOW_ENABLED, false),
+        windowStartMinute = prefs.getInt(KEY_WINDOW_START, DEFAULT_WINDOW_START),
+        windowEndMinute = prefs.getInt(KEY_WINDOW_END, DEFAULT_WINDOW_END),
     )
 
     fun update(transform: (LauncherSettings) -> LauncherSettings) {
@@ -52,6 +55,11 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_ONBOARDING_SEEN, next.onboardingSeen)
             putStringSet(KEY_DISTRACT, HashSet(next.distract))
             putBoolean(KEY_PAUSE, next.pauseEnabled)
+            putBoolean(KEY_WINDOW_ENABLED, next.windowEnabled)
+            // Stored raw. Normalising here would silently move a mistyped entry on the
+            // next unrelated settings write; the gate clamps on read instead.
+            putInt(KEY_WINDOW_START, next.windowStartMinute)
+            putInt(KEY_WINDOW_END, next.windowEndMinute)
         }
         _settings.value = next
     }
@@ -99,6 +107,14 @@ class SettingsStore(context: Context) {
         private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
         private const val KEY_DISTRACT = "distract_set"
         private const val KEY_PAUSE = "pause_enabled"
+        private const val KEY_WINDOW_ENABLED = "access_window_enabled"
+        private const val KEY_WINDOW_START = "access_window_start_minute"
+        private const val KEY_WINDOW_END = "access_window_end_minute"
+
+        /** 22:00 — a default the user is expected to change, not a recommendation. */
+        const val DEFAULT_WINDOW_START = 22 * 60
+        /** 02:00 — wraps past midnight, so the default exercises the wrap-around branch. */
+        const val DEFAULT_WINDOW_END = 2 * 60
     }
 }
 
@@ -113,4 +129,11 @@ data class LauncherSettings(
     val onboardingSeen: Boolean = false,
     val distract: Set<String> = emptySet(),
     val pauseEnabled: Boolean = false,
+    /**
+     * Optional daily access window, minute-of-day local. Off by default and only ever
+     * consulted by the pause gate — nothing polls it, so it is a launch-time check.
+     */
+    val windowEnabled: Boolean = false,
+    val windowStartMinute: Int = SettingsStore.DEFAULT_WINDOW_START,
+    val windowEndMinute: Int = SettingsStore.DEFAULT_WINDOW_END,
 )

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Quiet hour: a horizon line with dawn above it and rest below, drawn as fills rather
+  than outlines so the two halves read at any size. Monochrome, no text, no controls.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <!-- Horizon: the same hairline the wallpapers use, so the mark belongs to the set. -->
+    <path
+        android:fillColor="#FF8A8A88"
+        android:pathData="M6,23.5H42V24.5H6Z" />
+    <!-- Dawn: a crescent opening downward, the half of the disc above the horizon. -->
+    <path
+        android:fillColor="#FFF2F2F0"
+        android:pathData="M12,23.5A12,12 0 0 1 36,23.5Z" />
+    <!-- Rest: the mirrored half below, quieter so the two halves cannot be swapped. -->
+    <path
+        android:fillColor="#FF1F1F21"
+        android:pathData="M36,24.5A12,12 0 0 1 12,24.5Z" />
+</vector>

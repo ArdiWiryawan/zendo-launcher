@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Window, light surfaces: the same open ring and horizon in the light tones, so the pair
+  reads as one mark in two themes rather than as two drawings.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp"
+    android:height="48dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <path
+        android:pathData="M40,24A16,16 0 1 0 24,40"
+        android:strokeColor="#FF111112"
+        android:strokeWidth="2.5" />
+    <path
+        android:fillColor="#FF6E6E6C"
+        android:pathData="M8,44H40V45H8Z" />
+</vector>

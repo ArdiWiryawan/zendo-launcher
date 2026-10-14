@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.time.LocalTime
 
 enum class Screen { ONBOARDING, HOME, APPS, SETTINGS }
 
@@ -283,12 +284,24 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /**
      * Launcher-level pre-launch only: a distraction-listed target with the pause on
      * opens the calm dialog instead of launching directly. Everything else launches.
-     * ponytail: per-launch gate covers conscious entry up to daily use; upgrade to an
-     * in-memory `allowUntilMs: Map<String, Long>` check here when timed access windows are needed.
+     *
+     * The optional access window narrows that further: while it is on, a listed app
+     * passes straight through during the window and only pauses outside it. Read from
+     * the device clock at the moment of the tap — there is no timer, no polling and no
+     * scheduled wake-up, so the gate costs nothing while the launcher is idle and the
+     * manifest stays free of ALARM/background-service entries.
      */
     fun launch(target: LaunchTarget) {
         val settings = settingsStore.settings.value
-        if (settings.pauseEnabled && target.key in settings.distract) {
+        val pause = AccessWindow.shouldPause(
+            pauseEnabled = settings.pauseEnabled,
+            inDistract = target.key in settings.distract,
+            windowEnabled = settings.windowEnabled,
+            nowMinute = nowMinuteOfDay(),
+            startMinute = settings.windowStartMinute,
+            endMinute = settings.windowEndMinute,
+        )
+        if (pause) {
             _pendingPause.value = target
         } else {
             appLauncher.launch(target)
@@ -366,6 +379,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setZendoEnabled(enabled: Boolean) = settingsStore.update { it.copy(zendoEnabled = enabled) }
 
     fun setPauseEnabled(enabled: Boolean) = settingsStore.update { it.copy(pauseEnabled = enabled) }
+
+    /**
+     * The access-window toggle. Its values live on even while it is off, so turning it
+     * back on restores the last window rather than resetting it.
+     */
+    fun setWindowEnabled(enabled: Boolean) = settingsStore.update { it.copy(windowEnabled = enabled) }
+
+    fun setWindowStart(minuteOfDay: Int) =
+        settingsStore.update { it.copy(windowStartMinute = minuteOfDay.coerceIn(0, AccessWindow.MINUTES_PER_DAY - 1)) }
+
+    fun setWindowEnd(minuteOfDay: Int) =
+        settingsStore.update { it.copy(windowEndMinute = minuteOfDay.coerceIn(0, AccessWindow.MINUTES_PER_DAY - 1)) }
+
+    /**
+     * The device's local wall-clock minute-of-day. Read at the moment of a tap and
+     * nowhere else — no timer and no polling, so an idle launcher never wakes for this.
+     *
+     * A settable property rather than a direct [LocalTime.now] call so the access-window
+     * tests can place the launcher at a fixed minute; nothing in the app assigns it.
+     */
+    internal var nowMinuteOfDay: () -> Int = {
+        val now = LocalTime.now()
+        now.hour * 60 + now.minute
+    }
 
     suspend fun bitmapFor(target: LaunchTarget, sizePx: Int): Bitmap? =
         withContext(Dispatchers.IO) { appRepository.bitmapFor(target, sizePx) }

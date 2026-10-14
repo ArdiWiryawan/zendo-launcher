@@ -71,3 +71,10 @@ Pause is launcher-level pre-launch only, Chrome URLs not intercepted (`SettingsS
 - Each System settings row on a real device, including the pre-Q Wi-Fi fallback and the `ActivityNotFoundException` toast path.
 - `excludeFromRecents` + `singleTask` return-to-home.
 - Airplane-mode full run; zero permission dialogs; no egress.
+
+## Release containing this audit
+
+0.2.3 (versionCode 5) is the release that contains this audit. Its APK SHA-256 is
+`57dfa7a13d910fcf014fa97fa4cdc005f272908d9312de23329fbb5c60cca0f2`. That build is
+**NOT device-validated** — every runtime claim above remains unverified on hardware, and the
+manual tests listed in the previous section are still outstanding.
