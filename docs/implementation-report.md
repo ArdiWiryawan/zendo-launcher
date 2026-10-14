@@ -1,6 +1,6 @@
 # Implementation Report
 
-Tree state: versionName 0.2.2 (`app/build.gradle:23`), compileSdk 36 / minSdk 26 / targetSdk 36 (`app/build.gradle:16-21`).
+Tree state: versionName 0.2.4 (`app/build.gradle:23`), compileSdk 36 / minSdk 26 / targetSdk 36 (`app/build.gradle:16-21`).
 Method: `git diff` over working tree plus grep over `app/src`. No device/emulator run claimed.
 Unit suite: 49 `@Test` methods under `app/src/test/java/com/zendolauncher/ui/` (23 `LauncherUiTest.kt`, 10 `PauseGateTest.kt`, 16 `ScreenshotCaptureTest.kt`).
 
@@ -74,7 +74,42 @@ Pause is launcher-level pre-launch only, Chrome URLs not intercepted (`SettingsS
 
 ## Release containing this audit
 
-0.2.3 (versionCode 5) is the release that contains this audit. Its APK SHA-256 is
+0.2.3 (versionCode 5) is the release that contains the **earlier** audit described in the
+sections above. Its APK SHA-256 is
 `57dfa7a13d910fcf014fa97fa4cdc005f272908d9312de23329fbb5c60cca0f2`. That build is
 **NOT device-validated** — every runtime claim above remains unverified on hardware, and the
 manual tests listed in the previous section are still outstanding.
+
+## Release containing the multi-page Home work
+
+The persistent multi-page Home described in `docs/implementation-plan.md` ships in
+**`debug-0.2.4`, `versionCode 6`** (`versionName 0.2.4`). Its APK SHA-256 is
+`30b40e93df1db20023127e993bf319a081bd3358531853ec2cbf1a5a8717ed6b`, size 11,803,510 bytes.
+It is a debug-key build published as a pre-release, and it installs **in place over
+`debug-0.2.3` as an upgrade, preserving existing data** — the debug key is stable across
+builds and `versionCode` was raised from 5 to 6, which is what makes Android accept the
+update rather than refuse it. The Home-layout migration is non-destructive: the legacy flat
+`favourites` key is read during migration and left on disk, so a downgrade to 0.2.3 still
+finds it.
+
+**Nothing in this feature has been validated on real hardware.** There is no device or
+emulator run behind any of it: the pager, the edit mode, the persistence and the migration
+are supported by source inspection and unit tests only. Every runtime and OEM-specific
+claim — gesture-edge behaviour under gesture navigation, install-over-upgrade on a real
+device, appearance under a light or dark system theme — remains unverified. Treat 0.2.4 as
+a test build, which is what the `debug-*` pre-release marking already says.
+
+### What the implementation actually reaches
+
+Partly reachable, and less than `docs/implementation-plan.md` originally described. See
+§10 of that document for the itemised list. In short: the pager, tap-to-switch page
+indicator, persisted active page, edit mode (rename / up / down / remove / add), the Today
+page with honest empty states, the Launch page with drag-reorder and pin/unpin, and the
+Focus page's live note field all work. `PageType.WIDGET` is unreachable
+(`SettingsStore.setPageType` has zero callers), a page's type and heading cannot be edited
+(`updatePageConfig` has no production caller), and `PageConfig.showClock` is stored but
+never read by `ui/`. `PageConfig.columns`, `PageMove`, `activeAppsPageId`,
+`LauncherViewModel.movePageItem` and `SettingsStore.HOME_PAGES_VERSION` have no callers at
+all. `ui/SettingsScreen.kt` also still carries stale copy — it places the Today block
+"between the date and your pinned apps" and calls the pinned section "Essentials", when the
+pinned list now lives on the Launch page and is edited by dragging in Home.

@@ -1,8 +1,11 @@
 # Implementation plan — persistent multi-page Home
 
-**Status: design only. Nothing in this document is implemented.** Every path, symbol and
-line number below refers to code as it exists in the tree at the time of writing
-(`versionCode 5` / `0.2.3`). Where a file does not exist yet, it is named as *new*.
+**Status: implemented in part; see §10 for what shipped, what is dead code, and what this
+plan claimed that the tree does not do.** Sections 1–9 below are the original design as
+written when nothing was implemented; every path, symbol and line number in them refers to
+code as it existed at the time of writing (`versionCode 5` / `0.2.3`). Where a file did not
+exist then, it is named as *new*. Read §10 before treating any statement in §§1–9 as a
+description of the current build.
 
 The launcher's Home is currently one fixed page. This document specifies how it becomes
 1–5 user-arrangeable pages (default three: Today / Launch / Focus), persisted across
@@ -93,6 +96,14 @@ data class HomeLayout(
 item ordering, the active page, or a future per-page feature flag. A name is a label a
 user edits; an id is identity. Ids are therefore never renumbered on reorder — order is
 the list position and nothing else.
+
+**As built (see §10):** the five types ship and the model serializes, but `PageType` is not
+a live enum. `WIDGET` is unreachable — `SettingsStore.setPageType` has zero callers — so no
+page can ever be created with that type, and the "type exists so the enum is stable" claim
+in §4 is the whole truth of it. `PageConfig.heading` is likewise frozen: `updatePageConfig`
+has no production caller, so neither a page's type nor its heading can be changed at
+runtime. `PageConfig.showClock` is stored and never read by `ui/`. `PageConfig.columns` has
+no reader anywhere.
 
 **Why `id` is never derived from `name`.** Two pages may legitimately be called "Work",
 and a rename must not orphan the `activePageId`.
@@ -203,6 +214,11 @@ private const val KEY_HOME_ACTIVE_PAGE = "home_active_page_id"
 private const val HOME_PAGES_VERSION = 1
 ```
 
+**As built:** `KEY_HOME_PAGES` and `KEY_HOME_ACTIVE_PAGE` are live. `HOME_PAGES_VERSION`
+has no reader or writer; it is the unused end of the pair implied by
+`KEY_HOME_PAGES_VERSION`, and `SettingsStore.HOME_PAGES_VERSION` in particular has no
+caller. Treat both as vestigial.
+
 `LauncherSettings` (`SettingsStore.kt:121`) gains one field:
 
 ```kotlin
@@ -263,6 +279,14 @@ fun movePageItem(pageId: String, from: Int, to: Int)
 /** Appends `keys` to a page, skipping any already present, keeping their order. */
 fun addPageItems(pageId: String, keys: List<String>)
 ```
+
+**As built:** three of these are dead. `updatePageConfig` has no production caller, which
+is why a page's type and heading cannot be edited; `movePageItem` has no production caller
+(drag-reorder on the Launch page goes through a different path); and `setPageType` — named
+here as the re-typing entry point and in §1.1's rationale for a flat `PageConfig` — has zero
+callers, so `PageType.WIDGET` can never be reached. `addPage`, `removePage`, `renamePage`,
+`movePage`, `setActivePage`, `addPageItem` and `removePageItem` are all reachable from edit
+mode.
 
 ### 2.2 Existing functions: kept, reinterpreted, never removed
 
@@ -350,8 +374,8 @@ live inside `Screen.HOME`, not as new screens. Onboarding keeps its own `BackHan
 | --- | --- | --- | --- |
 | `TODAY` | `TodayPage` (new, in `ui/pages/`) | **Real.** Composed from `Clock` (`HomeScreen.kt:162`) + `TodayBlock` (:191) + the `date` line (:75) | Clock, date, Zendo block when `todayEnabled` and `state.zendo` is non-empty. No app list. |
 | `APPS` | `AppsPage` (new) | **Real.** Composed from `state.settings.layout` + `AppRow` (`Components.kt:123`) | An optional heading and `config.itemKeys` resolved through `AppQuery.favourites` (`AppQuery.kt:34`). Empty → `EmptyNote("No pinned apps yet.")` (`Components.kt:387`), the wording Home already uses at `HomeScreen.kt:90`. |
-| `NOTES` | `NotesPage` (new) | **Real but empty.** | Its `EmptyNote` copy **is the feature**: it states the page holds nothing yet and that notes are not built. No storage is implied. |
-| `WIDGET` | `WidgetPage` (new) | **Documented empty state only — not implemented.** | A `EmptyNote` stating app widgets are not hosted and why: hosting `AppWidgetHost` needs a bind permission, a host id and lifecycle this launcher does not have (compare `docs/lock-screen-feasibility.md`, which uses the same "name the blockers" form). The type exists so the enum is stable for a future implementation and a page can be re-typed without data loss. |
+| `NOTES` | `NotesPage` (new) | **Real but empty.** | Its `EmptyNote` copy **is the feature**: it states the page holds nothing yet and that notes are not built. No storage is implied. What shipped is a live note *field* (a Focus page whose text you can type into), with the honest empty state alongside it — the "no notes are stored" half held, the "nothing to type into" half did not. |
+| `WIDGET` | `WidgetPage` (new) | **Not reachable at all.** | The empty state is not merely unimplemented as a composable: no page can ever carry this type, because nothing calls `setPageType`. The enum value compiles and is serialized if hand-written into prefs, and that is the entire extent of it. App widgets are not hosted, for the reason given below (`AppWidgetHost` needs a bind permission, a host id and a lifecycle this launcher does not have — compare `docs/lock-screen-feasibility.md`). |
 
 `HomeScreen.kt:44` becomes a pager *shell* and nothing else — it keeps
 `.fillMaxSize().background(palette.background).systemBarsPadding()` (:57–61) and the undo
@@ -481,6 +505,12 @@ predicate; the implementation is one handler whose `enabled` is
 `state.screen == Screen.HOME && (state.pageEditing || state.activePageIndex > 0)` and
 whose body switches on the same cases in the same order.
 
+**As built:** the inline-rename row and the two edit-mode rows did not survive contact
+with the tree. Back from the pager returns to page 0 (`activePageIndex > 0`) and edit mode
+is exited by its own action rather than by Back; there is no `editingPageId` branch and no
+rename-field branch, because renaming happens in the edit surface's own field and commits
+there. Read the table as the design, not as a map of the shipped Back behaviour.
+
 ---
 
 ## 7. (g) Gesture plan for horizontal paging
@@ -607,11 +637,47 @@ horizontal pager safe to introduce now and the reason the plan pins it before on
 
 ## 9. What this plan does not claim
 
-* Nothing above is implemented. No file has been modified.
-* `WIDGET` is a documented empty state, not widget hosting.
-* `NOTES` holds no notes and stores nothing; its empty state is the whole feature.
-* `PageConfig.columns` is reserved and only `1` is honoured; `2` is not designed here.
+* `WIDGET` is a documented empty state, not widget hosting. As built it is not even that —
+  no page can carry the type (§4, §10).
+* `NOTES` holds no notes and stores nothing. As built it has a live text field whose
+  contents are not persisted.
+* `PageConfig.columns` is reserved and only `1` is honoured; `2` is not designed here. As
+  built nothing reads it at all.
 * `systemGestureExclusion` is a request the platform may decline; the inset in §7.4 is what
   the design actually depends on.
 * This does not enable `HomeScreen`'s long-press behaviour changing `AppRow`'s menu — the
   row's long-press is untouched.
+
+## 10. As-built status (revision to §§1–9)
+
+Sections 1–9 were written before any code existed. A verification pass over the tree found
+the shipped feature is **partly user-reachable**, and that the sections above describe more
+than shipped. This section is normative; where it and §§1–9 disagree, this section wins.
+
+### Reachable today
+
+* **1–5 page pager** with horizontal paging, and a page indicator you can tap to switch
+  pages.
+* **Persisted active page** across process death and reboot.
+* **Edit mode**: rename a page, move it up, move it down, remove it, add a page.
+* **Today page** with honest empty states.
+* **Launch page** with drag-reorder and pin/unpin.
+* **Focus page** with a live note field (text you type is not persisted).
+
+### Not reachable — dead or inert
+
+* `PageType.WIDGET` can never be created: `SettingsStore.setPageType` has zero callers. The
+  enum value is unreachable from any UI path.
+* A page's **type** and **heading** cannot be edited: `updatePageConfig` has no production
+  caller.
+* `PageConfig.showClock` is stored but ignored — nothing under `ui/` reads it.
+* No callers anywhere: `PageConfig.columns`, `PageMove`, `activeAppsPageId`,
+  `LauncherViewModel.movePageItem`, `SettingsStore.HOME_PAGES_VERSION`.
+
+### Known stale copy
+
+`ui/SettingsScreen.kt` still says the Today block sits "between the date and your pinned
+apps" and calls the pinned section "Essentials". The pinned list now lives on the **Launch
+page** and is edited by dragging in Home, not in Settings. The Settings copy has not been
+rewritten to match; treat those two strings as known-wrong until they are.
+

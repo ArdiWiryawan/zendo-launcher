@@ -57,8 +57,12 @@ All apps   Settings
 
 The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing to install.
 
-**Latest debug build:** [Releases → Zendo Launcher 0.2.3 (debug test build)](https://github.com/ArdiWiryawan/zendo-launcher/releases/tag/debug-0.2.3)
-— download `ZendoLauncher-debug.apk` directly, no unzipping.
+**Latest debug build:** [Releases → all Zendo Launcher builds](https://github.com/ArdiWiryawan/zendo-launcher/releases)
+— open the newest `debug-*` release and download `ZendoLauncher-debug.apk` directly, no
+unzipping. This link deliberately points at the releases list, not at a version: every
+build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
+a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
+The newest build is currently `debug-0.2.4` (versionCode 6, sha256 `30b40e93…`).
 
 To build a fresh one yourself:
 
@@ -67,7 +71,7 @@ To build a fresh one yourself:
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
-Pushing a tag like `v0.2.2` builds a signed release APK and attaches it to a GitHub
+Pushing a tag like `v0.2.4` builds a signed release APK and attaches it to a GitHub
 Release, once release signing secrets are configured. See
 [docs/build-and-release.md](docs/build-and-release.md).
 
