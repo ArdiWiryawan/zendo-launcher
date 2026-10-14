@@ -48,6 +48,13 @@ current state, and this file for what was wrong.
 
 ## Screen inventory
 
+The brief names the Home screen as the highest design priority. The findings do not simply
+follow that ranking by count — the app list carries more of them, because it has more
+controls that can go wrong — but the Home findings are the ones that decide what the product
+is: the clock (P0-7), the empty Essentials state (P1-8), the bottom action row (P1-1, P2-6),
+and the top offset (P2-3). Home is also the screen with the least on it, which is the point;
+see the empty-space rule in `docs/design-system.md`.
+
 | Screen | File | Lines | What it does | What it is missing |
 | --- | --- | --- | --- | --- |
 | Home | `ui/HomeScreen.kt` | 179 | Clock, date, optional Today block, Essentials list, bottom action row | Onboarding; a visible way to add an app to Essentials; a stable top offset; any inset handling beyond system bars |
