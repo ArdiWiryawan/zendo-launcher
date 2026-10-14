@@ -154,6 +154,13 @@ Section 2 is the before-and-after review, which now rests on real captures in
   second pass".
 - A "Reopen onboarding" action is added under About. Closes the reachability half
   of P1-2. Effect: the first-run explanation is not a one-time, unrecoverable page.
+- The Zendo note no longer points at a file in this repository. The pre-redesign copy
+  ended "See docs/zendo-integration.md.", which is a path inside the source tree shown to
+  someone holding a phone; it was readable only by whoever built the app. The note now
+  states the same fact in the app's own words. No audit finding covers this, because the
+  audit was reading for layout and semantics rather than for who the copy was written for;
+  it is visible in `before-settings.png` next to `after-settings.png` in
+  `docs/ui-ux-review/`.
 
 ### Onboarding
 
