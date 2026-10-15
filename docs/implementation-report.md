@@ -1,5 +1,102 @@
 # Implementation Report
 
+## 0.5.0 — Intentional launcher: quieter Today, agenda-only Plan, manual bridge
+
+Tree state: versionName 0.5.0 / versionCode 13 (`app/build.gradle`).
+
+The refinement brief's phase order was followed, not a rewrite: data layer first,
+then screens, then polish. The Focus timer was removed from the launcher entirely —
+sessions belong to the Zendo app; the note page keeps its persistent note. Zendo
+integration is now a manual, one-way snapshot file; no live source, token or
+network claim survives in the tree.
+
+### What shipped (by phase)
+
+1. **Data layer** (commit 12836c6): `core/DayRecord.kt` (day records keyed by
+   local date with a stable id, `MAX_DAYS = 400`), `core/ZendoBridge.kt` +
+   `core/BridgePlanner.kt` (strict snapshot v1 parse; merge fills blanks and
+   refreshes only records previously imported, replace-imported removes only
+   `origin = zendo-pwa` for the target date; future-dated snapshots rejected),
+   `data/HistoryStore.kt` (capture today on content change; past records never
+   touched), `data/BridgeCodec.kt` (snapshot/backup JSON; strict validation;
+   backup contains no package names and no calendar ids).
+2. **History + Today**: `ui/HistoryScreen.kt` (newest-first day records,
+   loading/empty states, export backup + clear with confirmation); Today shows
+   only the Today Action, Highlight, Tasks and one small History line. Upcoming,
+   the Focus shortcut and the usage summary are gone from Today.
+3. **Plan rework**: `ui/PlanPage.kt` replaces the old Plan & Focus page —
+   compact prev/next date navigation, the full chronological agenda for the
+   chosen day, all-day labels, an in-progress marker ticking per minute, and
+   distinct states (permission / no calendars / none chosen / sync off / no
+   events / error with stale results kept).
+4. **Explicit calendar selection**: `shownCalendarIds` empty now means *none*,
+   never *all*. One-time migration (`calendarSelectionSchema` +
+   `settleCalendarSelection`) materializes the previous view onto the first
+   readable calendar list, intersects the legacy `calendarGoogleOnly` flag until
+   migrated, then clears it; the Google-only toggle is gone from the UI.
+5. **Essentials**: pin limit is 5 or 6 by user choice
+   (`MIN/MAX/DEFAULT_PIN_LIMIT`); a full page refuses with "This page is full.
+   Unpin an app first." instead of silently doing nothing; grayscale icons are
+   the default (`LocalMonochromeIcons` + `ColorMatrix` desaturation) with an
+   Appearance toggle; no folders, badges or usage counts exist.
+6. **Screen Time**: off and unrendered by default; enabling opens
+   `ACTION_USAGE_ACCESS_SETTINGS` once, the grant is re-verified read-only on
+   activity resume (no repeat prompts), "Hide summary" is separate, and all
+   queries stop when the feature is off.
+7. **Wallpapers**: three designs (Quiet Stone default; "Kembali ke yang
+   penting."; "Less, but better" + ZENDO wordmark), 9:20 geometry with the top
+   third kept clear, official `WallpaperManager` FLAG_SYSTEM/FLAG_LOCK,
+   Lock/Both offered only when `lockTargetSupported` reports them, an honest
+   system-picker fallback, and "Applied" only after the API confirms.
+8. **Settings**: grouped Apps / Calendar / Zendo / History / Screen Time /
+   Wallpaper / Appearance (plus Setup & permissions, Home app, Intentional
+   Pause, System settings, Privacy, About). The old "Connect Zendo" toggle is
+   gone; the Zendo and History groups carry the SAF pickers, previews and
+   confirmations.
+
+### Files changed (vs 0.4.1)
+
+Added: `core/CalendarCache.kt`, `core/DayRecord.kt`, `core/Origins.kt`,
+`core/ZendoBridge.kt`, `core/BridgePlanner.kt`, `data/HistoryStore.kt`,
+`data/BridgeCodec.kt`, `ui/HistoryScreen.kt`, `ui/PlanPage.kt`,
+`ui/DataDialogs.kt`, and their tests.
+
+Removed: `core/FocusSession.kt`, `core/TodaySelector.kt`,
+`core/UpcomingMerge.kt`, `data/FocusStore.kt`, `platform/ZendoSource.kt`,
+`model/ZendoToday.kt`, `ui/PlanFocusPage.kt`, and their tests. The calendar
+staleness rule was preserved as `core/CalendarCache.kt`.
+
+Changed: `LauncherViewModel.kt`, `LauncherActivity.kt`, `HomeScreen.kt`,
+`TodayDashboard.kt`, `CalendarScreen.kt`, `SettingsScreen.kt`, `AppListScreen.kt`,
+`Components.kt`, `HighlightOverlays.kt`, `SettingsStore.kt`, `WallpaperStore.kt`,
+`core/WallpaperTemplate.kt`, `platform/WallpaperApplier.kt`,
+`ui/WallpaperScreen.kt`, `app/build.gradle` (0.5.0/13), README and docs.
+
+### Build and test results
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 0 failures.
+- `:app:lintDebug` run; `abortOnError false` per project config.
+- `:app:assembleDebug` BUILD SUCCESSFUL (local); the APK is attached to the
+  `debug-0.5.0` pre-release.
+
+### Verification status
+
+- Everything above is JVM/Robolectric + source-level verification only.
+- No physical device run, no live Google account, no OEM lock-screen run: every
+  claim about FLAG_LOCK being honored, real sync state, or system-Settings
+  return flows remains a design + test claim, not a device-verified one. The
+  checks that require hardware are listed in
+  `docs/manual-device-test-plan.md`.
+
+### Remaining limitations
+
+- The bridge is manual and one-way by design; no background sync, no account.
+- The Zendo PWA export is a separate file the user moves by hand (SAF).
+- No month grid, no calendar writes, no widget hosting (unchanged from 0.4.x).
+- Usage numbers stay device-only and are never uploaded.
+
+---
+
 ## 0.4.1 — Calendar agenda reliability, wallpaper lifecycle, tasks coherence
 
 Tree state: versionName 0.4.1 / versionCode 12 (`app/build.gradle`).

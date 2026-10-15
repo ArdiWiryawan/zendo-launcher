@@ -1,5 +1,19 @@
 # Zendo integration audit
 
+> **0.5.0 status — supersedes the "Today block" plan below.** The launcher ships
+> no live Zendo source: `platform/ZendoSource.kt`, `model/ZendoToday.kt` and
+> `core/TodaySelector.kt` were deleted. Integration is now a **manual, one-way
+> snapshot file**: the Zendo PWA exports
+> `{"format":"zendo-launcher-bridge","schemaVersion":1,"source":"zendo-pwa",…}`,
+> the user picks it with the system file picker (SAF), and a preview shows
+> exactly what would change before anything is written. Merge fills blanks and
+> refreshes only records previously imported from Zendo; "Replace imported"
+> removes only `origin = zendo-pwa` records for that date; local text is never
+> overwritten; future-dated snapshots are rejected; re-importing the same file
+> is a no-op. There is no backend, no token, no OAuth, and no two-way sync. The
+> audit below is kept because the "no API" verdict still explains *why* the
+> bridge is a file.
+
 ## Verdict
 
 **No.** Zendo exposes **no HTTP/REST/GraphQL API for planning data.** The only
@@ -225,16 +239,14 @@ data class ZendoToday(
 - If neither is accepted, ship the feature **absent**, not as a best-effort read of
   a private table.
 
-### The selector half already ships, with no source behind it
+### The selector was removed in 0.5.0
 
-`core/TodaySelector.kt` (`ZendoDayPlan`, `TodaySelector.select`) already encodes
-the row-selection rule above — today's `dayPlans` entry, newest wins, blank fields
-dropped — and is covered by `core/TodaySelectorTest.kt` (6 tests). It has **no
-production caller**: no `ZendoSource` implementation exists, and
-`platform/ZendoSource.kt` ships only `UnavailableZendoSource`, whose `load()`
-returns null. It is code prepared for a source, not a working feature, so its
-presence is not evidence that the Today block works; `ZendoToday.practices` is
-never populated by anything.
+The 0.3.x tree carried `core/TodaySelector.kt` with no source behind it; 0.5.0
+deleted it together with `platform/ZendoSource.kt` and `model/ZendoToday.kt`
+rather than keep dead plumbing. What replaced it is the manual bridge file
+described at the top of this document — `core/ZendoBridge.kt`,
+`core/BridgePlanner.kt`, `data/BridgeCodec.kt`, `data/HistoryStore.kt` — plus
+the "Export for Zendo Launcher" action in the Zendo PWA.
 
 ## Explicit non-goals
 
@@ -261,5 +273,5 @@ never populated by anything.
 - Semantics of "selected practices" — no such concept exists in the types.
 - Whether planning data is reachable by any route other than the owner-authed
   `zendo_state` row — none found, but the live deployment was not probed.
-- The Today block's status in the launcher: the selector is written and tested but
-  has no production caller, so nothing reads Zendo today. See the boundary section.
+- Nothing in the launcher reads Zendo over any network path; the bridge is a
+  file the user moves by hand, so live Zendo state stays unverified by design.

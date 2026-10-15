@@ -1,7 +1,8 @@
 # Today Dashboard and Calendar
 
-Scope: versionName 0.3.0. Method: source read + unit tests (`HighlightTest`,
-`TaskItemTest`, `CalendarWeekTest`, codec tests, `LauncherUiTest`).
+Scope: versionName 0.5.0 (first written for 0.3.0; kept current since). Method:
+source read + unit tests (`HighlightTest`, `TaskItemTest`, `CalendarWeekTest`,
+`CalendarCacheTest`, `CalendarPermissionTest`, codec tests, `LauncherUiTest`).
 
 ## Layout
 
@@ -9,8 +10,10 @@ Scope: versionName 0.3.0. Method: source read + unit tests (`HighlightTest`,
 `EEEE, d MMMM`, title "Today.", hairline, then `ui/TodayDashboard.kt`
 `TodayDashboard` when `settings.todayEnabled`, else the hidden note.
 One coherent page with hairlines; no cards, no shadows. Sections:
-Highlights → hairline → Tasks → hairline → Upcoming. Focus shortcut stays
-below when a NOTES page exists.
+Today action → hairline → Highlights → hairline → Tasks → hairline → a small
+"History" line. Upcoming no longer lives here: the Plan page shows the full
+agenda for one chosen day. The Focus shortcut was removed with the focus timer
+in 0.5.0; the NOTES page keeps its persistent note only.
 
 ## Highlights
 
@@ -77,31 +80,36 @@ the permission footprint at read-only `READ_CALENDAR`.
 **Google identification and selection.** `listCalendars` reads `ACCOUNT_NAME`
 and `ACCOUNT_TYPE`; `DeviceCalendar.isGoogle` is true only for
 `accountType == "com.google"`. The Calendar screen groups calendars by
-account ("addr@gmail.com · Google" vs "On this device") and offers
-"Google calendars only": when on, the agenda query filters to Google ids,
-and an explicit empty Google set yields an empty agenda rather than silently
-mixing local calendars back in (`effectiveCalendarIds`, unit-tested). One
-Google account needs no extra setup beyond the toggle.
+account ("addr@gmail.com · Google" vs "On this device"). Since 0.5.0 the
+selection is **explicit**: `settings.shownCalendarIds` empty means *none
+chosen*, never *all* — nothing is read until the user picks calendars one by
+one, and the choice is remembered. The old "Google calendars only" toggle was
+removed; `calendarGoogleOnly` survives only as a migration input: until
+`calendarSelectionSchema` is true, `effectiveCalendarIds` still intersects it,
+and the one-time `settleCalendarSelection()` materializes the previous view
+(all calendars, or Google ids under the legacy flag) when the first calendar
+list becomes readable.
 
-**Upcoming algorithm** (`core/UpcomingMerge.next`, pure and unit-tested):exclude ended (via conservative `effectiveEnd`: missing/zero end = start +
-1 h, never indefinite), include in-progress, sort by start, cap at three,
-fill short todays from future dates, all-day handled, deduped by
-(event, start) at the query layer. Tasks join only when undone, visible, and
-due-dated; undated tasks stay in the task list. Sources stay labeled
-("In progress", "Today"/"Tomorrow"/"d MMM", "Task"); nothing synthetic ever
-fills a slot.
+**Plan agenda** (`ui/PlanPage.kt`): compact prev/next date navigation and the
+full chronological agenda for the selected day — every event, not a capped
+next-three. Rows show `HH:mm` start/end or an "All-day" label, duration, and an
+"In progress" marker for an event happening now on today (ticking per minute).
+States are distinct and honest: no permission, no calendars on the device,
+none chosen, sync-off warning, no events, and an error that keeps stale results
+with a Retry. `core/UpcomingMerge` was removed with the old merged view; its
+staleness rule lives on as `core/CalendarCache`.
 
 Permission: `<uses-permission android:name="android.permission.READ_CALENDAR" />`
 (runtime). Requested only from the explicit Allow tap in the one shared
-`CalendarAccessAction` (Upcoming + Calendar screen), with the sentence "The
+`CalendarAccessAction` (Plan page + Calendar screen), with the sentence "The
 launcher reads your device calendar only, offline. Nothing is uploaded."
 Denied/revoked → calm off-state + Allow/Settings action; events list stays
 empty (never crashes; queries wrapped in `runCatching`).
 
-Selection: `settings.shownCalendarIds` (empty = all), grouped by account with
-Google accounts tagged, plus `settings.calendarGoogleOnly` (empty Google set
-reads as empty, never as "all mixed back in"). First narrowing expands
-empty→all before removing. All-shown collapses back to empty.
+Selection display: toggles grouped by account, each checked only when its id is
+in `shownCalendarIds`; an explicit "No calendars chosen yet" line sits with the
+list and in the agenda's empty state, with a route to the Calendar screen from
+the Plan page.
 
 Sync and diagnostics: calendars carry the provider's `SYNC_EVENTS` flag
 (defaulting to syncing when the column is absent, so no false warnings); when
@@ -115,9 +123,9 @@ Formatting: local zone, `HH:mm` times, duration minutes, all-day rows show
 
 ## Refresh and sync
 
-- Agenda refreshes when the Plan & Focus page settles into view **only if the
-  cache is older than a minute** (`calendarStale`, pure); swiping past does
-  not hammer the provider.
+- Agenda refreshes when the Plan page settles into view **only if the cache is
+  older than a minute** (`CalendarCache.isStale`, pure); swiping past does not
+  hammer the provider.
 - A `ContentObserver` on the Instances URI (registered `onStart`, removed
   `onStop`) re-queries once on provider change notifications — no polling, no
   timers, never on the main thread (IO dispatcher).
@@ -133,20 +141,22 @@ Formatting: local zone, `HH:mm` times, duration minutes, all-day rows show
 No `AppWidgetHost` (deliberate; documented below). The "widget" is an
 in-launcher agenda with three scopes:
 
-- Compact (Home Upcoming): next 3 events with `endMillis >= now`, time + title
-  + duration, or the off/empty states, + "Open calendar".
+- Compact (Plan page): the selected day's full agenda with prev/next date
+  navigation, the in-progress marker, and the distinct off/empty/error states,
+  + "Open calendar".
 - Medium/Expanded (Calendar screen `ui/CalendarScreen.kt`): month label
   `MMMM yyyy` uppercase, "Your week" Monday-first strip (`core/CalendarWeek.kt`
   `weekFor`) with day letters, 36dp touch circles (selected = primary fill +
   background text, `stateDescription` Selected/Today), event dots, "today"
   caption under unselected today, then `TODAY · N EVENTS` (or date + count)
   agenda, Refresh + Open system calendar (VIEW `CalendarContract.CONTENT_URI`
-  time URI with generic event VIEW fallback), calendar toggles.
+  time URI with generic event VIEW fallback), and the explicit per-calendar
+  selection toggles.
 - Full: the Calendar screen itself is the agenda; tapping a strip date calls
   `viewModel.selectDate` and re-queries that week. No month grid is forced
   into Home.
 
-Tapping Upcoming/Home "Open calendar" calls `viewModel.openCalendar()`
+Tapping the Plan page's "Open calendar" calls `viewModel.openCalendar()`
 (`Screen.CALENDAR`); Back returns Home preserving the pager page
 (`settings.home.activePageId` untouched). The system-calendar intent is a
 best-effort VIEW; failure is silent (no dead button: the in-app agenda

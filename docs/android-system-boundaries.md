@@ -1,11 +1,11 @@
 # Android System Boundaries
 
-Scope: Zendo Launcher versionName 0.2.2 (`app/build.gradle:23`), minSdk 26 / targetSdk 36 / compileSdk 36 (`app/build.gradle:16-21`).
-Method: full read of `app/src/main/AndroidManifest.xml:1-48`; grep over `app/src` for absence claims. No device/emulator run claimed.
+Scope: Zendo Launcher versionName 0.5.0 (`app/build.gradle`), minSdk 26 / targetSdk 36 / compileSdk 36.
+Method: full read of `app/src/main/AndroidManifest.xml` plus grep over `app/src` for both absence and presence claims, re-run for 0.5.0. No device/emulator run claimed. The first draft of this doc was 0.2.2; the boundary principle is unchanged and the permission inventory below is current.
 
 ## Manifest root
 
-- Zero `<uses-permission>` in `app/src/main/AndroidManifest.xml:1-48`.
+- Exactly three `<uses-permission>` entries, each narrow and user-triggered: `SET_WALLPAPER` (normal, auto-granted; direct wallpaper apply), `READ_CALENDAR` (runtime; requested only when a calendar feature is opened), `PACKAGE_USAGE_STATS` (special access; opt-in screen-time summary, off by default).
 - `<queries>` narrowed to MAIN/LAUNCHER intent only (`app/src/main/AndroidManifest.xml:11-16`).
 - `QUERY_ALL_PACKAGES` deliberately absent; comment states intent (`app/src/main/AndroidManifest.xml:5-10`).
 - Single activity `.LauncherActivity`, exported (`app/src/main/AndroidManifest.xml:29-34`).
@@ -36,7 +36,7 @@ Method: full read of `app/src/main/AndroidManifest.xml:1-48`; grep over `app/src
 | Notification shade | `systemBarsPadding` only (`app/src/main/java/com/zendolauncher/ui/HomeScreen.kt:61`, `app/src/main/java/com/zendolauncher/ui/AppListScreen.kt:79`) | Shade, notifications, media output | No `NotificationListenerService` in tree | OS owns |
 | Quick Settings | None | Tiles, toggles | No `TileService` in manifest or tree | OS owns |
 | Lock screen / Keyguard | None; post-unlock HOME only | PIN/pattern/biometric, lock shade | No `KeyguardManager` in tree | OS owns |
-| Wallpaper | Solid monochrome surface + `SystemBarIcons` legibility only (`app/src/main/java/com/zendolauncher/LauncherActivity.kt:91-101`); ships two preview vectors (`app/src/main/res/drawable/wallpaper_mono_dark.xml`, `app/src/main/res/drawable/wallpaper_mono_light.xml`) and documents the manual apply path in `docs/lock-screen-feasibility.md:62-72`; never sets wallpaper itself | Picker, live engine | No `WallpaperManager` call in tree | OS owns |
+| Wallpaper | Three bundled grayscale designs rendered on demand (`core/WallpaperTemplate.kt`, `platform/WallpaperApplier.kt`); direct apply to Home and, where supported, Lock via `WallpaperManager.setBitmap` (`FLAG_SYSTEM` / `FLAG_LOCK`); system-picker fallback | Picker, live engine, OEM lock screens | Only the official home/lock bitmap API: no wallpaper *service*, no `KeyguardManager`, no live-wallpaper APIs | Sets a background only |
 | Connectivity / system shortcuts | Fires system settings pages, never owns toggles: `ACTION_HOME_SETTINGS` (`app/src/main/java/com/zendolauncher/ui/SettingsScreen.kt:142-143`, `app/src/main/java/com/zendolauncher/ui/OnboardingScreen.kt:95`), `Settings.Panel.ACTION_INTERNET_CONNECTIVITY` with `ACTION_WIFI_SETTINGS` fallback (`app/src/main/java/com/zendolauncher/ui/SettingsScreen.kt:230-237`), `ACTION_DISPLAY_SETTINGS` (`:238-240`), `ACTION_SOUND_SETTINGS` (`:241-243`) | WiFi, BT, mobile data, system settings | No `WifiManager` / `ConnectivityManager` / `BluetoothAdapter`; no BT or Digital Wellbeing intent | Opens OS pages |
 | Default Home role | Reads resolver, directs to picker (`app/src/main/java/com/zendolauncher/platform/ShortcutRepository.kt:83-88`) | Home selection dialog | No direct set-default API | OS decides |
 | App suspend / block | Visual-only hide set (`app/src/main/java/com/zendolauncher/data/SettingsStore.kt:33,68-73`) | Suspend, disable, MDM | No `DevicePolicyManager` / admin in tree | Filters own list |
@@ -46,7 +46,8 @@ Method: full read of `app/src/main/AndroidManifest.xml:1-48`; grep over `app/src
 ## Keep-absent inventory
 
 Grep over `app/src` returns no hits for execution or policy APIs; only XML namespace `http://schemas.android.com` matched URL grep.
-Keep absent: `QUERY_ALL_PACKAGES`, `PACKAGE_USAGE_STATS` / `UsageStatsManager`, `AccessibilityService`, `DevicePolicyManager`, `NotificationListenerService`, `TileService`, `KeyguardManager`, `WallpaperManager`, `WifiManager` / `ConnectivityManager` / `BluetoothAdapter`, `SYSTEM_ALERT_WINDOW` / overlay, `INTERNET` / `OkHttp` / `Retrofit`, Custom Tabs / Trusted Web Activity.
+Keep absent: `QUERY_ALL_PACKAGES`, `AccessibilityService`, `DevicePolicyManager`, `NotificationListenerService`, `TileService`, `KeyguardManager`, `WifiManager` / `ConnectivityManager` / `BluetoothAdapter`, `SYSTEM_ALERT_WINDOW` / overlay, `INTERNET` / `OkHttp` / `Retrofit`, Custom Tabs / Trusted Web Activity.
+Documented exceptions, each narrow and never a background owner: `PACKAGE_USAGE_STATS` / `UsageStatsManager` (0.3.3+, off by default, numbers-only summary), `WallpaperManager` (0.4.x+, sets only the home/lock bitmap the user asked for), calendar provider reads under `READ_CALENDAR` (0.4.x+, on demand, read-only). The three matching manifest permissions are listed under Manifest root above.
 Settings **intents** are the deliberate exception: the tree sends `ACTION_HOME_SETTINGS`, `ACTION_WIFI_SETTINGS`, `ACTION_DISPLAY_SETTINGS`, `ACTION_SOUND_SETTINGS` and `Settings.Panel.ACTION_INTERNET_CONNECTIVITY`, all as `Intent(action)` string dispatches through `openSystemSettings` (`app/src/main/java/com/zendolauncher/ui/SettingsScreen.kt:316-329`). None of them read or mutate state, so no matching manager class enters the tree.
 Do not add any without updating this doc and `docs/privacy-and-permissions-audit.md`.
 
@@ -62,7 +63,7 @@ Do not add any without updating this doc and `docs/privacy-and-permissions-audit
 - Set-as-default flow via both `ACTION_HOME_SETTINGS` intents; confirm picker shown.
 - Each System settings row resolves on a real device: `ACTION_INTERNET_CONNECTIVITY` panel, pre-Q `ACTION_WIFI_SETTINGS` fallback, `ACTION_DISPLAY_SETTINGS`, `ACTION_SOUND_SETTINGS`.
 - `ActivityNotFoundException` path shows "Settings page unavailable" and leaves the app alive.
-- Applying `wallpaper_mono_dark.xml` / `wallpaper_mono_light.xml` via the system picker, per `docs/lock-screen-feasibility.md:62-72`.
+- Applying each bundled design directly (Settings → Wallpaper) and confirming the honest lock-target behavior, per `docs/wallpaper-and-lock-screen.md`.
 - Pinned-shortcut visibility when default vs not default.
 - `excludeFromRecents` + `singleTask` return-to-home after Home press.
 - Hidden/paused apps still launch from system search, voice, other launchers.

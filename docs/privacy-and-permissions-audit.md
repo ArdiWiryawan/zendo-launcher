@@ -52,13 +52,13 @@ Method: full read `app/src/main/AndroidManifest.xml:1-48`; grep over `app/src` f
 
 - No `INTERNET`, HTTP client, socket, `OkHttp` / `Retrofit` / `WebView` / Custom Tabs / Trusted Web Activity in tree.
 - URL grep hits only `http://schemas.android.com` XML namespaces.
-- `zendoEnabled` fetches nothing; Settings states no planning API (`app/src/main/java/com/zendolauncher/ui/SettingsScreen.kt:122-126`).
-- Source interface stubbed `UnavailableZendoSource` (`app/src/main/java/com/zendolauncher/ui/LauncherViewModel.kt:94-95`).
+- Zendo integration is local-file only (0.5.0): a snapshot the user picks with SAF, previewed before any write; no account, no token, no fetches.
 
 ## Keep-absent (grep-verified, no hits in `app/src`)
 
-`QUERY_ALL_PACKAGES`, `PACKAGE_USAGE_STATS` / `UsageStatsManager`, `AccessibilityService`, `DevicePolicyManager` / admin, `NotificationListenerService`, `TileService`, `KeyguardManager`, `WallpaperManager`, `WifiManager` / `ConnectivityManager` / `BluetoothAdapter`, `SYSTEM_ALERT_WINDOW` / overlay, Custom Tabs / Trusted Web Activity.
-Do not add any without updating this doc and `docs/android-system-boundaries.md`.
+`QUERY_ALL_PACKAGES`, `AccessibilityService`, `DevicePolicyManager` / admin, `NotificationListenerService`, `TileService`, `KeyguardManager`, `WifiManager` / `ConnectivityManager` / `BluetoothAdapter`, `SYSTEM_ALERT_WINDOW` / overlay, Custom Tabs / Trusted Web Activity.
+Deliberate narrow exceptions (documented in `docs/android-system-boundaries.md` and `docs/wallpaper-and-lock-screen.md`): `PACKAGE_USAGE_STATS` / `UsageStatsManager` (opt-in, off by default, numbers only), `WallpaperManager` (user-triggered home/lock bitmap apply), calendar provider reads under `READ_CALENDAR` (on demand, read-only).
+Do not add any others without updating this doc and `docs/android-system-boundaries.md`.
 
 ## Limitations
 

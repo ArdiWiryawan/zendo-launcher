@@ -186,8 +186,8 @@
 ## E. Wellbeing and Restrictions
 
 ### Digital Wellbeing Features
-- **Behavior:** Zendo Launcher does not implement any digital wellbeing features, app usage restrictions, pausing capabilities, or usage statistics collection. It does not use `AccessibilityService` or any background services for monitoring.
-- **Implementation:** No relevant code found in grep results for `UsageStats`, `DevicePolicy`, `AccessibilityService`, `background service`.
+- **Behavior:** No usage restrictions, timers, or enforcement exist. Since 0.3.3 an optional, off-by-default numbers-only usage summary can be shown behind `PACKAGE_USAGE_STATS` special access; it reads, displays, and enforces nothing. No `AccessibilityService` or background services are used for monitoring.
+- **Implementation:** `UsageStatsManager` reads gated behind the settings toggle (off by default); no `DevicePolicy`, no `AccessibilityService`, no background service in tree.
 - **Owner:** N/A (not implemented)
 - **Possible:** N/A (not implemented)
 - **Limits:** Cannot enforce usage limits or provide wellbeing insights.

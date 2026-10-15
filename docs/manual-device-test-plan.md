@@ -283,20 +283,21 @@ Target build for this plan: 0.2.3 (`versionCode 5`), APK SHA-256
     - Expected: the system wallpaper picker opens (`Intent.ACTION_SET_WALLPAPER`).
     - FAILURE: nothing opens; crash; the wrong picker appears.
 
-33. **Apply a bundled vector wallpaper by hand**
-    - Steps: Render/export `app/src/main/res/drawable/wallpaper_mono_dark.xml` or
-      `wallpaper_mono_light.xml` (360dp x 720dp monochrome vector) to an image, transfer
-      it to the device, then choose it in the system picker.
-    - Expected: the wallpaper applies via the OS picker. The app itself never applies it:
-      there is no `WallpaperManager` call and no `SET_WALLPAPER` permission
-      (`docs/implementation-report.md:37,50`); the vectors are repo assets not loaded by
-      `app/src/main` code.
-    - FAILURE: the picker cannot see the exported image; the launcher claims to apply a
-      wallpaper itself (it must not); the vector renders incorrectly on a real display.
+33. **Apply a bundled wallpaper directly (0.5.0)**
+    - Steps: Settings → Wallpaper. Note the three designs. Apply Quiet Stone to
+      Home; then apply "Less, but better" to Lock/Both on a device that reports a
+      lock target.
+    - Expected: "Applied to…" appears only after the system call returns; the
+      artwork line sits below the top third, clear of the lock clock; on devices
+      without a lock target only Home is offered, with the picker fallback line;
+      a failed apply offers "Open system picker instead".
+    - FAILURE: "Applied" before the API returns; text under the clock; Lock/Both
+      offered on a device that cannot take them; crash.
 
 34. **Wallpaper survives launcher restart**
     - Steps: Apply a wallpaper, restart the launcher.
-    - Expected: wallpaper unchanged; the launcher has no say over it.
+    - Expected: wallpaper unchanged; the launcher stores only the selection and
+      never reapplies anything on start.
     - FAILURE: launcher resets or overrides the wallpaper.
 
 ---
@@ -329,16 +330,20 @@ Target build for this plan: 0.2.3 (`versionCode 5`), APK SHA-256
 
 ---
 
-## L. Zendo Today block stays empty (no API shipped)
+## L. Zendo bridge: manual snapshot import (0.5.0, no API shipped)
 
-38. **Today block does not appear**
-    - Steps: On Home, look for a "Today" block; toggle the today setting if exposed.
-    - Expected: the block stays empty/absent. The source is `UnavailableZendoSource`
-      and `zendo` is `null` (`LauncherViewModel.kt:49,95,150`); the block only renders
-      when `todayEnabled` AND the value is non-empty (`HomeScreen.kt:81-82`). No API is
-      shipped.
-    - FAILURE: a populated Today block appears; the block renders with placeholder or
-      fabricated content; the launcher attempts network access.
+38. **Snapshot import: preview, merge and idempotence**
+    - Steps: In the Zendo app, export the launcher snapshot; transfer the file to
+      the device; Settings → Zendo → "Import a Zendo snapshot"; pick the file.
+      Apply, then import the same file again. Then import once with "Replace
+      imported".
+    - Expected: a preview states the file's target date and exactly what would
+      change; nothing is written before Apply. Re-importing reports "already
+      applied" (no duplicate tasks). Merge never overwrites local text; Replace
+      imported removes only records that came from Zendo for that date. A
+      future-dated snapshot is rejected with a clear message.
+    - FAILURE: import without preview; duplicates after re-import; local text
+      overwritten; records from other dates wiped; any claim of live sync.
 
 39. **No network egress**
     - Steps: Run the launcher under airplane mode, and separately observe traffic
@@ -347,6 +352,42 @@ Target build for this plan: 0.2.3 (`versionCode 5`), APK SHA-256
       The manifest declares no `INTERNET` permission.
     - FAILURE: any network attempt; any permission dialog; features break without
       connectivity that should be local-only.
+
+---
+
+## M. Plan, calendar selection, history and screen time (0.5.0)
+
+40. **Plan page states**
+    - Steps: Open the Plan page with calendar permission off; grant it; observe
+      before choosing any calendar; choose one; reopen on another day.
+    - Expected: distinct states in order — permission note with Allow; loading;
+      "No calendars chosen yet" until one is picked; then that day's agenda.
+      Previous/next move one day; all-day rows are labeled; an event happening
+      now carries "In progress". Robolectric cannot verify provider content —
+      this needs a device with real calendars.
+    - FAILURE: an empty agenda rendered as if the device had nothing; calendars
+      auto-enabled; events from unchosen calendars.
+
+41. **History and backup round-trip**
+    - Steps: Use Today (action, highlight, a task). Open History from Today.
+      Complete the task, reopen History. Export a backup, clear history, restore
+      the backup file.
+    - Expected: today's record reflects the latest state; past days never change;
+      clear asks for confirmation and touches only the past; restore replaces the
+      live lists and upserts day records without deleting dates the file does not
+      contain.
+    - FAILURE: past records edited in place; clear removing current data; restore
+      erasing local-only dates.
+
+42. **Screen Time grant flow**
+    - Steps: Settings → Screen Time, toggle on. Grant usage access in system
+      Settings, return. Toggle "Hide summary", then toggle the feature off and
+      reopen.
+    - Expected: the system screen opens once from the toggle; the access state is
+      re-read on return without a second prompt; "Hide summary" only hides the
+      numbers; turning the feature off removes the section and stops queries.
+    - FAILURE: repeat permission prompts; summary visible while hidden; usage
+      rows alive after off.
 
 ---
 

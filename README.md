@@ -44,22 +44,29 @@ All apps   Settings
 - **Hide apps** you would rather not see, without uninstalling anything. The hidden list
   names apps by their real label, not by package name, and hiding offers an **Undo** that
   stays on screen for a few seconds.
-- **A Today block with nothing in it.** The setting exists and the home screen has a place
-  for it, but Zendo publishes no planning API, so connecting it fetches nothing and the
-  block never appears. See [docs/zendo-integration.md](docs/zendo-integration.md) for the
-  verified data contract and the backend change required.
-- **Today dashboard, local and persistent.** A completable headline action,
-  highlights that stay until archived, tasks that keep their state, and
-  Upcoming merging real calendar events with due local tasks.
-- **Plan & Focus page.** Week agenda from the device calendar plus a real
-  timestamp-based focus timer with history — no calendar or usage access needed.
-- **Wallpaper gallery.** Ten quiet grayscale templates with preview and
-  Home / Lock screen / Both targets, applied through `WallpaperManager` with
-  a system-picker fallback. The lock background is set where the device
-  honors it; the lock itself stays with Android.
-- **Calendar agenda.** Monday-first week strip, selectable dates, Google account
-  grouping with a Google-only filter, multi-calendar toggles, and a best-effort
-  system-calendar intent. Read-only and offline.
+- **Today, local and persistent.** A completable headline action, a highlight
+  that stays until archived, and tasks that keep their state — plus one small
+  line into local history.
+- **Plan page.** The chosen day's full agenda from the device calendar, with
+  previous/next date navigation, an in-progress marker, and honest states for
+  permission, no calendars, none chosen, sync-off, empty and error.
+- **Local history.** One record per day — the action, the highlight and the
+  tasks as they stood — kept on this device, newest first. No charts, no
+  streaks. Export writes a full local backup; clear asks first and touches only
+  the past.
+- **Manual Zendo bridge.** Zendo publishes no planning API (see
+  [docs/zendo-integration.md](docs/zendo-integration.md)), so there is no live
+  connection: the Zendo app exports a snapshot file, you pick it with the system
+  file picker, and a preview shows exactly what would change. One-way, by hand,
+  no account, no tokens.
+- **Wallpaper gallery.** Three quiet grayscale designs (Quiet Stone,
+  "Kembali ke yang penting.", "Less, but better" with the ZENDO wordmark),
+  9:20 with the top kept clear for the lock clock, applied through
+  `WallpaperManager` with a system-picker fallback. The lock background is set
+  where the device honors it; the lock itself stays with Android.
+- **Calendar agenda.** Monday-first week strip, selectable dates, explicit
+  per-calendar selection — nothing is read until you choose — and a
+  best-effort system-calendar intent. Read-only and offline.
 - **Light and dark**, both monochrome. Text-first by default, optional icon-plus-text.
   The window background and the status and navigation bar icons follow the theme you
   chose, not the system's night setting.
@@ -77,7 +84,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.4.1` (versionCode 12). See the releases list
+The newest build is currently `debug-0.5.0` (versionCode 13). See the releases list
 for its sha256.
 
 To build a fresh one yourself:
@@ -87,7 +94,7 @@ To build a fresh one yourself:
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
-Pushing a tag like `v0.4.1` builds a signed release APK and attaches it to a GitHub
+Pushing a tag like `v0.5.0` builds a signed release APK and attaches it to a GitHub
 Release, once release signing secrets are configured. See
 [docs/build-and-release.md](docs/build-and-release.md).
 
@@ -142,10 +149,10 @@ on its own, and it can always be changed back.
   hosted third-party widgets. Nothing here claims to block apps system-wide.
   Anything like that would need a real, verifiable mechanism and a transparent permission
   request, so it is not in this version.
-- **Zendo integration is a boundary, not a feature yet.** Zendo exposes no planning API
-  today, so turning it on does not fetch anything. See
-  [docs/zendo-integration.md](docs/zendo-integration.md) for the verified data contract and
-  the backend change required.
+- **Zendo stays a file, not a connection.** Zendo exposes no planning API, and this
+  launcher makes no network calls, so integration is a snapshot you export from Zendo
+  and import by hand, with a preview before anything changes. See
+  [docs/zendo-integration.md](docs/zendo-integration.md).
 
 ## Privacy
 
@@ -160,8 +167,13 @@ on its own, and it can always be changed back.
   Android intends launchers to work. `QUERY_ALL_PACKAGES` is not used; a narrow `<queries>`
   entry for `MAIN`/`LAUNCHER` activities is.
 - Pinned apps, hidden apps, theme, layout, clock format, highlights, tasks,
-  wallpaper choice and calendar visibility are stored in local
-  `SharedPreferences` on the device. They are never uploaded, and app backups exclude them.
+  history records, wallpaper choice and the explicit calendar selection are
+  stored in local `SharedPreferences` on the device. They are never uploaded,
+  Android's automatic backup is off, and the only way data leaves is the
+  launcher's own export, which writes a file you have chosen.
+- Zendo snapshots and launcher backups are plain local files. Import previews
+  what would change before writing; export writes only to the location you
+  pick in the system file picker.
 - Nothing is sent anywhere. There is no analytics, no account and no remote config.
 
 ## Documentation

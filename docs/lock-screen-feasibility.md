@@ -26,7 +26,7 @@ Method: grep over `app/src` for lock/keyguard/auth/overlay/boot APIs. No device/
 - Status/nav icon legibility: `SystemBarIcons` overrides appearance, leaves scrims (`app/src/main/java/com/zendolauncher/LauncherActivity.kt:91-101`).
 - Edge-to-edge via `enableEdgeToEdge()` (`app/src/main/java/com/zendolauncher/LauncherActivity.kt:53`).
 - Insets via `systemBarsPadding()` on all screens (`app/src/main/java/com/zendolauncher/ui/HomeScreen.kt:61`, `app/src/main/java/com/zendolauncher/ui/AppListScreen.kt:79`, `app/src/main/java/com/zendolauncher/ui/SettingsScreen.kt:54`, `app/src/main/java/com/zendolauncher/ui/OnboardingScreen.kt:45`).
-- Wallpaper untouched: no `WallpaperManager` call in tree; change stays with system picker, which "Wallpaper" in Settings > System settings opens.
+- Wallpaper: 0.4.x+ applies a bundled bitmap directly via `WallpaperManager.setBitmap` for the chosen target only; the lock *screen* is still untouched — no `KeyguardManager`, no clock or notification surface. "Wallpaper" in Settings > System settings still opens the system picker.
 - Pause is not a lock: pre-launch dialog only (`app/src/main/java/com/zendolauncher/ui/LauncherViewModel.kt:287-303`).
 - Settings text states no system-wide block, Chrome links not intercepted (`app/src/main/java/com/zendolauncher/ui/SettingsScreen.kt:201-205`).
 
@@ -59,20 +59,13 @@ Method: grep over `app/src` for lock/keyguard/auth/overlay/boot APIs. No device/
 - Foldable / cover display: confirm no launcher surface leaks above Keyguard on any posture.
 - Managed profile with separate lock: confirm launcher never bypasses the profile challenge.
 
-## Calm monochrome wallpaper assets & apply instructions
+## Calm monochrome wallpapers: direct apply and system picker (0.5.0)
 
-Direct `WallpaperManager.setBitmap` / `setResource` calls require `android.permission.SET_WALLPAPER`. To preserve the strict zero-permission manifest (`app/src/main/AndroidManifest.xml`), Zendo Launcher ships two minimal vector preview assets without adding runtime or install-time permissions:
+Zendo Launcher ships three grayscale designs and applies them directly through the official bitmap API — `WallpaperManager.setBitmap(..., FLAG_SYSTEM / FLAG_LOCK)` — under `android.permission.SET_WALLPAPER` (normal, auto-granted). Code: `core/WallpaperTemplate.kt` (designs), `platform/WallpaperApplier.kt` (render + apply + capability probe), `ui/WallpaperScreen.kt` (gallery). Full behavior notes: `docs/wallpaper-and-lock-screen.md`.
 
-- `app/src/main/res/drawable/wallpaper_mono_dark.xml` — `#0B0B0C` matte canvas with a `#1F1F21` horizon hairline (`DarkPalette`).
-- `app/src/main/res/drawable/wallpaper_mono_light.xml` — `#F7F7F5` paper canvas with a `#E2E2DE` horizon hairline (`LightPalette`).
+What did not change: the launcher never owns the lock screen. It sets a background bitmap only — never the clock, notifications, or unlock method — and reports success only after the system confirms the write. Lock/Both targets are offered only when the device reports them; otherwise Home only, and the system picker stays the honest fallback: **Settings > System settings > Wallpaper** dispatches `Intent.ACTION_SET_WALLPAPER` through `openSystemSettings`, with the "Settings page unavailable" toast when no picker exists.
 
-How to apply a calm monochrome lock/home wallpaper via system settings:
-1. Open **System Settings > Wallpaper & style** (or long-press the system wallpaper picker).
-2. Choose a solid `#0B0B0C` (dark) or `#F7F7F5` (light) image, or export/render the bundled vector asset, and apply to **Lock screen** (or **Home and lock screens**).
-
-The wallpaper picker is also reachable in-app: **Settings > System settings > Wallpaper** dispatches `Intent.ACTION_SET_WALLPAPER` through the same `openSystemSettings` helper as the other system rows (`SettingsScreen.kt`), so a missing picker falls back to the "Settings page unavailable" toast and no permission is involved. The row only opens the picker; it never writes a wallpaper.
-
-The two bundled vectors are repository assets for manual use, not applied by the app: nothing in `app/src/main` loads them, and getting one onto the screen means rendering/exporting it and selecting it in the system picker by hand.
+The 0.3.x repository vectors (`wallpaper_mono_dark.xml` / `wallpaper_mono_light.xml`) were removed in 0.5.0 — the gallery renders its three designs on demand instead, so there are no loose assets to export by hand.
 
 ## Lock-screen notification visibility guidance
 
