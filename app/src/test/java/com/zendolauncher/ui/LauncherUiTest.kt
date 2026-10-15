@@ -467,7 +467,7 @@ class LauncherUiTest {
             viewModel.state.value.settings.home.activePageId,
         )
 
-        rule.onNodeWithText("Agenda").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Upcoming").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Focus").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Start focus").performScrollTo().assertIsDisplayed()
     }

@@ -63,27 +63,64 @@ UI:
 
 ## Calendar data source
 
-`platform/CalendarRepository.kt`: read-only queries against
-`CalendarContract.Events` (canceled excluded, `DTSTART ASC`), scoped to
-[selected−7d, selected+14d). `listCalendars` reads visible calendars.
-No network; uses the local provider only. `hasPermission` gates everything;
-without permission both return empty.
+`platform/CalendarRepository.kt`: read-only against the device provider.
+**Primary source is the Instances table** — expanded occurrences, so recurring
+series, modified and deleted instances, and multi-day spans resolve the way
+the provider resolves them. An Events-table fallback covers devices where
+Instances is unavailable. No network; uses the local provider only.
+`hasPermission` gates everything; without permission both sources return
+empty. No Google API, OAuth, or client secret anywhere in the tree (verified
+by grep: no `com.google.android.gms.auth`, no credential store) — Google
+calendars arrive exclusively through the device provider's sync, which keeps
+the permission footprint at read-only `READ_CALENDAR`.
+
+**Google identification and selection.** `listCalendars` reads `ACCOUNT_NAME`
+and `ACCOUNT_TYPE`; `DeviceCalendar.isGoogle` is true only for
+`accountType == "com.google"`. The Calendar screen groups calendars by
+account ("addr@gmail.com · Google" vs "On this device") and offers
+"Google calendars only": when on, the agenda query filters to Google ids,
+and an explicit empty Google set yields an empty agenda rather than silently
+mixing local calendars back in (`effectiveCalendarIds`, unit-tested). One
+Google account needs no extra setup beyond the toggle.
+
+**Upcoming algorithm** (`core/UpcomingMerge.next`, pure and unit-tested):
+exclude ended (via conservative `effectiveEnd`: missing/zero end = start +
+1 h, never indefinite), include in-progress, sort by start, cap at three,
+fill short todays from future dates, all-day handled, deduped by
+(event, start) at the query layer. Tasks join only when undone, visible, and
+due-dated; undated tasks stay in the task list. Sources stay labeled
+("In progress", "Today"/"Tomorrow"/"d MMM", "Task"); nothing synthetic ever
+fills a slot.
 
 Permission: `<uses-permission android:name="android.permission.READ_CALENDAR" />`
-(runtime). Requested only when the user opens Upcoming/Calendar
-(`rememberLauncherForActivityResult(RequestPermission)` in
-`TodayDashboard` and `CalendarScreen`), with the sentence "The launcher reads
-your device calendar only, offline. Nothing is uploaded." Denied/revoked →
-Upcoming shows the off state + Allow action; events list stays empty (never
-crashes; query wrapped in `runCatching`).
+(runtime). Requested only from the explicit Allow tap in the one shared
+`CalendarAccessAction` (Upcoming + Calendar screen), with the sentence "The
+launcher reads your device calendar only, offline. Nothing is uploaded."
+Denied/revoked → calm off-state + Allow/Settings action; events list stays
+empty (never crashes; queries wrapped in `runCatching`).
 
-Selection: `settings.shownCalendarIds` (empty = all). Calendar screen lists
-calendars when >1 with toggles ("Uncheck to hide a calendar from Upcoming").
-First narrowing expands empty→all before removing. All-shown collapses back
-to empty.
+Selection: `settings.shownCalendarIds` (empty = all), grouped by account with
+Google accounts tagged, plus `settings.calendarGoogleOnly` (empty Google set
+reads as empty, never as "all mixed back in"). First narrowing expands
+empty→all before removing. All-shown collapses back to empty.
 
 Formatting: local zone, `HH:mm` times, duration minutes, all-day rows show
 "All-day". Long titles wrap; no clipping path beyond the existing gutter.
+
+## Refresh and sync
+
+- Agenda refreshes when the Plan & Focus page settles into view **only if the
+  cache is older than a minute** (`calendarStale`, pure); swiping past does
+  not hammer the provider.
+- A `ContentObserver` on the Instances URI (registered `onStart`, removed
+  `onStop`) re-queries once on provider change notifications — no polling, no
+  timers, never on the main thread (IO dispatcher).
+- Explicit Refresh/Retry actions re-query on demand.
+- Failures keep the last valid results beneath a "Showing earlier results."
+  line plus the error and Retry; permission loss clears to the off-state.
+- Source honesty: the Calendar screen shows "Device calendar · updated HH:mm"
+  (or Loading). Sync-disabled or delayed provider data is never claimed live
+  from Google's servers.
 
 ## Widget layouts and screens
 

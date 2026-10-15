@@ -121,6 +121,11 @@ data class UiState(
     val calendars: List<DeviceCalendar> = emptyList(),
     val calendarEvents: List<CalendarEvent> = emptyList(),
     val calendarPermission: Boolean = false,
+    val calendarLoading: Boolean = false,
+    /** Last error message, or null. Kept events stay visible beneath it (marked stale). */
+    val calendarError: String? = null,
+    /** Last successful events refresh, wall-clock millis. 0 = never. */
+    val lastCalendarRefresh: Long = 0L,
     val selectedDateEpochDay: Long = LocalDate.now().toEpochDay(),
     // ---- Wallpaper ------------------------------------------------------------
     val wallpaperSelectedId: String? = null,
@@ -240,6 +245,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _calendars = MutableStateFlow<List<DeviceCalendar>>(emptyList())
     private val _calendarEvents = MutableStateFlow<List<CalendarEvent>>(emptyList())
     private val _calendarPermission = MutableStateFlow(false)
+    private val _calendarLoading = MutableStateFlow(false)
+    private val _calendarError = MutableStateFlow<String?>(null)
+    private val _lastCalendarRefresh = MutableStateFlow(0L)
     private val _wallpaperApplying = MutableStateFlow(false)
     private val _wallpaperMessage = MutableStateFlow<String?>(null)
     // Highlight editor drafts live here (not in the composable) so rotation and a
@@ -366,6 +374,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val calendars: List<DeviceCalendar>,
         val events: List<CalendarEvent>,
         val permission: Boolean,
+        val loading: Boolean,
+        val calError: String?,
+        val lastRefresh: Long,
         val date: LocalDate,
         val wallpaperId: String?,
         val wallpaperTarget: WallpaperTarget,
@@ -405,6 +416,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _calendars,
         _calendarEvents,
         _calendarPermission,
+        _calendarLoading,
+        _calendarError,
+        _lastCalendarRefresh,
         _selectedDate,
         wallpaperStore.selectedId,
         wallpaperStore.target,
@@ -444,30 +458,33 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             calendars = args[9] as List<DeviceCalendar>,
             events = args[10] as List<CalendarEvent>,
             permission = args[11] as Boolean,
-            date = args[12] as LocalDate,
-            wallpaperId = args[13] as String?,
-            wallpaperTarget = args[14] as WallpaperTarget,
-            applying = args[15] as Boolean,
-            message = args[16] as String?,
-            editingId = args[17] as String?,
-            draftTitle = args[18] as String,
-            draftNote = args[19] as String,
-            draftPin = args[20] as Boolean,
-            draftError = args[21] as String?,
-            showDiscardH = args[22] as Boolean,
-            confirmDelH = args[23] as String?,
-            showAllH = args[24] as Boolean,
-            showAllT = args[25] as Boolean,
-            editingTask = args[26] as String?,
-            taskTitle = args[27] as String,
-            taskDue = args[28] as Long?,
-            taskNotes = args[29] as String,
-            taskError = args[30] as String?,
-            showDiscardT = args[31] as Boolean,
-            confirmDelT = args[32] as String?,
-            usageAccess = args[33] as Boolean,
-            usageEntries = args[34] as List<AppUsage>,
-            usageLoading = args[35] as Boolean,
+            loading = args[12] as Boolean,
+            calError = args[13] as String?,
+            lastRefresh = args[14] as Long,
+            date = args[15] as LocalDate,
+            wallpaperId = args[16] as String?,
+            wallpaperTarget = args[17] as WallpaperTarget,
+            applying = args[18] as Boolean,
+            message = args[19] as String?,
+            editingId = args[20] as String?,
+            draftTitle = args[21] as String,
+            draftNote = args[22] as String,
+            draftPin = args[23] as Boolean,
+            draftError = args[24] as String?,
+            showDiscardH = args[25] as Boolean,
+            confirmDelH = args[26] as String?,
+            showAllH = args[27] as Boolean,
+            showAllT = args[28] as Boolean,
+            editingTask = args[29] as String?,
+            taskTitle = args[30] as String,
+            taskDue = args[31] as Long?,
+            taskNotes = args[32] as String,
+            taskError = args[33] as String?,
+            showDiscardT = args[34] as Boolean,
+            confirmDelT = args[35] as String?,
+            usageAccess = args[36] as Boolean,
+            usageEntries = args[37] as List<AppUsage>,
+            usageLoading = args[38] as Boolean,
         )
     }
 
@@ -487,6 +504,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 calendars = t.calendars,
                 calendarEvents = t.events,
                 calendarPermission = t.permission,
+                calendarLoading = t.loading,
+                calendarError = t.calError,
+                lastCalendarRefresh = t.lastRefresh,
                 selectedDateEpochDay = t.date.toEpochDay(),
                 wallpaperSelectedId = t.wallpaperId,
                 wallpaperTarget = t.wallpaperTarget,
@@ -529,6 +549,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun onStart() {
         appRepository.start()
         shortcutRepository.start()
+        registerCalendarObserver()
         if (!enumerated) {
             enumerated = true
             // Enumerating every installed app and shortcut is far too slow to run
@@ -543,6 +564,41 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun onStop() {
         appRepository.stop()
         shortcutRepository.stop()
+        unregisterCalendarObserver()
+    }
+
+    /**
+     * Provider change notifications: the system tells us the calendar data may
+     * have changed, and only then do we re-query — once, off the main thread.
+     * No polling, no timers.
+     */
+    private var calendarObserver: android.database.ContentObserver? = null
+
+    private fun registerCalendarObserver() {
+        if (calendarObserver != null) return
+        val observer = object : android.database.ContentObserver(
+            android.os.Handler(android.os.Looper.getMainLooper()),
+        ) {
+            override fun onChange(selfChange: Boolean) {
+                if (calendarRepository.hasPermission()) refreshCalendarEvents()
+            }
+        }
+        calendarObserver = observer
+        runCatching {
+            getApplication<Application>().contentResolver.registerContentObserver(
+                android.provider.CalendarContract.Instances.CONTENT_URI,
+                true,
+                observer,
+            )
+        }.onFailure { calendarObserver = null }
+    }
+
+    private fun unregisterCalendarObserver() {
+        val observer = calendarObserver ?: return
+        calendarObserver = null
+        runCatching {
+            getApplication<Application>().contentResolver.unregisterContentObserver(observer)
+        }
     }
 
     fun refreshHomeState() {
@@ -1241,6 +1297,28 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setCalendarAsked(asked: Boolean) = settingsStore.update { it.copy(calendarAsked = asked) }
 
+    fun setCalendarGoogleOnly(googleOnly: Boolean) = settingsStore.update {
+        it.copy(calendarGoogleOnly = googleOnly)
+    }
+
+    /**
+     * The calendar ids the agenda may read: the user's explicit selection, or —
+     * under Google-only — the Google-account calendars (intersected with the
+     * selection when one exists). Null means "all visible". An empty Google set
+     * under Google-only yields empty (not "all"): mixing local calendars back
+     * in would break the explicit Google choice.
+     */
+    fun effectiveCalendarIds(
+        shown: Set<Long>,
+        calendars: List<DeviceCalendar>,
+        googleOnly: Boolean,
+    ): Set<Long>? {
+        if (!googleOnly) return shown.ifEmpty { null }
+        val googleIds = calendars.filter { it.isGoogle }.map { it.id }.toSet()
+        if (googleIds.isEmpty()) return emptySet()
+        return if (shown.isEmpty()) googleIds else shown.intersect(googleIds)
+    }
+
     fun refreshCalendar() {
         refreshCalendarPermission()
         viewModelScope.launch(Dispatchers.IO) {
@@ -1257,22 +1335,50 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun refreshCalendarEvents() {
         if (!calendarRepository.hasPermission()) {
             _calendarEvents.value = emptyList()
+            _calendarLoading.value = false
+            _calendarError.value = null
             return
         }
+        _calendarLoading.value = true
+        _calendarError.value = null
         viewModelScope.launch(Dispatchers.IO) {
-            val date = _selectedDate.value
-            val zone = ZoneId.systemDefault()
-            val weekStart = date.minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
-            val weekEnd = date.plusDays(14).atStartOfDay(zone).toInstant().toEpochMilli()
-            val shown = settingsStore.settings.value.shownCalendarIds
-            val filter = shown.ifEmpty { null }
-            _calendarEvents.value = try {
-                calendarRepository.queryEvents(weekStart, weekEnd, filter)
+            try {
+                val date = _selectedDate.value
+                val zone = ZoneId.systemDefault()
+                val weekStart = date.minusDays(7).atStartOfDay(zone).toInstant().toEpochMilli()
+                val weekEnd = date.plusDays(14).atStartOfDay(zone).toInstant().toEpochMilli()
+                val settings = settingsStore.settings.value
+                val filter = effectiveCalendarIds(settings.shownCalendarIds, _calendars.value, settings.calendarGoogleOnly)
+                _calendarEvents.value = if (filter != null && filter.isEmpty()) {
+                    emptyList()
+                } else {
+                    calendarRepository.queryEvents(weekStart, weekEnd, filter)
+                }
+                // Success replaces the previous answer; failure keeps it, marked stale.
+                _calendarError.value = null
+                _lastCalendarRefresh.value = System.currentTimeMillis()
             } catch (_: Exception) {
-                emptyList()
+                _calendarError.value = "Couldn't read the calendar. Check sync, then retry."
+            } finally {
+                _calendarLoading.value = false
             }
         }
     }
+
+    /**
+     * Called when the Plan & Focus page settles into view. Refreshes only when
+     * the cache is stale (older than a minute) — returning from an external
+     * calendar minutes later re-queries once; swiping past does not hammer the
+     * provider. Pure staleness rule in [calendarStale].
+     */
+    fun onPlanPageVisible(nowMillis: Long = System.currentTimeMillis()) {
+        if (!calendarRepository.hasPermission()) return
+        if (com.zendolauncher.core.UpcomingMerge.calendarStale(_lastCalendarRefresh.value, nowMillis)) {
+            refreshCalendarEvents()
+        }
+    }
+
+    fun clearCalendarError() { _calendarError.value = null }
 
     fun setShownCalendars(ids: Set<Long>) {
         settingsStore.update { it.copy(shownCalendarIds = ids) }

@@ -2,7 +2,10 @@ package com.zendolauncher.ui
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -37,8 +40,10 @@ import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
 import kotlinx.coroutines.delay
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Plan & Focus page: the merged agenda (real calendar occurrences + due
@@ -48,6 +53,7 @@ import java.time.format.DateTimeFormatter
  */
 @Composable
 fun PlanFocusPage(viewModel: LauncherViewModel, state: UiState) {
+    val today = remember { LocalDate.now() }
     Column(
         Modifier
             .fillMaxSize()
@@ -55,9 +61,23 @@ fun PlanFocusPage(viewModel: LauncherViewModel, state: UiState) {
             .padding(horizontal = LauncherSpace.gutter),
     ) {
         Spacer(Modifier.height(LauncherSpace.xl))
-        SectionHeading("Agenda")
+        // Compact header: date, title, and the way out to the full view.
+        SecondaryText(
+            today.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())),
+        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Plan & Focus",
+                style = LauncherType.title,
+                color = LauncherColors.current.primary,
+                modifier = Modifier.weight(1f),
+            )
+            QuietAction("View calendar", onClick = { viewModel.openCalendar() })
+        }
+        Spacer(Modifier.height(LauncherSpace.md))
+        SectionHeading("Upcoming")
         Spacer(Modifier.height(LauncherSpace.sm))
-        AgendaSection(viewModel, state)
+        AgendaSection(viewModel, state, today)
         Spacer(Modifier.height(LauncherSpace.lg))
         Hairline()
         Spacer(Modifier.height(LauncherSpace.md))
@@ -69,24 +89,59 @@ fun PlanFocusPage(viewModel: LauncherViewModel, state: UiState) {
 }
 
 @Composable
-private fun AgendaSection(viewModel: LauncherViewModel, state: UiState) {
+private fun AgendaSection(viewModel: LauncherViewModel, state: UiState, today: LocalDate) {
     val context = LocalContext.current
+    val zone = remember { ZoneId.systemDefault() }
+    val now = System.currentTimeMillis()
     val items = remember(state.calendarEvents, state.tasks) {
-        UpcomingMerge.next(state.calendarEvents, state.tasks, System.currentTimeMillis(), 7)
+        UpcomingMerge.next(state.calendarEvents, state.tasks, now, 3)
+    }
+
+    if (state.calendarLoading && items.isEmpty()) {
+        SecondaryText("Loading…")
+        return
+    }
+    state.calendarError?.let { error ->
+        SecondaryText(error)
+        if (items.isNotEmpty()) SecondaryText("Showing earlier results.")
+        QuietAction("Retry", onClick = { viewModel.refreshCalendarEvents() })
+        Spacer(Modifier.height(LauncherSpace.sm))
+    }
+    if (state.calendarPermission && state.settings.calendarGoogleOnly &&
+        state.calendars.none { it.isGoogle }
+    ) {
+        EmptyNote("No Google calendars found. Check account sync, or turn off Google-only.")
+        Spacer(Modifier.height(LauncherSpace.xs))
+        QuietAction("Choose calendars", onClick = { viewModel.openCalendar() })
+        return
     }
     if (items.isEmpty()) {
-        EmptyNote(
-            if (!state.calendarPermission) "Connect the calendar or add due dates to tasks to see what's next."
-            else "Nothing upcoming. The days ahead are open.",
-        )
-    } else {
-        items.forEach { item ->
-            when (item) {
-                is UpcomingItem.Event -> {
-                    val e = item.event
-                    UpcomingRow(e.startMillis, e.endMillis, e.title + " · Calendar", e.allDay)
-                    Spacer(Modifier.height(LauncherSpace.xs))
-                    QuietAction("Details", onClick = {
+        if (!state.calendarPermission) {
+            EmptyNote("Calendar access is off.")
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText("Due tasks would appear here too. Nothing is uploaded.")
+            CalendarAccessAction(viewModel, state.settings.calendarAsked)
+        } else {
+            EmptyNote("No upcoming events")
+            Spacer(Modifier.height(LauncherSpace.xs))
+            QuietAction("View calendar", onClick = { viewModel.openCalendar() })
+        }
+        return
+    }
+
+    SecondaryText("Next ${items.size}")
+    Spacer(Modifier.height(LauncherSpace.sm))
+    items.forEach { item ->
+        when (item) {
+            is UpcomingItem.Event -> {
+                val e = item.event
+                TimelineEventRow(
+                    startMillis = e.startMillis,
+                    endMillis = e.endMillis,
+                    title = e.title,
+                    secondary = eventSecondary(e, today, zone),
+                    inProgress = UpcomingMerge.isInProgress(e.startMillis, e.endMillis, now),
+                    onOpen = {
                         try {
                             context.startActivity(
                                 Intent(Intent.ACTION_VIEW, viewModel.eventDetailsUri(e.id))
@@ -94,21 +149,94 @@ private fun AgendaSection(viewModel: LauncherViewModel, state: UiState) {
                             )
                         } catch (_: ActivityNotFoundException) {
                         }
-                    })
-                }
-                is UpcomingItem.Task -> {
-                    TaskUpcomingRow(item.task.title, item.dueMillis)
-                    Spacer(Modifier.height(LauncherSpace.xs))
-                    QuietAction("Open task", onClick = { viewModel.openTaskEditor(item.task.id) })
-                }
+                    },
+                )
             }
-            Spacer(Modifier.height(LauncherSpace.sm))
+            is UpcomingItem.Task -> {
+                TaskUpcomingRow(item.task.title, item.dueMillis)
+                Spacer(Modifier.height(LauncherSpace.xs))
+                QuietAction("Open task", onClick = { viewModel.openTaskEditor(item.task.id) })
+            }
         }
+        Spacer(Modifier.height(LauncherSpace.sm))
     }
     Spacer(Modifier.height(LauncherSpace.xs))
     Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
-        QuietAction("Open calendar", onClick = { viewModel.openCalendar() })
+        QuietAction("View calendar", onClick = { viewModel.openCalendar() })
         QuietAction("All tasks", onClick = { viewModel.openAllTasks() })
+    }
+}
+
+/** Secondary line under an event: status first, then where it sits in time. */
+private fun eventSecondary(
+    e: com.zendolauncher.model.CalendarEvent,
+    today: LocalDate,
+    zone: ZoneId,
+): String {
+    val now = System.currentTimeMillis()
+    val parts = ArrayList<String>()
+    if (UpcomingMerge.isInProgress(e.startMillis, e.endMillis, now)) parts += "In progress"
+    val date = Instant.ofEpochMilli(e.startMillis).atZone(zone).toLocalDate()
+    if (date != today) parts += UpcomingMerge.dayLabel(date, today)
+    if (!e.allDay) {
+        val mins = ((e.endMillis - e.startMillis) / 60_000L).coerceAtLeast(1)
+        parts += "$mins min"
+    } else {
+        parts += "All-day"
+    }
+    return parts.joinToString(" · ")
+}
+
+/**
+ * One timeline row: consistent time column, a slim indicator (stronger for the
+ * event in progress), and a title that truncates instead of breaking layout.
+ */
+@Composable
+private fun TimelineEventRow(
+    startMillis: Long,
+    endMillis: Long,
+    title: String,
+    secondary: String,
+    inProgress: Boolean,
+    onOpen: () -> Unit,
+) {
+    val palette = LauncherColors.current
+    val zone = remember { ZoneId.systemDefault() }
+    val start = Instant.ofEpochMilli(startMillis).atZone(zone).toLocalTime()
+    val end = Instant.ofEpochMilli(endMillis).atZone(zone).toLocalTime()
+    val timeFmt = remember { DateTimeFormatter.ofPattern("HH:mm") }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpen)
+            .semantics {
+                contentDescription = "$title, ${start.format(timeFmt)}" +
+                    if (inProgress) ", in progress" else ""
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.width(52.dp)) {
+            Text(text = start.format(timeFmt), style = LauncherType.body, color = palette.primary)
+            SecondaryText(end.format(timeFmt))
+        }
+        Spacer(Modifier.width(LauncherSpace.sm))
+        Box(
+            Modifier
+                .width(2.dp)
+                .height(40.dp)
+                .background(if (inProgress) palette.primary else palette.separator),
+        )
+        Spacer(Modifier.width(LauncherSpace.sm))
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = LauncherType.body,
+                color = palette.primary,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            SecondaryText(secondary)
+        }
     }
 }
 

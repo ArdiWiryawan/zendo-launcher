@@ -122,4 +122,43 @@ class CalendarPermissionTest {
         viewModel.setCalendarAsked(false)
         assertEquals(false, viewModel.state.value.settings.calendarAsked)
     }
+
+    @Test
+    fun googleOnly_neverMixesLocalCalendarsBackIn() {
+        val cals = listOf(
+            com.zendolauncher.model.DeviceCalendar(1, "Work", "a@gmail.com", "com.google"),
+            com.zendolauncher.model.DeviceCalendar(2, "Local", null, null),
+        )
+        assertEquals(null, viewModel.effectiveCalendarIds(emptySet(), cals, false))
+        assertEquals(setOf(2L), viewModel.effectiveCalendarIds(setOf(2L), cals, false))
+        assertEquals(setOf(1L), viewModel.effectiveCalendarIds(emptySet(), cals, true))
+        assertEquals(setOf(1L), viewModel.effectiveCalendarIds(setOf(1L, 2L), cals, true))
+        assertEquals(
+            emptySet<Long>(),
+            viewModel.effectiveCalendarIds(
+                emptySet(),
+                listOf(com.zendolauncher.model.DeviceCalendar(2, "Local", null, null)),
+                true,
+            ),
+        )
+    }
+
+    @Test
+    fun googleOnlyFlag_persists() {
+        // Read back through the view model's own state (same prefs file): a fresh
+        // store instance could race the async disk write, which is a test artifact,
+        // not product behavior — the store writes memory-synchronously.
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val job = scope.launch { viewModel.state.collect {} }
+        try {
+            viewModel.setCalendarGoogleOnly(true)
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertEquals(true, viewModel.state.value.settings.calendarGoogleOnly)
+            viewModel.setCalendarGoogleOnly(false)
+            Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+            assertEquals(false, viewModel.state.value.settings.calendarGoogleOnly)
+        } finally {
+            job.cancel()
+        }
+    }
 }

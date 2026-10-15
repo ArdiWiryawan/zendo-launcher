@@ -30,16 +30,25 @@ class CalendarRepository(private val context: Context) {
         runCatching {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
-                arrayOf(CalendarContract.Calendars._ID, CalendarContract.Calendars.CALENDAR_DISPLAY_NAME),
+                arrayOf(
+                    CalendarContract.Calendars._ID,
+                    CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
+                    CalendarContract.Calendars.ACCOUNT_NAME,
+                    CalendarContract.Calendars.ACCOUNT_TYPE,
+                ),
                 "${CalendarContract.Calendars.VISIBLE}=1",
                 null, null,
             )?.use { c ->
                 val idCol = c.getColumnIndex(CalendarContract.Calendars._ID)
                 val nameCol = c.getColumnIndex(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME)
+                val accountCol = c.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
+                val typeCol = c.getColumnIndex(CalendarContract.Calendars.ACCOUNT_TYPE)
                 while (c.moveToNext()) {
                     out += DeviceCalendar(
                         id = if (idCol >= 0) c.getLong(idCol) else -1L,
                         name = if (nameCol >= 0) c.getString(nameCol) ?: "Calendar" else "Calendar",
+                        accountName = if (accountCol >= 0) c.getString(accountCol) else null,
+                        accountType = if (typeCol >= 0) c.getString(typeCol) else null,
                     )
                 }
             }

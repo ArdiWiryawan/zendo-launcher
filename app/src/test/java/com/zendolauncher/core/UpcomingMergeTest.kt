@@ -46,8 +46,7 @@ class UpcomingMergeTest {
     }
 
     @Test
-    fun `coversDate spans multi-day events and pins instants`() {
-        val zone = ZoneId.of("UTC")
+    fun `coversDate spans multi-day events and pins instants`() {        val zone = ZoneId.of("UTC")
         val day = LocalDate.of(2026, 10, 14)
         val dayStart = day.atStartOfDay(zone).toInstant().toEpochMilli()
         // Three-day conference starting the day before.
@@ -57,5 +56,51 @@ class UpcomingMergeTest {
         // A normal event does not leak onto neighbours.
         assertTrue(CalendarWeek.coversDate(dayStart + 3_600_000L, dayStart + 7_200_000L, day, zone))
         assertTrue(!CalendarWeek.coversDate(dayStart + 3_600_000L, dayStart + 7_200_000L, day.plusDays(1), zone))
+    }
+
+    @Test
+    fun `in-progress beats later and ended are gone`() {
+        val live = event("Live", now - 1_800_000L, now + 1_800_000L)
+        val later = event("Later", now + 3_600_000L, now + 7_200_000L)
+        val ended = event("Ended", now - 7_200_000L, now - 3_600_000L)
+        assertTrue(UpcomingMerge.isInProgress(live.startMillis, live.endMillis, now))
+        assertTrue(!UpcomingMerge.isInProgress(later.startMillis, later.endMillis, now))
+        assertTrue(!UpcomingMerge.isInProgress(ended.startMillis, ended.endMillis, now))
+        val out = UpcomingMerge.next(listOf(later, ended, live), emptyList(), now, limit = 3)
+        assertEquals(listOf("Live", "Later"), out.map { (it as UpcomingItem.Event).event.title })
+    }
+
+    @Test
+    fun `missing end times are treated conservatively never deleted silently`() {
+        // Zero-length instant at now: kept (one-hour grace), not dropped as ended.
+        val instant = event("Instant", now, 0L)
+        assertEquals(3_600_000L, UpcomingMerge.effectiveEnd(now, 0L) - now)
+        val out = UpcomingMerge.next(listOf(instant), emptyList(), now, limit = 3)
+        assertEquals(1, out.size)
+        // Long past the grace: gone.
+        val gone = UpcomingMerge.next(listOf(instant), emptyList(), now + 2 * 3_600_000L, limit = 3)
+        assertTrue(gone.isEmpty())
+    }
+
+    @Test
+    fun `future dates fill short todays and day labels read plainly`() {
+        val tomorrowEvent = event("Tomorrow thing", now + 20 * 3_600_000L, now + 21 * 3_600_000L)
+        val out = UpcomingMerge.next(listOf(tomorrowEvent), emptyList(), now, limit = 3)
+        assertEquals(1, out.size)
+        val today = LocalDate.of(2026, 10, 14)
+        assertEquals("Today", UpcomingMerge.dayLabel(today, today))
+        assertEquals("Tomorrow", UpcomingMerge.dayLabel(today.plusDays(1), today))
+        assertEquals(
+            today.plusDays(5).format(java.time.format.DateTimeFormatter.ofPattern("d MMM")),
+            UpcomingMerge.dayLabel(today.plusDays(5), today),
+        )
+    }
+
+    @Test
+    fun `staleness rule refreshes once per minute of age`() {
+        assertTrue(UpcomingMerge.calendarStale(0L, 1_000L))
+        assertTrue(UpcomingMerge.calendarStale(1_000L, 61_001L))
+        assertTrue(!UpcomingMerge.calendarStale(1_000L, 60_000L))
+        assertTrue(!UpcomingMerge.calendarStale(5_000L, 10_000L))
     }
 }

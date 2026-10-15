@@ -10,9 +10,23 @@ the Plan page once, after Today, without touching order, pins, or names.
 
 - **Today action**: one completable headline (`TodayActionStore`), inline
   edit with VM-held draft, blank refused inline, persisted, never auto-cleared.
-- **Plan & Focus page** (`PageType.PLAN`): merged agenda (Instances-based
-  calendar occurrences + due local tasks, sources labeled, overlap-based day
-  matching, deduped) with event-details deep-links, plus the focus timer.
+- **Plan & Focus page** (`PageType.PLAN`): agenda timeline (max three nearest
+  from Instances-based calendar occurrences + due local tasks, "In progress"
+  status, Today/Tomorrow/date labels, slim indicator, tap-to-details) with
+  loading/error/stale states, plus the focus timer.
+- **Google calendar source**: account metadata (`ACCOUNT_NAME`/`ACCOUNT_TYPE`)
+  with `isGoogle` detection, per-account grouping, Google-only filter that
+  never mixes local calendars back in, setup-step explainer with calendar
+  picker, no-Google empty state. No Google API/OAuth in the tree — provider
+  sync only, documented as the deliberate choice.
+- **Selection algorithm** (pure, tested): exclude ended, include in-progress,
+  sort by start, cap three, fill from future dates, all-day + midnight-span +
+  recurring via provider expansion, (event, start) dedup, conservative 1-hour
+  grace for missing end times, never synthetic.
+- **Refresh without polling**: staleness-gated refresh on page visibility
+  (60 s), provider `ContentObserver` (start/stop-bound), explicit Refresh/Retry,
+  failures keep last results marked stale, source line shows device-calendar
+  update time (never claimed live from Google).
 - **Focus timer**: timestamp-based start/pause/resume/finish/break
   (`FocusSession` pure math, `FocusStore` persistence + history), 1-second UI
   tick only while running, natural-end auto-complete exactly once, death
@@ -45,25 +59,26 @@ New: `data/TodayActionStore.kt`, `core/FocusSession.kt`, `data/FocusStore.kt`,
 `data/TodayActionStoreTest.kt`, `data/FocusStorePersistenceTest.kt`,
 `ui/FocusStateTest.kt`.
 
-Changed: `platform/CalendarRepository.kt` (Instances + fallback + event URI),
-`core/CalendarWeek.kt` (+`coversDate`), `core/HomeLayout.kt` (`PLAN`,
-new DEFAULT), `core/Highlight.kt` (doc touch only),
-`data/SettingsStore.kt` (PLAN migration, pause message, focus defaults),
-`ui/LauncherViewModel.kt` (today action, focus, setup/permissions nav,
-event URI, focus-from-task), `LauncherActivity.kt` (SETUP/PERMISSIONS),
-`ui/HomeScreen.kt` (PLAN branch, Essentials action), `ui/TodayDashboard.kt`
-(action section, merged Upcoming), `ui/CalendarScreen.kt` (overlap matching),
-`ui/HighlightOverlays.kt` (Focus action), `ui/Components.kt` (pause message),
-`ui/SettingsScreen.kt` (pause note, setup/permissions rows),
-`core/WallpaperTemplate.kt` (doc touch only), tests for the new DEFAULT and
+Changed: `platform/CalendarRepository.kt` (Instances + fallback + event URI +
+account columns), `core/CalendarWeek.kt` (+`coversDate`), `core/UpcomingMerge.kt`
+(status/day-label/staleness helpers), `core/HomeLayout.kt` (`PLAN`,
+new DEFAULT), `data/SettingsStore.kt` (PLAN migration, pause message, focus
+defaults, Google-only flag), `ui/LauncherViewModel.kt` (today action, focus,
+setup/permissions nav, event URI, focus-from-task, Google filter, loading /
+error / last-refresh, staleness refresh, provider observer),
+`LauncherActivity.kt` (SETUP/PERMISSIONS), `ui/HomeScreen.kt` (PLAN branch,
+Essentials action, visible-page refresh), `ui/TodayDashboard.kt`
+(action section, merged Upcoming), `ui/CalendarScreen.kt` (overlap matching,
+account grouping, Google-only toggle, source/loading/error lines),
+`ui/PlanFocusPage.kt` (header, timeline, states), `ui/HighlightOverlays.kt`
+(Focus action), `ui/Components.kt` (pause message), `ui/SettingsScreen.kt`
+(pause note, setup/permissions rows), tests for the new DEFAULT and
 migration, `app/build.gradle` (0.4.0/11), README (three pages, pointer).
 
 ### Build and test results
 
-- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 203 tests, 0 failures (189 carried
-  over + 14 new: 5 focus math, 3 upcoming merge/date-span, 1 today-action
-  store, 1 focus persistence, 3 focus/today/setup state, 1 plan-page
-  migration).
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 209 tests, 0 failures (203 carried
+  over + 6 new: 4 upcoming-algorithm/date-span/staleness, 2 Google-only filter).
 - `:app:lintDebug` run; `abortOnError false` per project config.
 - `:app:assembleDebug` BUILD SUCCESSFUL (local). APK staged to `dist/` on CI.
 - A red-green pass is recorded honestly: the suite first failed on 4 missing

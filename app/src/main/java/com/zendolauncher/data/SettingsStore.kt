@@ -54,6 +54,7 @@ class SettingsStore(context: Context) {
         shownCalendarIds = prefs.getStringSet(KEY_SHOWN_CALENDARS, null)?.mapNotNull { it.toLongOrNull() }?.toSet()
             ?: emptySet(),
         calendarAsked = prefs.getBoolean(KEY_CALENDAR_ASKED, false),
+        calendarGoogleOnly = prefs.getBoolean(KEY_CALENDAR_GOOGLE_ONLY, false),
         focusWorkMinutes = prefs.getInt(KEY_FOCUS_WORK, 25),
         focusBreakMinutes = prefs.getInt(KEY_FOCUS_BREAK, 5),
         // Migration runs here, on the read path, because this is the only place the store
@@ -86,6 +87,7 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_REDUCE_MOTION, next.reduceMotion)
             putStringSet(KEY_SHOWN_CALENDARS, HashSet(next.shownCalendarIds.map { it.toString() }))
             putBoolean(KEY_CALENDAR_ASKED, next.calendarAsked)
+            putBoolean(KEY_CALENDAR_GOOGLE_ONLY, next.calendarGoogleOnly)
             putInt(KEY_FOCUS_WORK, next.focusWorkMinutes)
             putInt(KEY_FOCUS_BREAK, next.focusBreakMinutes)
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
@@ -263,6 +265,7 @@ class SettingsStore(context: Context) {
         private const val KEY_REDUCE_MOTION = "reduce_motion"
         private const val KEY_SHOWN_CALENDARS = "shown_calendar_ids"
         private const val KEY_CALENDAR_ASKED = "calendar_asked"
+        private const val KEY_CALENDAR_GOOGLE_ONLY = "calendar_google_only"
         private const val KEY_FOCUS_WORK = "focus_work_minutes"
         private const val KEY_FOCUS_BREAK = "focus_break_minutes"
 
@@ -324,6 +327,11 @@ data class LauncherSettings(
      * offers the app Settings page instead.
      */
     val calendarAsked: Boolean = false,
+    /**
+     * When on, the agenda reads Google-account calendars only. Local and work
+     * calendars are never silently mixed in once the user chose Google.
+     */
+    val calendarGoogleOnly: Boolean = false,
     /** Default focus work-block length, minutes. The timer screen can pick per session. */
     val focusWorkMinutes: Int = 25,
     /** Default break length, minutes. 0 means no break offered. */

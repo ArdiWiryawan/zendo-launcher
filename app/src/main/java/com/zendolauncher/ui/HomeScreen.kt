@@ -91,7 +91,12 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
     // than the current one: currentPage changes at the halfway mark of a fling and would
     // store a page the user then abandons.
     LaunchedEffect(pagerState) {
-        snapshotFlow { pagerState.settledPage }.collect { viewModel.onPagerSettled(it) }
+        snapshotFlow { pagerState.settledPage }.collect {
+            viewModel.onPagerSettled(it)
+            // Agenda freshness follows visibility, not a timer: settling on Plan &
+            // Focus re-queries only when the cache is stale.
+            if (pages.getOrNull(it)?.type == PageType.PLAN) viewModel.onPlanPageVisible()
+        }
     }
     // One-shot programmatic move. A scroll that comes to rest lands on the page it reached
     // and clears the target through the settled-page effect above, which is also what keeps

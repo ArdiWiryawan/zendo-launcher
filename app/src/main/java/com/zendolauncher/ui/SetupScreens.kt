@@ -78,9 +78,17 @@ fun SetupScreen(viewModel: LauncherViewModel, state: UiState) {
             StepRow(
                 number = "2",
                 title = "Calendar (optional)",
-                status = if (state.calendarPermission) "Connected."
-                else "Skipped until you allow it.",
-                action = { CalendarAccessAction(viewModel, state.settings.calendarAsked) },
+                status = if (state.calendarPermission) {
+                    val google = state.calendars.count { it.isGoogle }
+                    if (google > 0) "Connected · $google Google calendar(s)."
+                    else "Connected."
+                } else "Reads Google calendars synced on this device. Skipped until you allow it.",
+                action = {
+                    CalendarAccessAction(viewModel, state.settings.calendarAsked)
+                    if (state.calendarPermission) {
+                        QuietAction("Choose calendars", onClick = { viewModel.openCalendar() })
+                    }
+                },
             )
             StepRow(
                 number = "3",

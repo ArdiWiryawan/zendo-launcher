@@ -57,8 +57,9 @@ All apps   Settings
   Home / Lock screen / Both targets, applied through `WallpaperManager` with
   a system-picker fallback. The lock background is set where the device
   honors it; the lock itself stays with Android.
-- **Calendar agenda.** Monday-first week strip, selectable dates, multi-calendar
-  toggles, and a best-effort system-calendar intent. Read-only and offline.
+- **Calendar agenda.** Monday-first week strip, selectable dates, Google account
+  grouping with a Google-only filter, multi-calendar toggles, and a best-effort
+  system-calendar intent. Read-only and offline.
 - **Light and dark**, both monochrome. Text-first by default, optional icon-plus-text.
   The window background and the status and navigation bar icons follow the theme you
   chose, not the system's night setting.

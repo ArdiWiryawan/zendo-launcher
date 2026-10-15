@@ -19,7 +19,7 @@ must be tested) / **Denied** (privileged role required — not claimed).
 | Recents | Denied | hides self (`excludeFromRecents`) only |
 | Wallpaper Home/Lock | Direct+Dependent | `WallpaperManager` + picker fallback (see wallpaper audits) |
 | Secure lock screen | Denied | background only; no clock/auth/notification control |
-| Calendar read | Auth | `READ_CALENDAR`, read-only, offline |
+| Calendar read | Auth | `READ_CALENDAR`, read-only Instances (+ Events fallback), offline; Google selection + Google-only filter |
 | Calendar write | Denied (undeclared) | not requested; editor covers tasks instead |
 | Open system calendar | Indirect | VIEW time-URI intent with generic fallback |
 | Usage stats | Denied (undeclared) | no `PACKAGE_USAGE_STATS`; no usage numbers shown |

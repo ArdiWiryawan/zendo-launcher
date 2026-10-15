@@ -112,8 +112,29 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                     else -> "${selected.format(DateTimeFormatter.ofPattern("EEEE, d MMMM", Locale.getDefault())).uppercase()} · ${events.size}"
                 }
                 SectionHeading(label)
+                Spacer(Modifier.height(LauncherSpace.xs))
+                // Honest source line: device provider data, never claimed live.
+                SecondaryText(
+                    if (state.lastCalendarRefresh > 0L) {
+                        "Device calendar · updated ${
+                            java.time.Instant.ofEpochMilli(state.lastCalendarRefresh)
+                                .atZone(ZoneId.systemDefault())
+                                .format(DateTimeFormatter.ofPattern("HH:mm"))
+                        }"
+                    } else if (state.calendarLoading) {
+                        "Loading…"
+                    } else {
+                        "Device calendar"
+                    },
+                )
                 Spacer(Modifier.height(LauncherSpace.sm))
-                if (events.isEmpty()) {
+                state.calendarError?.let { error ->
+                    SecondaryText(error)
+                    if (events.isNotEmpty()) SecondaryText("Showing earlier results.")
+                    QuietAction("Retry", onClick = { viewModel.refreshCalendarEvents() })
+                    Spacer(Modifier.height(LauncherSpace.sm))
+                }
+                if (events.isEmpty() && !state.calendarLoading) {
                     EmptyNote(
                         if (selected == today) "Nothing today. The day is open."
                         else "Nothing on this date.",
@@ -149,29 +170,58 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                     SectionHeading("Calendars")
                     Spacer(Modifier.height(LauncherSpace.sm))
                     SecondaryText("Uncheck to hide a calendar from Upcoming.")
-                    state.calendars.forEach { cal ->
-                        val shown = state.settings.shownCalendarIds.isEmpty() || cal.id in state.settings.shownCalendarIds
-                        ToggleRow(
-                            label = cal.name,
-                            checked = shown,
-                            onCheckedChange = { on ->
-                                val current = state.settings.shownCalendarIds.toMutableSet()
-                                if (state.settings.shownCalendarIds.isEmpty()) {
-                                    // First narrowing: start from all, then remove.
-                                    current.addAll(state.calendars.map { it.id })
-                                }
-                                if (on) current.add(cal.id) else current.remove(cal.id)
-                                // All shown == empty filter (same meaning, less storage).
-                                val allIds = state.calendars.map { it.id }.toSet()
-                                viewModel.setShownCalendars(if (current == allIds) emptySet() else current)
-                            },
-                        )
-                    }
+                    ToggleRow(
+                        label = "Google calendars only",
+                        checked = state.settings.calendarGoogleOnly,
+                        onCheckedChange = { viewModel.setCalendarGoogleOnly(it) },
+                    )
+                    Spacer(Modifier.height(LauncherSpace.xs))
+                    SecondaryText(
+                        "When on, local and work calendars never mix into the agenda. " +
+                            "Needs a Google account synced on this device.",
+                    )
+                    // Grouped by account so a Google account is unmistakable; local
+                    // calendars without account metadata sit under their own header.
+                    state.calendars.groupBy { it.accountName ?: "On this device" }
+                        .toSortedMap()
+                        .forEach { (account, cals) ->
+                            Spacer(Modifier.height(LauncherSpace.sm))
+                            SecondaryText(
+                                if (cals.any { it.isGoogle }) "$account · Google" else account,
+                            )
+                            cals.forEach { cal ->
+                                CalendarToggle(viewModel, state, cal)
+                            }
+                        }
                 }
             }
             Spacer(Modifier.height(LauncherSpace.xl))
         }
     }
+}
+
+@Composable
+private fun CalendarToggle(
+    viewModel: LauncherViewModel,
+    state: UiState,
+    cal: com.zendolauncher.model.DeviceCalendar,
+) {
+    val shown = state.settings.shownCalendarIds.isEmpty() || cal.id in state.settings.shownCalendarIds
+    ToggleRow(
+        label = cal.name,
+        checked = shown,
+        onCheckedChange = { on ->
+            val current = state.settings.shownCalendarIds.toMutableSet()
+            if (state.settings.shownCalendarIds.isEmpty()) {
+                // First narrowing: start from all, then remove.
+                current.addAll(state.calendars.map { it.id })
+            }
+            if (on) current.add(cal.id) else current.remove(cal.id)
+            // All shown == empty filter (same meaning, less storage).
+            val allIds = state.calendars.map { it.id }.toSet()
+            viewModel.setShownCalendars(if (current == allIds) emptySet() else current)
+        },
+    )
 }
 
 @Composable
