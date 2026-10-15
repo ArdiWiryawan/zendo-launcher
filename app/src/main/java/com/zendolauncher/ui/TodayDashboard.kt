@@ -33,8 +33,6 @@ import androidx.compose.ui.unit.dp
 import com.zendolauncher.core.archivedList
 import com.zendolauncher.core.homeSummary
 import com.zendolauncher.core.primary
-import com.zendolauncher.core.UpcomingItem
-import com.zendolauncher.core.UpcomingMerge
 import com.zendolauncher.core.visible
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
@@ -45,8 +43,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * The Today dashboard: action, highlights, tasks, upcoming. One coherent page
- * with separators, not three card stacks. All data is local and persistent.
+ * The Today dashboard: action, highlights, tasks. One coherent page with separators,
+ * not three card stacks. All data is local and persistent. Calendar reading belongs to
+ * the Plan page; this page keeps only a quiet way into local history.
  */
 @Composable
 fun TodayDashboard(viewModel: LauncherViewModel, state: UiState) {
@@ -63,7 +62,9 @@ fun TodayDashboard(viewModel: LauncherViewModel, state: UiState) {
         Spacer(Modifier.height(LauncherSpace.lg))
         SectionSeparator()
         Spacer(Modifier.height(LauncherSpace.md))
-        UpcomingSection(viewModel, state)
+        // The one path to history from Today, deliberately one line: the day itself
+        // stays the page's subject.
+        QuietAction("History", onClick = { viewModel.openHistory() })
     }
 }
 
@@ -247,61 +248,16 @@ private fun TasksSection(viewModel: LauncherViewModel, state: UiState) {
     }
 }
 
-@Composable
-private fun UpcomingSection(viewModel: LauncherViewModel, state: UiState) {
-    SectionHeading("Upcoming")
-    Spacer(Modifier.height(LauncherSpace.sm))
-    val items = remember(state.calendarEvents, state.tasks) {
-        UpcomingMerge.next(state.calendarEvents, state.tasks, System.currentTimeMillis(), 3)
-    }
-    if (items.isEmpty()) {
-        if (!state.calendarPermission) {
-            EmptyNote("Calendar access is off. Upcoming stays empty until you allow it.")
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText("The launcher reads your device calendar only, offline. Nothing is uploaded.")
-            CalendarAccessAction(viewModel, state.settings.calendarAsked)
-        } else {
-            EmptyNote("Nothing upcoming in the next days.")
-        }
-    } else {
-        items.forEach { item ->
-            when (item) {
-                is UpcomingItem.Event -> {
-                    val e = item.event
-                    UpcomingRow(e.startMillis, e.endMillis, e.title, e.allDay)
-                }
-                is UpcomingItem.Task -> {
-                    val due = Instant.ofEpochMilli(item.dueMillis).atZone(ZoneId.systemDefault())
-                    Row {
-                        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.width(52.dp)) {
-                            Text(
-                                text = due.format(DateTimeFormatter.ofPattern("d MMM")),
-                                style = LauncherType.body,
-                                color = LauncherColors.current.primary,
-                            )
-                            SecondaryText("Due")
-                        }
-                        Spacer(Modifier.width(LauncherSpace.md))
-                        Column(Modifier.weight(1f)) {
-                            Text(text = item.task.title, style = LauncherType.body, color = LauncherColors.current.primary)
-                            SecondaryText("Task")
-                        }
-                    }
-                }
-            }
-            Spacer(Modifier.height(LauncherSpace.sm))
-        }
-        if (!state.calendarPermission) {
-            SecondaryText("Calendar access is off — showing due tasks only.")
-            CalendarAccessAction(viewModel, state.settings.calendarAsked)
-        }
-    }
-    Spacer(Modifier.height(LauncherSpace.xs))
-    QuietAction("Open calendar", onClick = { viewModel.openCalendar() })
-}
+// (Upcoming moved to the Plan page; due tasks stay visible in the task lists.)
 
 @Composable
-fun UpcomingRow(startMillis: Long, endMillis: Long, title: String, allDay: Boolean = false) {
+fun UpcomingRow(
+    startMillis: Long,
+    endMillis: Long,
+    title: String,
+    allDay: Boolean = false,
+    inProgress: Boolean = false,
+) {
     val palette = LauncherColors.current
     val zone = ZoneId.systemDefault()
     val start = Instant.ofEpochMilli(startMillis).atZone(zone).toLocalTime()
@@ -321,11 +277,13 @@ fun UpcomingRow(startMillis: Long, endMillis: Long, title: String, allDay: Boole
         Spacer(Modifier.width(LauncherSpace.md))
         Column(Modifier.weight(1f)) {
             Text(text = title, style = LauncherType.body, color = palette.primary)
-            if (!allDay) {
-                val mins = ((endMillis - startMillis) / 60000).coerceAtLeast(1)
-                SecondaryText("$mins minutes")
-            } else {
-                SecondaryText(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")))
+            when {
+                inProgress -> SecondaryText("In progress")
+                !allDay -> {
+                    val mins = ((endMillis - startMillis) / 60000).coerceAtLeast(1)
+                    SecondaryText("$mins minutes")
+                }
+                else -> SecondaryText(LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM")))
             }
         }
     }

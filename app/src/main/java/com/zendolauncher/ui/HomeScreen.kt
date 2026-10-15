@@ -154,6 +154,11 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.sm))
         }
 
+        state.pinNotice?.let {
+            SecondaryText(it, modifier = Modifier.padding(horizontal = LauncherSpace.gutter))
+            Spacer(Modifier.height(LauncherSpace.sm))
+        }
+
         if (!state.pageEditing && pages.size > 1) {
             PageIndicator(pages, pagerState) { viewModel.goToPage(it) }
         }
@@ -228,8 +233,8 @@ private fun PageBody(page: HomePage, viewModel: LauncherViewModel, state: UiStat
     when (page.type) {
         PageType.TODAY -> TodayPage(viewModel, state)
         PageType.APPS -> LaunchPage(page, viewModel, state)
-        PageType.PLAN -> PlanFocusPage(viewModel, state)
-        PageType.NOTES -> FocusPage(viewModel, state)
+        PageType.PLAN -> PlanPage(viewModel, state)
+        PageType.NOTES -> NotePage(viewModel, state)
         PageType.WIDGET -> WidgetPage(page)
     }
 }
@@ -237,9 +242,9 @@ private fun PageBody(page: HomePage, viewModel: LauncherViewModel, state: UiStat
 // ---- Today -------------------------------------------------------------------------
 
 /**
- * Date first, then Highlights / Tasks / Upcoming from local stores + device calendar.
- * Persistent: highlights stay until edited/archived, tasks keep completion, upcoming
- * reads the device provider when permission is granted. Nothing is invented.
+ * Date first, then Today's action, highlights and tasks from local stores. Persistent:
+ * highlights stay until edited/archived, tasks keep completion. The calendar lives on
+ * the Plan page and is not duplicated here. Nothing is invented.
  */
 @Composable
 private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
@@ -281,15 +286,7 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
             TodayDashboard(viewModel, state)
         } else {
             Spacer(Modifier.height(LauncherSpace.md))
-            EmptyNote("Today is hidden. Turn on Show today in Settings to see highlights, tasks and upcoming.")
-        }
-
-        // The shortcut exists only when a Focus page does. It moves the pager and nothing
-        // else, so it is a real action rather than a placeholder.
-        val focusIndex = state.settings.home.pages.indexOfFirst { it.type == PageType.NOTES }
-        if (focusIndex >= 0) {
-            Spacer(Modifier.height(LauncherSpace.xl))
-            QuietAction("Focus", onClick = { viewModel.goToPage(focusIndex) })
+            EmptyNote("Today is hidden. Turn on Show today in Settings to see your action, highlights and tasks.")
         }
 
         Spacer(Modifier.height(LauncherSpace.xl))
@@ -393,15 +390,15 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
     }
 }
 
-// ---- Focus -------------------------------------------------------------------------
+// ---- Note --------------------------------------------------------------------------
 
 /**
- * The Focus page. Its note is the only thing here with storage behind it; everything else
- * states plainly that it is not built, rather than offering a control that would do
- * nothing or a number that would be made up.
+ * The note page: one persistent quick note, plus a route to the wellbeing controls, which
+ * live in Settings. The focus timer belonged to the Zendo app, so nothing here runs a
+ * session or a clock.
  */
 @Composable
-private fun FocusPage(viewModel: LauncherViewModel, state: UiState) {
+private fun NotePage(viewModel: LauncherViewModel, state: UiState) {
     val palette = LauncherColors.current
     // Seeded from the store and written on every keystroke, so there is nothing to press to
     // save and nothing to lose if the process dies mid-sentence.
@@ -414,12 +411,7 @@ private fun FocusPage(viewModel: LauncherViewModel, state: UiState) {
             .padding(horizontal = LauncherSpace.gutter),
     ) {
         Spacer(Modifier.height(LauncherSpace.xl))
-        SectionHeading("Focus session")
-        Spacer(Modifier.height(LauncherSpace.sm))
-        EmptyNote("Sessions are not built yet. Nothing here runs a timer or blocks apps.")
-
-        Spacer(Modifier.height(LauncherSpace.xl))
-        SectionHeading("Quick note")
+        SectionHeading("Note")
         Spacer(Modifier.height(LauncherSpace.sm))
         BasicTextField(
             value = draft,
@@ -449,12 +441,6 @@ private fun FocusPage(viewModel: LauncherViewModel, state: UiState) {
         // here as a second switch; this is the route to where its controls live.
         QuietAction("Wellbeing settings", onClick = { viewModel.openSettings(Screen.HOME) })
 
-        Spacer(Modifier.height(LauncherSpace.xl))
-        SectionHeading("Usage")
-        Spacer(Modifier.height(LauncherSpace.sm))
-        // Usage access is optional and off by default; the summary and its switch
-        // live in Settings, so this stays a route rather than a second switch.
-        EmptyNote("Usage summary is optional and off unless you allow it in Settings.")
         Spacer(Modifier.height(LauncherSpace.xl))
     }
 }
@@ -695,7 +681,7 @@ private fun currentLocale(): Locale = LocalConfiguration.current.locales[0]
 private fun PageType.label(): String = when (this) {
     PageType.TODAY -> "Today"
     PageType.APPS -> "Apps"
-    PageType.PLAN -> "Plan & Focus"
-    PageType.NOTES -> "Focus"
+    PageType.PLAN -> "Plan"
+    PageType.NOTES -> "Note"
     PageType.WIDGET -> "Widget"
 }

@@ -2,17 +2,29 @@ package com.zendolauncher.ui
 
 import android.app.Application
 import android.graphics.Bitmap
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.zendolauncher.BuildConfig
 import com.zendolauncher.core.AppQuery
-import com.zendolauncher.core.FocusRecord
-import com.zendolauncher.core.FocusSession
+import com.zendolauncher.core.BridgeParse
+import com.zendolauncher.core.BridgePlan
+import com.zendolauncher.core.BridgePlanner
+import com.zendolauncher.core.BridgeSnapshot
+import com.zendolauncher.core.DayRecord
 import com.zendolauncher.core.Highlight
+import com.zendolauncher.core.ImportMode
+import com.zendolauncher.core.Origins
 import com.zendolauncher.core.TaskItem
 import com.zendolauncher.core.WallpaperTemplates
+import com.zendolauncher.core.primary
+import com.zendolauncher.data.BackupContents
+import com.zendolauncher.data.BackupParse
+import com.zendolauncher.data.BackupPrefs
+import com.zendolauncher.data.BridgeJson
 import com.zendolauncher.data.FocusNoteStore
-import com.zendolauncher.data.FocusStore
 import com.zendolauncher.data.HighlightStore
+import com.zendolauncher.data.HistoryStore
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
@@ -25,16 +37,13 @@ import com.zendolauncher.model.AppUsage
 import com.zendolauncher.model.CalendarEvent
 import com.zendolauncher.model.DeviceCalendar
 import com.zendolauncher.model.LaunchTarget
-import com.zendolauncher.model.ZendoToday
 import com.zendolauncher.platform.AppLauncher
 import com.zendolauncher.platform.AppRepository
 import com.zendolauncher.platform.CalendarRepository
 import com.zendolauncher.platform.ShortcutRepository
-import com.zendolauncher.platform.UnavailableZendoSource
 import com.zendolauncher.platform.UsageRepository
 import com.zendolauncher.platform.WallpaperApplier
 import com.zendolauncher.platform.WallpaperApplyResult
-import com.zendolauncher.platform.ZendoSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -57,7 +66,26 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, WALLPAPERS, CALENDAR, HIGHLIGHT_EDITOR, TASK_EDITOR, SETUP, PERMISSIONS }
+enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, WALLPAPERS, CALENDAR, HISTORY, HIGHLIGHT_EDITOR, TASK_EDITOR, SETUP, PERMISSIONS }
+
+/**
+ * The planned result of a picked snapshot file, held while the user reviews and
+ * confirms it. The plan is computed once per mode; applying it writes exactly the
+ * lists the preview counted.
+ */
+data class BridgePreviewUi(
+    val fileName: String,
+    val snapshot: BridgeSnapshot,
+    val plan: BridgePlan,
+) {
+    val mode: ImportMode get() = plan.mode
+}
+
+/** A parsed backup file waiting on the restore confirmation. */
+data class BackupPreviewUi(
+    val fileName: String,
+    val contents: BackupContents,
+)
 
 data class UiState(
     val screen: Screen = Screen.HOME,
@@ -68,7 +96,6 @@ data class UiState(
     val visibleApps: List<LaunchTarget> = emptyList(),
     val shortcutAccess: Boolean = false,
     val isDefaultHome: Boolean = false,
-    val zendo: ZendoToday? = null,
     /**
      * Every discovered target, hidden apps included. [visibleApps] has already dropped
      * the hidden ones, so a screen that has to name a hidden app has nothing left to
@@ -81,6 +108,8 @@ data class UiState(
      * the only way back.
      */
     val undoHidden: LaunchTarget? = null,
+    /** The note shown when a pin was refused because the page is full; see [LauncherViewModel.toggleFavourite]. */
+    val pinNotice: String? = null,
     /** True only while the first enumeration is still running; see [LauncherViewModel.onStart]. */
     val isLoading: Boolean = false,
     /**
@@ -114,9 +143,15 @@ data class UiState(
     val editingTodayAction: Boolean = false,
     val todayActionDraft: String = "",
     val todayActionError: String? = null,
-    // ---- Focus timer ------------------------------------------------------------
-    val focusSession: FocusSession = FocusSession(),
-    val focusHistory: List<FocusRecord> = emptyList(),
+    // ---- History (local day records) --------------------------------------------
+    val historyDays: List<DayRecord> = emptyList(),
+    val historyLoading: Boolean = false,
+    val historyMessage: String? = null,
+    val confirmClearHistory: Boolean = false,
+    // ---- Zendo bridge & backup (manual files only) --------------------------------
+    val bridgePreview: BridgePreviewUi? = null,
+    val backupPreview: BackupPreviewUi? = null,
+    val zendoMessage: String? = null,
     // ---- Calendar (device provider, read-only) ---------------------------------
     val calendars: List<DeviceCalendar> = emptyList(),
     val calendarEvents: List<CalendarEvent> = emptyList(),
@@ -195,14 +230,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val highlightStore = HighlightStore(application)
     private val taskStore = TaskStore(application)
     private val todayActionStore = TodayActionStore(application)
-    private val focusStore = FocusStore(application)
+    private val historyStore = HistoryStore(application)
     private val wallpaperStore = WallpaperStore(application)
     private val calendarRepository = CalendarRepository(application)
     private val usageRepository = UsageRepository(application)
     private val appLauncher = AppLauncher(application)
-
-    /** Swap this for a Supabase-backed implementation once the backend allows it. */
-    private val zendoSource: ZendoSource = UnavailableZendoSource
 
     private val _screen = MutableStateFlow(if (settingsStore.read().onboardingSeen) Screen.HOME else Screen.ONBOARDING)
     private val _query = MutableStateFlow("")
@@ -225,6 +257,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     /** The auto-dismiss for [_undoHidden]; cancelling it is how a new hide takes over. */
     private var undoJob: Job? = null
+
+    /** The note for a refused pin; same auto-dismiss pattern as the undo note. */
+    private val _pinNotice = MutableStateFlow<String?>(null)
 
     /**
      * The distraction-listed app waiting on the intentional pause. Plain dialog state:
@@ -273,10 +308,19 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _editingTodayAction = MutableStateFlow(false)
     private val _todayActionDraft = MutableStateFlow("")
     private val _todayActionError = MutableStateFlow<String?>(null)
-    // Usage summary: explicit loads only, never background polling.
+    // Usage summary: explicit loads only, never background polling. Gated on
+    // screenTimeEnabled; when off, no query ever runs and the lists stay empty.
     private val _usageAccess = MutableStateFlow(false)
     private val _usageEntries = MutableStateFlow<List<AppUsage>>(emptyList())
     private val _usageLoading = MutableStateFlow(false)
+
+    // History / bridge / backup state. Local files only; nothing here touches a network.
+    private val _historyLoading = MutableStateFlow(false)
+    private val _historyMessage = MutableStateFlow<String?>(null)
+    private val _confirmClearHistory = MutableStateFlow(false)
+    private val _bridgePreview = MutableStateFlow<BridgePreviewUi?>(null)
+    private val _backupPreview = MutableStateFlow<BackupPreviewUi?>(null)
+    private val _zendoMessage = MutableStateFlow<String?>(null)
 
     /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
     private var settingsReturn: Screen = Screen.HOME
@@ -313,13 +357,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val results: Flow<List<LaunchTarget>> =
         combine(visibleApps, _query) { apps, query -> AppQuery.search(apps, query) }
 
-    private val zendo: Flow<ZendoToday?> = settingsStore.settings
-        .map { it.zendoEnabled }
-        .distinctUntilChanged()
-        .flatMapLatest { enabled ->
-            if (enabled) flow { emit(zendoSource.load()) } else flowOf(null)
-        }
-
     /**
      * The four app lists, grouped only so the `combine` below stays within its typed
      * arity. Nothing else reads this.
@@ -341,7 +378,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
 
     private val base: Flow<UiState> =
-        combine(lists, prefs, zendo, _isLoading, _undoHidden) { lists, prefs, zendo, isLoading, undoHidden ->
+        combine(lists, prefs, _isLoading, _undoHidden, _pinNotice) { lists, prefs, isLoading, undoHidden, pinNotice ->
             UiState(
                 screen = lists.screen,
                 query = prefs.query,
@@ -351,9 +388,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 visibleApps = lists.apps.visibleApps,
                 shortcutAccess = prefs.shortcutAccess,
                 isDefaultHome = prefs.isDefaultHome,
-                zendo = zendo,
                 allApps = lists.apps.allApps,
                 undoHidden = undoHidden,
+                pinNotice = pinNotice,
                 isLoading = isLoading,
                 pageEditing = lists.pageEditing,
                 pagerTargetPage = lists.pagerTargetPage,
@@ -369,8 +406,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val editingAction: Boolean,
         val actionDraft: String,
         val actionError: String?,
-        val focusSession: FocusSession,
-        val focusHistory: List<FocusRecord>,
         val calendars: List<DeviceCalendar>,
         val events: List<CalendarEvent>,
         val permission: Boolean,
@@ -411,8 +446,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _editingTodayAction,
         _todayActionDraft,
         _todayActionError,
-        focusStore.session,
-        focusStore.history,
         _calendars,
         _calendarEvents,
         _calendarPermission,
@@ -453,43 +486,76 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             editingAction = args[4] as Boolean,
             actionDraft = args[5] as String,
             actionError = args[6] as String?,
-            focusSession = args[7] as FocusSession,
-            focusHistory = args[8] as List<FocusRecord>,
-            calendars = args[9] as List<DeviceCalendar>,
-            events = args[10] as List<CalendarEvent>,
-            permission = args[11] as Boolean,
-            loading = args[12] as Boolean,
-            calError = args[13] as String?,
-            lastRefresh = args[14] as Long,
-            date = args[15] as LocalDate,
-            wallpaperId = args[16] as String?,
-            wallpaperTarget = args[17] as WallpaperTarget,
-            applying = args[18] as Boolean,
-            message = args[19] as String?,
-            editingId = args[20] as String?,
-            draftTitle = args[21] as String,
-            draftNote = args[22] as String,
-            draftPin = args[23] as Boolean,
-            draftError = args[24] as String?,
-            showDiscardH = args[25] as Boolean,
-            confirmDelH = args[26] as String?,
-            showAllH = args[27] as Boolean,
-            showAllT = args[28] as Boolean,
-            editingTask = args[29] as String?,
-            taskTitle = args[30] as String,
-            taskDue = args[31] as Long?,
-            taskNotes = args[32] as String,
-            taskError = args[33] as String?,
-            showDiscardT = args[34] as Boolean,
-            confirmDelT = args[35] as String?,
-            usageAccess = args[36] as Boolean,
-            usageEntries = args[37] as List<AppUsage>,
-            usageLoading = args[38] as Boolean,
+            calendars = args[7] as List<DeviceCalendar>,
+            events = args[8] as List<CalendarEvent>,
+            permission = args[9] as Boolean,
+            loading = args[10] as Boolean,
+            calError = args[11] as String?,
+            lastRefresh = args[12] as Long,
+            date = args[13] as LocalDate,
+            wallpaperId = args[14] as String?,
+            wallpaperTarget = args[15] as WallpaperTarget,
+            applying = args[16] as Boolean,
+            message = args[17] as String?,
+            editingId = args[18] as String?,
+            draftTitle = args[19] as String,
+            draftNote = args[20] as String,
+            draftPin = args[21] as Boolean,
+            draftError = args[22] as String?,
+            showDiscardH = args[23] as Boolean,
+            confirmDelH = args[24] as String?,
+            showAllH = args[25] as Boolean,
+            showAllT = args[26] as Boolean,
+            editingTask = args[27] as String?,
+            taskTitle = args[28] as String,
+            taskDue = args[29] as Long?,
+            taskNotes = args[30] as String,
+            taskError = args[31] as String?,
+            showDiscardT = args[32] as Boolean,
+            confirmDelT = args[33] as String?,
+            usageAccess = args[34] as Boolean,
+            usageEntries = args[35] as List<AppUsage>,
+            usageLoading = args[36] as Boolean,
+        )
+    }
+
+    /**
+     * History and file-transfer state, kept apart from [TodayBundle] so neither
+     * `combine` outgrows its arity. All local; none of it is network state.
+     */
+    private data class Extras(
+        val historyDays: List<DayRecord>,
+        val historyLoading: Boolean,
+        val historyMessage: String?,
+        val confirmClearHistory: Boolean,
+        val bridgePreview: BridgePreviewUi?,
+        val backupPreview: BackupPreviewUi?,
+        val zendoMessage: String?,
+    )
+
+    private val extras: Flow<Extras> = combine(
+        historyStore.days,
+        _historyLoading,
+        _historyMessage,
+        _confirmClearHistory,
+        _bridgePreview,
+        _backupPreview,
+        _zendoMessage,
+    ) { args: Array<Any?> ->
+        @Suppress("UNCHECKED_CAST")
+        Extras(
+            historyDays = args[0] as List<DayRecord>,
+            historyLoading = args[1] as Boolean,
+            historyMessage = args[2] as String?,
+            confirmClearHistory = args[3] as Boolean,
+            bridgePreview = args[4] as BridgePreviewUi?,
+            backupPreview = args[5] as BackupPreviewUi?,
+            zendoMessage = args[6] as String?,
         )
     }
 
     val state: StateFlow<UiState> =
-        combine(base, _pendingPause, today) { base, pendingPause, t ->
+        combine(base, _pendingPause, today, extras) { base, pendingPause, t, x ->
             base.copy(
                 pendingPause = pendingPause,
                 highlights = t.highlights,
@@ -499,8 +565,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 editingTodayAction = t.editingAction,
                 todayActionDraft = t.actionDraft,
                 todayActionError = t.actionError,
-                focusSession = t.focusSession,
-                focusHistory = t.focusHistory,
                 calendars = t.calendars,
                 calendarEvents = t.events,
                 calendarPermission = t.permission,
@@ -508,7 +572,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 calendarError = t.calError,
                 lastCalendarRefresh = t.lastRefresh,
                 selectedDateEpochDay = t.date.toEpochDay(),
-                wallpaperSelectedId = t.wallpaperId,
+                // A stored id from an older build resolves to the default design
+                // instead of reading as "nothing chosen".
+                wallpaperSelectedId = t.wallpaperId
+                    ?.takeIf { WallpaperTemplates.byId(it) != null }
+                    ?: WallpaperTemplates.DEFAULT_ID,
                 wallpaperTarget = t.wallpaperTarget,
                 wallpaperApplying = t.applying,
                 wallpaperMessage = t.message,
@@ -531,6 +599,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 usageAccess = t.usageAccess,
                 usageEntries = t.usageEntries,
                 usageLoading = t.usageLoading,
+                historyDays = x.historyDays,
+                historyLoading = x.historyLoading,
+                historyMessage = x.historyMessage,
+                confirmClearHistory = x.confirmClearHistory,
+                bridgePreview = x.bridgePreview,
+                backupPreview = x.backupPreview,
+                zendoMessage = x.zendoMessage,
             )
         }.stateIn(
             viewModelScope,
@@ -543,6 +618,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 isLoading = _isLoading.value,
             ),
         )
+
+    init {
+        // Keep today's history record in step with the live stores. Every write goes
+        // through upsert(), which ignores identical content, so this costs one
+        // comparison per edit and nothing else. The date is read at capture time:
+        // once the local date moves on, the previous day simply stops being rewritten
+        // (past records are never touched), which is why no midnight job is needed.
+        viewModelScope.launch {
+            combine(
+                highlightStore.highlights,
+                taskStore.tasks,
+                todayActionStore.title,
+                todayActionStore.done,
+            ) { highlights, tasks, title, done ->
+                historyStore.capture(
+                    date = LocalDate.now(),
+                    actionTitle = title,
+                    actionDone = done,
+                    highlightText = highlights.primary()?.title.orEmpty(),
+                    tasks = tasks,
+                )
+            }.collect { }
+        }
+    }
 
     private var enumerated = false
 
@@ -725,6 +824,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _confirmDeleteTask.value = null
             return true
         }
+        if (_confirmClearHistory.value) {
+            cancelClearHistory()
+            return true
+        }
+        if (_bridgePreview.value != null) {
+            cancelBridgeImport()
+            return true
+        }
+        if (_backupPreview.value != null) {
+            cancelBackupRestore()
+            return true
+        }
         when (_screen.value) {
             Screen.ONBOARDING -> {
                 dismissOnboarding()
@@ -738,7 +849,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 goHome()
                 return true
             }
-            Screen.WALLPAPERS, Screen.CALENDAR -> {
+            Screen.WALLPAPERS, Screen.CALENDAR, Screen.HISTORY -> {
                 goHome()
                 return true
             }
@@ -902,7 +1013,23 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** The dialog's Cancel: back to the list, nothing launched. */
     fun cancelPause() { _pendingPause.value = null }
 
-    fun toggleFavourite(key: String) = settingsStore.toggleFavourite(key)
+    /**
+     * Pins or unpins an app. When the pin is refused — the target page already holds
+     * the limit — a short note says so in place; the list is not reordered and
+     * nothing is silently dropped.
+     */
+    fun toggleFavourite(key: String) {
+        if (settingsStore.toggleFavourite(key)) {
+            _pinNotice.value = null
+        } else {
+            _pinNotice.value = "This page is full. Unpin an app first."
+            undoJob?.cancel()
+            undoJob = viewModelScope.launch {
+                delay(6_000)
+                _pinNotice.value = null
+            }
+        }
+    }
 
     fun toggleDistract(key: String) = settingsStore.update { current ->
         val distract = if (key in current.distract) current.distract - key else current.distract + key
@@ -959,7 +1086,29 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setClock24h(enabled: Boolean) = settingsStore.update { it.copy(clock24h = enabled) }
 
-    fun setZendoEnabled(enabled: Boolean) = settingsStore.update { it.copy(zendoEnabled = enabled) }
+    /** Draws launcher-page icons desaturated; the original icon stays the fallback. */
+    fun setMonochromeIcons(enabled: Boolean) = settingsStore.update { it.copy(monochromeIcons = enabled) }
+
+    /** Pinned apps allowed on one page. 5 or 6; the store clamps anything else. */
+    fun setPinLimit(limit: Int) = settingsStore.update {
+        it.copy(pinLimit = limit.coerceIn(SettingsStore.MIN_PIN_LIMIT, SettingsStore.MAX_PIN_LIMIT))
+    }
+
+    /**
+     * Screen time is opt-in: turning it on changes nothing until the system grants
+     * Usage Access, and this flag is what every usage read is gated on. Turning it
+     * off stops the queries and drops whatever was loaded.
+     */
+    fun setScreenTimeEnabled(enabled: Boolean) {
+        settingsStore.update { it.copy(screenTimeEnabled = enabled) }
+        if (!enabled) {
+            _usageAccess.value = false
+            _usageEntries.value = emptyList()
+        }
+    }
+
+    /** Hides the numbers while access stays. Independent of [setScreenTimeEnabled]. */
+    fun setScreenTimeHidden(hidden: Boolean) = settingsStore.update { it.copy(screenTimeHidden = hidden) }
 
     fun setPauseEnabled(enabled: Boolean) = settingsStore.update { it.copy(pauseEnabled = enabled) }
 
@@ -1023,40 +1172,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun toggleTodayAction() = todayActionStore.setDone(!todayActionStore.done.value)
 
     // ---- Focus timer ---------------------------------------------------------------
-
-    fun startFocus(workMinutes: Int? = null, breakMinutes: Int? = null) {
-        val settings = settingsStore.settings.value
-        focusStore.startWork(
-            workMinutes ?: settings.focusWorkMinutes,
-            breakMinutes ?: settings.focusBreakMinutes,
-        )
-    }
-
-    /** Starts a work block and jumps to the Plan & Focus page. */
-    fun focusFromTask() {
-        _showAllTasks.value = false
-        _editingTaskId.value = null
-        startFocus()
-        val index = settingsStore.settings.value.home.pages.indexOfFirst { it.type == com.zendolauncher.core.PageType.PLAN }
-        if (index >= 0) goToPage(index)
-    }
-
-    fun pauseFocus() = focusStore.pause()
-
-    fun resumeFocus() = focusStore.resume()
-
-    fun finishFocus(naturally: Boolean = false) = focusStore.finish(naturally)
-
-    fun startFocusBreak() = focusStore.startBreak()
-
-    fun clearFocusHistory() = focusStore.clearHistory()
-
-    fun setFocusDefaults(workMinutes: Int, breakMinutes: Int) = settingsStore.update {
-        it.copy(
-            focusWorkMinutes = workMinutes.coerceIn(5, 180),
-            focusBreakMinutes = breakMinutes.coerceIn(0, 60),
-        )
-    }
+    // The timer belongs to the Zendo app; the launcher keeps only the per-page quick
+    // note. The stored work/break minutes stay in settings as inert data so a
+    // downgrade still finds them, and nothing in this app reads them any more.
 
     // ---- Highlights (persistent, never auto-erased) ---------------------------------
 
@@ -1302,21 +1420,38 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * The calendar ids the agenda may read: the user's explicit selection, or —
-     * under Google-only — the Google-account calendars (intersected with the
-     * selection when one exists). Null means "all visible". An empty Google set
-     * under Google-only yields empty (not "all"): mixing local calendars back
-     * in would break the explicit Google choice.
+     * The calendar ids the agenda may read: the user's explicit selection, always.
+     * Empty means none chosen — nothing is ever auto-enabled. The legacy Google-only
+     * filter still applies for installs that stored it before the selection became
+     * explicit (their migration writes the narrowed view down and clears the flag).
      */
     fun effectiveCalendarIds(
         shown: Set<Long>,
         calendars: List<DeviceCalendar>,
         googleOnly: Boolean,
-    ): Set<Long>? {
-        if (!googleOnly) return shown.ifEmpty { null }
-        val googleIds = calendars.filter { it.isGoogle }.map { it.id }.toSet()
-        if (googleIds.isEmpty()) return emptySet()
-        return if (shown.isEmpty()) googleIds else shown.intersect(googleIds)
+    ): Set<Long> {
+        if (!googleOnly) return shown
+        return shown.intersect(calendars.filter { it.isGoogle }.map { it.id }.toSet())
+    }
+
+    /**
+     * Ends the legacy "empty means all" era the first time calendars are readable:
+     * an upgrading install gets its previous view written down once, so nothing
+     * silently disappears; a fresh install simply starts with none chosen.
+     */
+    private fun settleCalendarSelection(cals: List<DeviceCalendar>) {
+        val settings = settingsStore.settings.value
+        if (settings.calendarSelectionSchema || cals.isEmpty()) return
+        if (settings.shownCalendarIds.isNotEmpty()) {
+            settingsStore.materializeCalendarSelection(null)
+            return
+        }
+        val ids = if (settings.calendarGoogleOnly) {
+            cals.filter { it.isGoogle }.map { it.id }.toSet()
+        } else {
+            cals.map { it.id }.toSet()
+        }
+        settingsStore.materializeCalendarSelection(ids)
     }
 
     fun refreshCalendar() {
@@ -1328,6 +1463,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 emptyList()
             }
             _calendars.value = cals
+            settleCalendarSelection(cals)
             refreshCalendarEvents()
         }
     }
@@ -1349,7 +1485,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 val weekEnd = date.plusDays(14).atStartOfDay(zone).toInstant().toEpochMilli()
                 val settings = settingsStore.settings.value
                 val filter = effectiveCalendarIds(settings.shownCalendarIds, _calendars.value, settings.calendarGoogleOnly)
-                _calendarEvents.value = if (filter != null && filter.isEmpty()) {
+                _calendarEvents.value = if (filter.isEmpty()) {
                     emptyList()
                 } else {
                     calendarRepository.queryEvents(weekStart, weekEnd, filter)
@@ -1366,7 +1502,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     /**
-     * Called when the Plan & Focus page settles into view. Refreshes only when
+     * Called when the Plan page settles into view. Refreshes only when
      * the cache is stale (older than a minute) — returning from an external
      * calendar minutes later re-queries once; swiping past does not hammer the
      * provider. Pure staleness rule in [calendarStale].
@@ -1380,8 +1516,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun clearCalendarError() { _calendarError.value = null }
 
+    /** Writes the explicit selection and re-queries; empty is a valid, deliberate state. */
     fun setShownCalendars(ids: Set<Long>) {
-        settingsStore.update { it.copy(shownCalendarIds = ids) }
+        settingsStore.materializeCalendarSelection(ids)
         refreshCalendarEvents()
     }
 
@@ -1412,10 +1549,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         // operation: the UI already swaps the button for status text, and this is the
         // second line of defence for the frame in between.
         if (_wallpaperApplying.value) return
-        val template = WallpaperTemplates.byId(wallpaperStore.selectedId.value) ?: run {
-            _wallpaperMessage.value = "Choose a wallpaper first."
-            return
-        }
+        // An unknown stored id (a template from an older build) applies the default
+        // design rather than stopping at a message about a choice the user cannot see.
+        val template = WallpaperTemplates.byId(wallpaperStore.selectedId.value)
+            ?: WallpaperTemplates.default()
         val target = wallpaperStore.target.value
         _wallpaperApplying.value = true
         _wallpaperMessage.value = null
@@ -1447,20 +1584,27 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setReduceMotion(enabled: Boolean) = settingsStore.update { it.copy(reduceMotion = enabled) }
 
-    // ---- Optional usage summary (special access, numbers only) ----------------------
+    // ---- Optional screen time (special access, numbers only, opt-in) -----------------
 
-    /** Re-reads special-access state. Read-only; granting happens in system Settings. */
+    /**
+     * Re-reads special-access state. Read-only; granting happens in system Settings.
+     * Gated on [LauncherSettings.screenTimeEnabled]: while screen time is off, no
+     * access is ever reported and nothing is loaded.
+     */
     fun refreshUsageAccess() {
-        _usageAccess.value = usageRepository.hasAccess()
-        if (!usageRepository.hasAccess()) _usageEntries.value = emptyList()
+        val enabled = settingsStore.settings.value.screenTimeEnabled
+        val has = enabled && usageRepository.hasAccess()
+        _usageAccess.value = has
+        if (!has) _usageEntries.value = emptyList()
     }
 
     /**
      * Loads today's summary on an explicit tap. No polling, no background work:
-     * each load is one bounded provider query for the current day.
+     * each load is one bounded provider query for the current day, and only while
+     * screen time is on.
      */
     fun loadUsage() {
-        if (!usageRepository.hasAccess()) {
+        if (!settingsStore.settings.value.screenTimeEnabled || !usageRepository.hasAccess()) {
             _usageAccess.value = false
             _usageEntries.value = emptyList()
             return
@@ -1476,6 +1620,257 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _usageLoading.value = false
         }
     }
+
+    // ---- History (local day records) -------------------------------------------------
+
+    fun openHistory() {
+        _screen.value = Screen.HISTORY
+        refreshHistory()
+    }
+
+    /** Re-reads the local record file off the main thread; the file is small. */
+    fun refreshHistory() {
+        _historyLoading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            historyStore.reload()
+            _historyLoading.value = false
+        }
+    }
+
+    fun clearHistoryMessage() { _historyMessage.value = null }
+
+    fun requestClearHistory() { _confirmClearHistory.value = true }
+
+    fun cancelClearHistory() { _confirmClearHistory.value = false }
+
+    /**
+     * Erases every day record. Live data (action, highlight, tasks) is untouched:
+     * this is history, not the present. The next capture starts a fresh record for
+     * today the moment anything changes.
+     */
+    fun confirmClearHistory() {
+        historyStore.clear()
+        _confirmClearHistory.value = false
+        _historyMessage.value = "History cleared. Nothing else was touched."
+    }
+
+    // ---- Zendo bridge & backup (manual files only) -----------------------------------
+
+    /**
+     * Parses a picked snapshot file and holds the planned import for confirmation.
+     * A file that is not a snapshot, is newer than this app, or is dated in the
+     * future is refused here with a sentence, and nothing is written.
+     */
+    fun beginSnapshotImport(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val today = LocalDate.now()
+            when (val parsed = BridgeJson.parseSnapshot(readTextFile(uri), today)) {
+                is BridgeParse.Rejected -> _zendoMessage.value = parsed.message
+                is BridgeParse.Ok -> {
+                    _bridgePreview.value = BridgePreviewUi(
+                        fileName = fileNameOf(uri),
+                        snapshot = parsed.snapshot,
+                        plan = planFor(parsed.snapshot, ImportMode.MERGE, today),
+                    )
+                    _zendoMessage.value = null
+                }
+            }
+        }
+    }
+
+    /** Toggles merge/replace in the preview; the plan is recomputed from the same file. */
+    fun setBridgeImportMode(mode: ImportMode) {
+        val preview = _bridgePreview.value ?: return
+        _bridgePreview.value = preview.copy(
+            plan = planFor(preview.snapshot, mode, LocalDate.now()),
+        )
+    }
+
+    private fun planFor(snapshot: BridgeSnapshot, mode: ImportMode, today: LocalDate): BridgePlan =
+        BridgePlanner.plan(
+            snapshot = snapshot,
+            today = today,
+            mode = mode,
+            currentActionTitle = todayActionStore.title.value,
+            currentActionOrigin = todayActionStore.origin.value,
+            currentHighlights = highlightStore.highlights.value,
+            currentTasks = taskStore.tasks.value,
+            currentDay = historyStore.recordFor(snapshot.localDate),
+        )
+
+    fun cancelBridgeImport() { _bridgePreview.value = null }
+
+    /**
+     * Applies exactly the lists the preview counted. A snapshot for today lands in
+     * the live stores (and is therefore captured into today's history as the day
+     * goes on); a snapshot for a past date writes only that day's record.
+     */
+    fun confirmBridgeImport() {
+        val preview = _bridgePreview.value ?: return
+        val plan = preview.plan
+        if (plan.isToday) {
+            plan.actionTitle?.let { title ->
+                todayActionStore.replace(
+                    title = title,
+                    done = false,
+                    origin = Origins.ZENDO_PWA,
+                    sourceId = preview.snapshot.action?.id,
+                )
+            }
+            plan.highlights?.let { highlightStore.replaceAll(it) }
+            plan.tasks?.let { taskStore.replaceAll(it) }
+        }
+        plan.dayRecord?.let { historyStore.upsert(it) }
+        settingsStore.update {
+            it.copy(
+                zendoLastImportAt = System.currentTimeMillis(),
+                zendoLastImportExportedAt = preview.snapshot.exportedAt,
+                zendoLastImportDate = preview.snapshot.localDate.toString(),
+            )
+        }
+        _bridgePreview.value = null
+        _zendoMessage.value = importResultMessage(plan)
+    }
+
+    /** One plain sentence about what an import did — from the same plan that applied. */
+    private fun importResultMessage(plan: BridgePlan): String {
+        val s = plan.summary
+        if (!s.hasAnyChange) return "Already up to date — nothing needed to change."
+        val parts = ArrayList<String>()
+        if (s.addedTasks > 0) parts += "${s.addedTasks} task${if (s.addedTasks == 1) "" else "s"} added"
+        if (s.updatedTasks > 0) parts += "${s.updatedTasks} updated"
+        if (s.removedImportedTasks > 0) parts += "${s.removedImportedTasks} replaced"
+        if (s.actionSet) parts += "action set"
+        if (s.highlightAdded) parts += "highlight added"
+        if (s.highlightUpdated) parts += "highlight updated"
+        return "Imported: " + parts.joinToString(", ") + "."
+    }
+
+    fun clearZendoMessage() { _zendoMessage.value = null }
+
+    /** Parses a picked backup file; the restore itself waits for confirmation. */
+    fun beginBackupImport(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            when (val parsed = BridgeJson.parseBackup(readTextFile(uri))) {
+                is BackupParse.Rejected -> _zendoMessage.value = parsed.message
+                is BackupParse.Ok -> {
+                    _backupPreview.value = BackupPreviewUi(fileNameOf(uri), parsed.contents)
+                    _zendoMessage.value = null
+                }
+            }
+        }
+    }
+
+    fun cancelBackupRestore() { _backupPreview.value = null }
+
+    /**
+     * Replaces the live action, highlights and tasks with the backup's; day records
+     * are upserted by date, so dates the backup does not contain are kept. Package
+     * names and calendar ids are not part of a backup and are never touched.
+     */
+    fun confirmBackupRestore() {
+        val preview = _backupPreview.value ?: return
+        val c = preview.contents
+        todayActionStore.replace(c.actionTitle, c.actionDone, c.actionOrigin, c.actionSourceId)
+        highlightStore.replaceAll(c.highlights)
+        taskStore.replaceAll(c.tasks)
+        historyStore.upsertAll(c.days)
+        settingsStore.update {
+            it.copy(
+                theme = c.prefs.theme,
+                layout = c.prefs.layout,
+                clock24h = c.prefs.clock24h,
+                reduceMotion = c.prefs.reduceMotion,
+                swipeUpEnabled = c.prefs.swipeUpEnabled,
+                pagingEnabled = c.prefs.pagingEnabled,
+                monochromeIcons = c.prefs.monochromeIcons,
+                pinLimit = c.prefs.pinLimit,
+                screenTimeEnabled = c.prefs.screenTimeEnabled,
+                screenTimeHidden = c.prefs.screenTimeHidden,
+                pauseEnabled = c.prefs.pauseEnabled,
+                pauseMessage = c.prefs.pauseMessage,
+                windowEnabled = c.prefs.windowEnabled,
+                windowStartMinute = c.prefs.windowStartMinute,
+                windowEndMinute = c.prefs.windowEndMinute,
+            )
+        }
+        if (!c.prefs.screenTimeEnabled) {
+            _usageAccess.value = false
+            _usageEntries.value = emptyList()
+        }
+        _backupPreview.value = null
+        _zendoMessage.value = "Backup restored."
+    }
+
+    /**
+     * Writes everything local to the picked file: action, highlights, tasks, day
+     * records and behaviour preferences. No package names, no calendar ids, no
+     * accounts — a backup that leaked those would be the kind of file this project
+     * exists to avoid.
+     */
+    fun exportBackupTo(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val s = settingsStore.settings.value
+            val actionTitle = todayActionStore.title.value
+            val contents = BackupContents(
+                actionTitle = actionTitle,
+                actionDone = actionTitle.isNotBlank() && todayActionStore.done.value,
+                actionOrigin = todayActionStore.origin.value,
+                actionSourceId = todayActionStore.sourceId.value,
+                highlights = highlightStore.highlights.value,
+                tasks = taskStore.tasks.value,
+                days = historyStore.days.value,
+                prefs = BackupPrefs(
+                    theme = s.theme,
+                    layout = s.layout,
+                    clock24h = s.clock24h,
+                    reduceMotion = s.reduceMotion,
+                    swipeUpEnabled = s.swipeUpEnabled,
+                    pagingEnabled = s.pagingEnabled,
+                    monochromeIcons = s.monochromeIcons,
+                    pinLimit = s.pinLimit,
+                    screenTimeEnabled = s.screenTimeEnabled,
+                    screenTimeHidden = s.screenTimeHidden,
+                    pauseEnabled = s.pauseEnabled,
+                    pauseMessage = s.pauseMessage,
+                    windowEnabled = s.windowEnabled,
+                    windowStartMinute = s.windowStartMinute,
+                    windowEndMinute = s.windowEndMinute,
+                ),
+            )
+            val raw = BridgeJson.encodeBackup(contents, BuildConfig.VERSION_NAME, System.currentTimeMillis())
+            _historyMessage.value = if (writeTextFile(uri, raw)) {
+                "Backup saved."
+            } else {
+                "Couldn't write the backup file."
+            }
+        }
+    }
+
+    // ---- File helpers (SAF documents the user picked; local only) ---------------------
+
+    private fun readTextFile(uri: Uri): String? = try {
+        getApplication<Application>().contentResolver.openInputStream(uri)?.use { stream ->
+            stream.bufferedReader().use { reader ->
+                val text = reader.readText()
+                if (text.length > BridgeJson.MAX_RAW_CHARS) null else text
+            }
+        }
+    } catch (_: Exception) {
+        null
+    }
+
+    private fun writeTextFile(uri: Uri, text: String): Boolean = try {
+        getApplication<Application>().contentResolver.openOutputStream(uri)?.use { stream ->
+            stream.bufferedWriter().use { it.write(text) }
+            true
+        } ?: false
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun fileNameOf(uri: Uri): String =
+        uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "file"
 
     suspend fun bitmapFor(target: LaunchTarget, sizePx: Int): Bitmap? =
         withContext(Dispatchers.IO) { appRepository.bitmapFor(target, sizePx) }

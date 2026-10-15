@@ -72,7 +72,6 @@ class ScreenshotCaptureTest {
         viewModel.setLayout(LayoutMode.TEXT)
         viewModel.setTodayEnabled(true)
         viewModel.setClock24h(true)
-        viewModel.setZendoEnabled(false)
         viewModel.goHome()
         rule.waitForIdle()
         rule.waitUntil(5_000) { !viewModel.state.value.isLoading }

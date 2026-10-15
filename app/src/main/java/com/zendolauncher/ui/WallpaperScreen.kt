@@ -1,13 +1,14 @@
 package com.zendolauncher.ui
 
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
-import androidx.compose.foundation.Canvas
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -22,41 +23,48 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.zendolauncher.core.WallpaperCategory
-import com.zendolauncher.core.WallpaperPattern
+import androidx.compose.ui.unit.sp
 import com.zendolauncher.core.WallpaperTemplate
 import com.zendolauncher.core.WallpaperTemplates
 import com.zendolauncher.data.WallpaperTarget
+import com.zendolauncher.platform.WallpaperApplier
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
-import kotlin.random.Random
 
 /**
- * Minimal wallpaper gallery: browse, preview, apply to Home / Lock / Both.
- * Preview only — nothing is written until Apply reports success.
+ * The wallpaper gallery: three designs, one preview, and an honest apply.
+ * Nothing is written until the system confirms it; a device without a lock
+ * target is never offered one; a failure keeps a real way out (the system
+ * picker) instead of a dead end.
  */
 @Composable
 fun WallpaperScreen(viewModel: LauncherViewModel, state: UiState) {
     val palette = LauncherColors.current
     val context = LocalContext.current
-    var category by remember { mutableStateOf<WallpaperCategory?>(null) }
-    val templates = remember(category) { WallpaperTemplates.byCategory(category) }
-    val selected = remember(state.wallpaperSelectedId) {
-        WallpaperTemplates.byId(state.wallpaperSelectedId)
+    val lockSupported = remember { WallpaperApplier.lockTargetSupported(context) }
+    val selectedId = state.wallpaperSelectedId ?: WallpaperTemplates.DEFAULT_ID
+    val selected = remember(selectedId) {
+        WallpaperTemplates.byId(selectedId) ?: WallpaperTemplates.default()
+    }
+
+    // A device without a separate lock target must not keep one selected: the
+    // choice snaps Home so the row and the apply always agree.
+    LaunchedEffect(lockSupported) {
+        if (!lockSupported && state.wallpaperTarget != WallpaperTarget.HOME) {
+            viewModel.setWallpaperTarget(WallpaperTarget.HOME)
+        }
     }
 
     Column(
@@ -75,228 +83,164 @@ fun WallpaperScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.lg))
             ScreenTitle("Wallpapers") { QuietAction("Home", onClick = { viewModel.goHome() }) }
             Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText("Less visual noise. More room to think.")
-            Spacer(Modifier.height(LauncherSpace.md))
-
-            // Category filters: text choices, selected marked by weight + hairline.
-            ChoiceRow(
-                label = "",
-                options = listOf(
-                    null to "All",
-                    WallpaperCategory.SOLID to "Solid",
-                    WallpaperCategory.SUBTLE to "Subtle",
-                ),
-                selected = category,
-                onSelect = { category = it },
+            SecondaryText(
+                "Three quiet designs, drawn for a 9:20 screen. The top stays clear " +
+                    "for the lock clock; anything set sits below it.",
             )
             Spacer(Modifier.height(LauncherSpace.md))
 
-            // Simple previews, not product cards: color field + name.
-            val rows = templates.chunked(3)
-            rows.forEach { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    row.forEach { template ->
-                        val isSelected = template.id == state.wallpaperSelectedId
-                        Column(
-                            Modifier
-                                .weight(1f)
-                                .clickable(onClick = { viewModel.selectWallpaper(template.id) })
-                                .semantics {
-                                    contentDescription = "${template.name} wallpaper"
-                                    stateDescription = if (isSelected) "Selected" else "Not selected"
-                                }
-                                .border(
-                                    width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) palette.primary else palette.separator,
-                                )
-                                .padding(4.dp),
-                        ) {
-                            WallpaperPreviewBox(template, Modifier.fillMaxWidth().aspectRatio(1f))
-                            Spacer(Modifier.height(4.dp))
-                            Text(
-                                template.name,
-                                style = LauncherType.secondary,
-                                color = if (isSelected) palette.primary else palette.secondary,
+            // The three designs as tall thumbnails, not product cards.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WallpaperTemplates.ALL.forEach { template ->
+                    val isSelected = template.id == selectedId
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .clickable(onClick = { viewModel.selectWallpaper(template.id) })
+                            .semantics {
+                                contentDescription = "${template.name} wallpaper"
+                                stateDescription = if (isSelected) "Selected" else "Not selected"
+                            }
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) palette.primary else palette.separator,
                             )
-                        }
+                            .padding(4.dp),
+                    ) {
+                        WallpaperPreviewBox(
+                            template,
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(9f / 20f),
+                        )
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            template.name,
+                            style = LauncherType.secondary,
+                            color = if (isSelected) palette.primary else palette.secondary,
+                        )
                     }
-                    // Fill incomplete rows so columns stay aligned.
-                    repeat(3 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
-                Spacer(Modifier.height(8.dp))
             }
 
-            if (selected != null) {
-                Spacer(Modifier.height(LauncherSpace.md))
-                Hairline()
-                Spacer(Modifier.height(LauncherSpace.md))
-                Text("Preview", style = LauncherType.title, color = palette.primary)
-                Spacer(Modifier.height(LauncherSpace.xs))
-                SecondaryText(
-                    if (selected.darkBackground) "Light text reads well on this wallpaper."
-                    else "Dark text reads well on this wallpaper.",
+            Spacer(Modifier.height(LauncherSpace.md))
+            Hairline()
+            Spacer(Modifier.height(LauncherSpace.md))
+            Text("Preview", style = LauncherType.title, color = palette.primary)
+            Spacer(Modifier.height(LauncherSpace.sm))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+                WallpaperPreviewBox(
+                    selected,
+                    Modifier
+                        .width(220.dp)
+                        .aspectRatio(9f / 20f)
+                        .border(1.dp, palette.separator),
                 )
-                Spacer(Modifier.height(LauncherSpace.sm))
-                // Home vs Lock distinction: two restrained minis, not a fake lock screen.
-                Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.md)) {
-                    MiniHomePreview(selected, Modifier.weight(1f))
-                    MiniLockPreview(selected, Modifier.weight(1f))
-                }
-                Spacer(Modifier.height(LauncherSpace.xs))
-                SecondaryText("Miniature preview only. It does not replace your real lock screen.")
-                Spacer(Modifier.height(LauncherSpace.md))
+            }
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText(selected.description)
 
-                Text("Apply wallpaper to", style = LauncherType.body, color = palette.primary)
-                Spacer(Modifier.height(LauncherSpace.sm))
-                ChoiceRow(
-                    label = "",
-                    options = listOf(
+            Spacer(Modifier.height(LauncherSpace.md))
+            Text("Apply wallpaper to", style = LauncherType.body, color = palette.primary)
+            Spacer(Modifier.height(LauncherSpace.sm))
+            ChoiceRow(
+                label = "",
+                options = if (lockSupported) {
+                    listOf(
                         WallpaperTarget.HOME to "Home",
                         WallpaperTarget.LOCK to "Lock screen",
                         WallpaperTarget.BOTH to "Both",
-                    ),
-                    selected = state.wallpaperTarget,
-                    onSelect = { viewModel.setWallpaperTarget(it) },
-                )
-                Spacer(Modifier.height(LauncherSpace.md))
-                if (state.wallpaperApplying) {
-                    SecondaryText("Applying…")
+                    )
                 } else {
-                    QuietAction("Apply wallpaper", onClick = { viewModel.applyWallpaper() })
-                }
-                state.wallpaperMessage?.let {
-                    Spacer(Modifier.height(LauncherSpace.xs))
-                    SecondaryText(it)
-                }
-                if (state.wallpaperMessage?.contains("not supported", ignoreCase = true) == true ||
-                    state.wallpaperMessage?.contains("needs Android", ignoreCase = true) == true ||
-                    state.wallpaperMessage?.contains("did not confirm", ignoreCase = true) == true ||
-                    state.wallpaperMessage?.contains("not allow", ignoreCase = true) == true
-                ) {
+                    listOf(WallpaperTarget.HOME to "Home")
+                },
+                selected = if (lockSupported) state.wallpaperTarget else WallpaperTarget.HOME,
+                onSelect = { viewModel.setWallpaperTarget(it) },
+            )
+            if (!lockSupported) {
+                Spacer(Modifier.height(LauncherSpace.xs))
+                SecondaryText(
+                    "This device does not report a separate lock target, so only Home " +
+                        "is offered here. The system picker below can still set one.",
+                )
+            }
+            Spacer(Modifier.height(LauncherSpace.md))
+            if (state.wallpaperApplying) {
+                SecondaryText("Applying…")
+            } else {
+                QuietAction("Apply wallpaper", onClick = { viewModel.applyWallpaper() })
+            }
+            state.wallpaperMessage?.let { message ->
+                Spacer(Modifier.height(LauncherSpace.xs))
+                SecondaryText(message)
+                // A partial or failed apply keeps a real way out. Only a confirmed
+                // success hides the picker route, because only then is there nothing
+                // left to fall back for.
+                if (!message.startsWith("Applied")) {
                     QuietAction("Open system picker instead", onClick = {
-                        try {
-                            context.startActivity(
-                                Intent(Intent.ACTION_SET_WALLPAPER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        } catch (_: ActivityNotFoundException) {
-                        }
+                        openSystemWallpaperPicker(context)
                     })
                 }
-                Spacer(Modifier.height(LauncherSpace.sm))
-                SecondaryText(
-                    "Lock wallpaper depends on the device (Android 7.0+). " +
-                        "If direct apply fails here, the system picker can still set it. " +
-                        "This never replaces your lock screen — only its background.",
-                )
-            } else {
-                Spacer(Modifier.height(LauncherSpace.sm))
-                EmptyNote("Choose a wallpaper above to preview it.")
             }
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText(
+                "Direct apply uses the system WallpaperManager for Home and, where the " +
+                    "device supports it, Lock — and reports success only after the system " +
+                    "confirms it. It sets a background, never the clock, notifications, " +
+                    "or unlock method.",
+            )
             Spacer(Modifier.height(LauncherSpace.xl))
         }
     }
 }
 
+/**
+ * One design, drawn the way the applier draws it: base field, then the caption
+ * and wordmark below the top third. The geometry is proportional to the box so
+ * thumbnails and the large preview stay true to the rendered bitmap.
+ */
 @Composable
 fun WallpaperPreviewBox(template: WallpaperTemplate, modifier: Modifier = Modifier) {
     val base = Color(template.baseColor.toULong())
-    val secondary = Color((template.secondaryColor ?: template.baseColor).toULong())
-    Box(modifier.background(base)) {
-        when (template.pattern) {
-            WallpaperPattern.NONE -> Unit
-            WallpaperPattern.GRADIENT -> Box(
-                Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(base, secondary))),
-            )
-            WallpaperPattern.TONAL -> Box(
-                Modifier.fillMaxSize().background(Brush.linearGradient(listOf(secondary, base))),
-            )
-            WallpaperPattern.TWO_TONE -> Column(Modifier.fillMaxSize()) {
-                Box(Modifier.weight(0.72f).fillMaxWidth().background(base))
-                Box(Modifier.weight(0.28f).fillMaxWidth().background(secondary))
-            }
-            WallpaperPattern.LINES -> Canvas(Modifier.fillMaxSize()) {
-                val y = size.height * 0.7f
-                drawLine(
-                    color = secondary,
-                    start = androidx.compose.ui.geometry.Offset(size.width * 0.13f, y),
-                    end = androidx.compose.ui.geometry.Offset(size.width * 0.87f, y),
-                    strokeWidth = 2f,
-                )
-            }
-            WallpaperPattern.GRAIN -> {
-                val seed = remember(template.id) { Random(template.id.hashCode()) }
-                Canvas(Modifier.fillMaxSize()) {
-                    repeat(160) {
-                        drawCircle(
-                            color = if (seed.nextBoolean()) secondary else base,
-                            radius = 1.5f,
-                            center = androidx.compose.ui.geometry.Offset(
-                                seed.nextFloat() * size.width,
-                                seed.nextFloat() * size.height,
-                            ),
-                            alpha = 0.25f,
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiniHomePreview(template: WallpaperTemplate, modifier: Modifier = Modifier) {
-    val base = Color(template.baseColor.toULong())
-    val onWallpaper = if (template.darkBackground) Color.White else Color.Black
-    Column(modifier) {
-        SecondaryText("Home")
-        Spacer(Modifier.height(4.dp))
-        Box {
-            WallpaperPreviewBox(template, Modifier.fillMaxWidth().aspectRatio(9f / 14f))
-            Column(Modifier.fillMaxWidth().padding(8.dp)) {
-                Text("09:41", style = LauncherType.body, color = onWallpaper)
-                Text("Essentials", style = LauncherType.secondary, color = onWallpaper.copy(alpha = 0.8f))
-            }
-        }
-    }
-}
-
-@Composable
-private fun MiniLockPreview(template: WallpaperTemplate, modifier: Modifier = Modifier) {
-    val onWallpaper = if (template.darkBackground) Color.White else Color.Black
-    Column(modifier) {
-        SecondaryText("Lock")
-        Spacer(Modifier.height(4.dp))
-        Box {
-            WallpaperPreviewBox(template, Modifier.fillMaxWidth().aspectRatio(9f / 14f))
-            Column(
-                Modifier.fillMaxWidth().padding(8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Spacer(Modifier.height(12.dp))
-                Text("09:41", style = LauncherType.title, color = onWallpaper)
+    val ink = if (template.darkBackground) Color.White else Color.Black
+    BoxWithConstraints(modifier.background(base)) {
+        // Captured before any nested scope: BoxWithConstraintsScope properties are not
+        // reachable from inside the Column/Text lambdas below.
+        val boxWidth = maxWidth
+        val boxHeight = maxHeight
+        if (template.caption == null && template.wordmark == null) return@BoxWithConstraints
+        Column(
+            Modifier.padding(start = boxWidth * 0.11f, top = boxHeight * 0.40f),
+        ) {
+            template.caption?.let { caption ->
                 Text(
-                    "Wednesday, 14 October",
-                    style = LauncherType.secondary,
-                    color = onWallpaper.copy(alpha = 0.8f),
+                    text = caption,
+                    color = ink.copy(alpha = 0.92f),
+                    fontSize = (boxWidth.value * 0.065f).sp,
+                    fontWeight = FontWeight.Light,
                 )
-                Spacer(Modifier.height(8.dp))
+            }
+            if (template.wordmark != null) {
+                Spacer(Modifier.height(boxHeight * 0.03f))
                 Text(
-                    "2 notifications hidden",
-                    style = LauncherType.secondary,
-                    color = onWallpaper.copy(alpha = 0.7f),
+                    text = template.wordmark,
+                    color = ink.copy(alpha = 0.6f),
+                    fontSize = (boxWidth.value * 0.030f).sp,
+                    letterSpacing = (boxWidth.value * 0.013f).sp,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
         }
     }
 }
 
-@Composable
-fun LockWallpaperHint() {
-    // Shared guidance line used wherever lock apply is offered.
-    SecondaryText(
-        "Lock visuals stay with Android: this sets only the background, " +
-            "never the clock position, notifications, or unlock method.",
-    )
-    Spacer(Modifier.height(4.dp))
-    Spacer(Modifier.width(0.dp))
+/** The honest fallback: leave the apply to the system's own picker. */
+private fun openSystemWallpaperPicker(context: Context) {
+    try {
+        context.startActivity(
+            Intent(Intent.ACTION_SET_WALLPAPER).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
+    } catch (_: ActivityNotFoundException) {
+        Toast.makeText(context, "This device has no wallpaper picker.", Toast.LENGTH_SHORT).show()
+    }
 }

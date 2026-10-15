@@ -6,6 +6,7 @@ import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -65,7 +66,6 @@ class LauncherUiTest {
         viewModel.setLayout(LayoutMode.TEXT)
         viewModel.setTodayEnabled(true)
         viewModel.setClock24h(true)
-        viewModel.setZendoEnabled(false)
         viewModel.setPauseEnabled(false)
         // Home is a pager and the active page is persisted, so a test that swiped away would
         // otherwise leave the next one looking at whatever page it stopped on. The stored id
@@ -91,13 +91,20 @@ class LauncherUiTest {
     fun setUp() = resetSettings()
 
     /**
-     * Toggles appear in document order: 24-hour clock, Show today, Connect Zendo.
-     * The rows themselves carry no semantics, so they are addressed by position.
-     * Settings scroll, so later rows must be scrolled into view before a tap can
-     * land on them.
+     * Toggles appear in document order: 24-hour clock, Grayscale icons, Reduce
+     * transitions, Show today, and the rest. The rows themselves carry no semantics,
+     * so they are addressed by position or by their label. Settings scroll, so later
+     * rows must be scrolled into view before a tap can land on them.
      */
     private fun toggleAt(index: Int) =
         rule.onAllNodes(isToggleable())[index].performScrollTo()
+
+    /** The toggleable row that contains [label] as one of its own cells. */
+    private fun toggleLabelled(label: String) =
+        rule.onNode(
+            hasAnyDescendant(hasText(label)) and isToggleable(),
+            useUnmergedTree = true,
+        ).performScrollTo()
 
     /** The clock is "HH:mm" (24-hour) and the date is "EEEE, d MMMM". */
     private val clockPattern = Regex("""\b\d{1,2}:\d{2}\b""")
@@ -112,11 +119,13 @@ class LauncherUiTest {
 
     @Test
     fun homeScreen_showsTodayEmptyStates_andBottomActions() {
-        // Today dashboard is local and persistent: highlights, tasks and upcoming each
-        // render an honest empty state rather than invented rows.
+        // Today dashboard is local and persistent: action, highlights and tasks each
+        // render an honest empty state rather than invented rows. The calendar lives
+        // on the Plan page, so the dashboard's last line is the way into history.
+        rule.onNodeWithText("Name the one thing that matters today.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("No tasks yet. Add the first one below.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Calendar access is off. Upcoming stays empty until you allow it.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("History").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("All apps").assertIsDisplayed()
         rule.onNodeWithText("Settings").assertIsDisplayed()
     }
@@ -197,21 +206,11 @@ class LauncherUiTest {
     }
 
     @Test
-    fun todayBlock_absentWithDefaultUnavailableSource_andScreenStillRenders() {
-        // Defaults: todayEnabled = true, zendoEnabled = false. The Today dashboard is
-        // local now (highlights/tasks/calendar), so Zendo state cannot change it.
-        // The clock is the page's own and is unaffected by any of it.
+    fun todayBlock_rendersLocalDashboard_andHiddenWhenTodayIsOff() {
+        // Defaults: todayEnabled = true. The dashboard is local (action/highlights/tasks),
+        // so it renders on its own; the clock is the page's own and unaffected by any of it.
         assertTrue(viewModel.state.value.settings.todayEnabled)
-        assertFalse(viewModel.state.value.settings.zendoEnabled)
         rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
-
-        // Turning the Zendo source on cannot produce content: the only shipped
-        // source is UnavailableZendoSource, which always returns null. The local
-        // dashboard is unchanged.
-        viewModel.setZendoEnabled(true)
-        rule.waitForIdle()
         rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
 
@@ -273,7 +272,7 @@ class LauncherUiTest {
         rule.waitForIdle()
         assertTrue(viewModel.state.value.settings.todayEnabled)
 
-        toggleAt(1).performClick()
+        toggleLabelled("Show today").performClick()
         rule.waitForIdle()
         assertFalse(viewModel.state.value.settings.todayEnabled)
     }
@@ -452,12 +451,16 @@ class LauncherUiTest {
     }
 
     /**
-     * The Plan & Focus page renders the merged agenda and the real timer idle
-     * state. Found by type rather than index so the test does not depend on
-     * which stored layout this JVM happens to hold.
+     * The Plan page renders the date navigation and the calendar's permission state.
+     * Found by type rather than index so the test does not depend on which stored
+     * layout this JVM happens to hold. Robolectric has no calendar permission, so the
+     * page must say so instead of drawing an empty agenda.
      */
     @Test
-    fun planPage_rendersAgendaAndFocus() {
+    fun planPage_rendersAgendaStates_andDateNavigation() {
+        // Normalise the ask flag: this JVM shares one prefs file across tests, and the
+        // denied-forever branch swaps the action label.
+        viewModel.setCalendarAsked(false)
         val index = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.PLAN }
         assertTrue(index >= 0)
         viewModel.goToPage(index)
@@ -467,9 +470,12 @@ class LauncherUiTest {
             viewModel.state.value.settings.home.activePageId,
         )
 
-        rule.onNodeWithText("Upcoming").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Focus").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Start focus").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Plan").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Earlier").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Later").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("The launcher reads your device calendar only, offline. Nothing is uploaded.")
+            .performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Allow calendar access").performScrollTo().assertIsDisplayed()
     }
 
     /**

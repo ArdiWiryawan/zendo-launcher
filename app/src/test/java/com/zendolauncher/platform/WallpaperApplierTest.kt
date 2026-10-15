@@ -55,7 +55,7 @@ class WallpaperApplierTest {
 
     @Test
     fun `apply to Home reaches the system api with the system flag`() {
-        val template = WallpaperTemplates.byId("obsidian")!!
+        val template = WallpaperTemplates.byId("quiet_stone")!!
         val result = WallpaperApplier.apply(context, template, WallpaperTarget.HOME)
         val shadow = shadowOf(WallpaperManager.getInstance(context))
         assertTrue(shadow is ShadowWallpaperManager)
@@ -66,14 +66,14 @@ class WallpaperApplierTest {
 
     @Test
     fun `apply to Lock uses the lock flag path`() {
-        val template = WallpaperTemplates.byId("paper")!!
+        val template = WallpaperTemplates.byId("kembali")!!
         val result = WallpaperApplier.apply(context, template, WallpaperTarget.LOCK)
         assertTrue(result is WallpaperApplyResult.Applied || result is WallpaperApplyResult.Failed)
     }
 
     @Test
     fun `apply to Both reports a decided state`() {
-        val template = WallpaperTemplates.byId("stone")!!
+        val template = WallpaperTemplates.byId("less_but_better")!!
         val result = WallpaperApplier.apply(context, template, WallpaperTarget.BOTH)
         assertTrue(
             result is WallpaperApplyResult.Applied ||

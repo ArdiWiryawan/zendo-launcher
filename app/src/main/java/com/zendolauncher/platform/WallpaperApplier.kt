@@ -4,14 +4,12 @@ import android.app.WallpaperManager
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.LinearGradient
+import android.graphics.Color
 import android.graphics.Paint
-import android.graphics.Shader
+import android.graphics.Typeface
 import android.os.Build
-import com.zendolauncher.core.WallpaperPattern
 import com.zendolauncher.core.WallpaperTemplate
 import com.zendolauncher.data.WallpaperTarget
-import kotlin.random.Random
 
 /**
  * Renders a bundled template to a Bitmap and asks the system to use it.
@@ -46,54 +44,50 @@ object WallpaperApplier {
         return WallpaperCapability(supported, allowed)
     }
 
+    /**
+     * True when a separate lock target can exist on this device at all. Android 7.0
+     * is the platform floor for FLAG_LOCK; the capability probe catches the rest.
+     * The wallpaper screen must not offer Lock or Both when this is false.
+     */
+    fun lockTargetSupported(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 24) return false
+        val manager = runCatching { WallpaperManager.getInstance(context) }.getOrNull()
+            ?: return false
+        val capability = probe(manager)
+        return capability.supported && capability.allowed
+    }
+
+    /**
+     * The 9:20 design drawn for this device's wallpaper size. The top third stays
+     * clear for the lock clock; typography starts at 46% height and is sized from
+     * the width, so the layout holds at any screen size.
+     */
     fun render(template: WallpaperTemplate, width: Int = 1080, height: Int = 1920): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val base = template.baseColor.toInt()
-        val secondary = (template.secondaryColor ?: template.baseColor).toInt()
-        canvas.drawColor(base)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-        when (template.pattern) {
-            WallpaperPattern.NONE -> Unit
-            WallpaperPattern.GRADIENT -> {
-                paint.shader = LinearGradient(
-                    0f, 0f, 0f, height.toFloat(), base, secondary, Shader.TileMode.CLAMP,
-                )
-                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-                paint.shader = null
+        canvas.drawColor(template.baseColor.toInt())
+        val ink = if (template.darkBackground) Color.WHITE else Color.BLACK
+        val left = width * 0.11f
+        var baseline = height * 0.46f
+        template.caption?.let { caption ->
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = ink
+                alpha = 235
+                textSize = width * 0.065f
+                typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
             }
-            WallpaperPattern.GRAIN -> {
-                val rnd = Random(template.id.hashCode())
-                paint.alpha = 14
-                repeat(4200) {
-                    paint.color = if (rnd.nextBoolean()) -0x1 else secondary
-                    val x = rnd.nextFloat() * width
-                    val y = rnd.nextFloat() * height
-                    canvas.drawCircle(x, y, 1.2f, paint)
-                }
-                paint.alpha = 255
+            canvas.drawText(caption, left, baseline, paint)
+            baseline += paint.textSize * 2.1f
+        }
+        template.wordmark?.let { mark ->
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = ink
+                alpha = 150
+                textSize = width * 0.030f
+                letterSpacing = 0.42f
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
             }
-            WallpaperPattern.LINES -> {
-                paint.color = secondary
-                paint.strokeWidth = 2f
-                val y = height * 0.7f
-                canvas.drawLine(width * 0.13f, y, width * 0.87f, y, paint)
-            }
-            WallpaperPattern.TWO_TONE -> {
-                paint.color = secondary
-                canvas.drawRect(0f, height * 0.72f, width.toFloat(), height.toFloat(), paint)
-                paint.color = base
-                paint.alpha = 40
-                canvas.drawRect(0f, height * 0.72f, width.toFloat(), height * 0.72f + 3f, paint)
-                paint.alpha = 255
-            }
-            WallpaperPattern.TONAL -> {
-                paint.shader = LinearGradient(
-                    0f, 0f, width.toFloat(), height.toFloat(), secondary, base, Shader.TileMode.CLAMP,
-                )
-                canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-                paint.shader = null
-            }
+            canvas.drawText(mark, left, baseline, paint)
         }
         return bitmap
     }

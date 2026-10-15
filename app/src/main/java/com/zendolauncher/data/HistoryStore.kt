@@ -37,6 +37,9 @@ class HistoryStore(context: Context) {
 
     fun read(): List<DayRecord> = DayRecord.sanitizeAll(decode(prefs.getString(KEY_DAYS, null)))
 
+    /** Re-reads the file and re-emits it. Used when the History screen is opened. */
+    fun reload() { _days.value = read() }
+
     fun recordFor(date: LocalDate): DayRecord? = _days.value.firstOrNull { it.date == date }
 
     /** Snapshot the live data into [date]; see the class comment for what that means. */

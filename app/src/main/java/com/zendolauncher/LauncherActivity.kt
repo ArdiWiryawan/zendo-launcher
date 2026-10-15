@@ -11,6 +11,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -20,9 +21,14 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.AppListScreen
+import com.zendolauncher.ui.BackupRestoreDialog
+import com.zendolauncher.ui.BridgeImportDialog
 import com.zendolauncher.ui.CalendarScreen
+import com.zendolauncher.ui.ClearHistoryDialog
 import com.zendolauncher.ui.HighlightEditorScreen
+import com.zendolauncher.ui.HistoryScreen
 import com.zendolauncher.ui.HomeScreen
+import com.zendolauncher.ui.LocalMonochromeIcons
 import com.zendolauncher.ui.LauncherViewModel
 import com.zendolauncher.ui.OnboardingScreen
 import com.zendolauncher.ui.PermissionsScreen
@@ -62,7 +68,13 @@ class LauncherActivity : ComponentActivity() {
             val state by viewModel.state.collectAsStateWithLifecycle()
             LauncherTheme(mode = state.settings.theme) {
                 SystemBarIcons()
-                LauncherRoot(viewModel, state)
+                // Grayscale icons by default: one provider, so Home, the drawer and every
+                // list agree on the Appearance setting.
+                CompositionLocalProvider(
+                    LocalMonochromeIcons provides state.settings.monochromeIcons,
+                ) {
+                    LauncherRoot(viewModel, state)
+                }
             }
         }
     }
@@ -120,7 +132,11 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
     BackHandler(enabled = state.screen == Screen.APPS) {
         viewModel.goHome()
     }
-    BackHandler(enabled = state.screen == Screen.WALLPAPERS || state.screen == Screen.CALENDAR) {
+    BackHandler(
+        enabled = state.screen == Screen.WALLPAPERS ||
+            state.screen == Screen.CALENDAR ||
+            state.screen == Screen.HISTORY,
+    ) {
         viewModel.goHome()
     }
     BackHandler(enabled = state.screen == Screen.SETUP) {
@@ -156,6 +172,15 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
     BackHandler(enabled = state.confirmDeleteTaskId != null) {
         viewModel.cancelDeleteTask()
     }
+    BackHandler(enabled = state.confirmClearHistory) {
+        viewModel.cancelClearHistory()
+    }
+    BackHandler(enabled = state.bridgePreview != null) {
+        viewModel.cancelBridgeImport()
+    }
+    BackHandler(enabled = state.backupPreview != null) {
+        viewModel.cancelBackupRestore()
+    }
     BackHandler(enabled = state.pendingPause != null) {
         viewModel.cancelPause()
     }
@@ -172,6 +197,7 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
             Screen.SETTINGS -> SettingsScreen(viewModel, state)
             Screen.WALLPAPERS -> WallpaperScreen(viewModel, state)
             Screen.CALENDAR -> CalendarScreen(viewModel, state)
+            Screen.HISTORY -> HistoryScreen(viewModel, state)
             Screen.HIGHLIGHT_EDITOR -> HighlightEditorScreen(viewModel, state)
             Screen.TASK_EDITOR -> TaskEditorScreen(viewModel, state)
             Screen.SETUP -> SetupScreen(viewModel, state)
@@ -185,6 +211,29 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
                 message = state.settings.pauseMessage,
                 onContinue = { viewModel.confirmPause() },
                 onCancel = { viewModel.cancelPause() },
+            )
+        }
+        // File-transfer previews and the one destructive confirmation. Rendered at the
+        // root so they can appear over Settings or History, whichever asked.
+        state.bridgePreview?.let {
+            BridgeImportDialog(
+                preview = it,
+                onMode = { mode -> viewModel.setBridgeImportMode(mode) },
+                onApply = { viewModel.confirmBridgeImport() },
+                onCancel = { viewModel.cancelBridgeImport() },
+            )
+        }
+        state.backupPreview?.let {
+            BackupRestoreDialog(
+                preview = it,
+                onRestore = { viewModel.confirmBackupRestore() },
+                onCancel = { viewModel.cancelBackupRestore() },
+            )
+        }
+        if (state.confirmClearHistory) {
+            ClearHistoryDialog(
+                onConfirm = { viewModel.confirmClearHistory() },
+                onCancel = { viewModel.cancelClearHistory() },
             )
         }
     }

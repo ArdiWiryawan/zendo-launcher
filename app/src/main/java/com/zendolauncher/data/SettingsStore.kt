@@ -55,6 +55,15 @@ class SettingsStore(context: Context) {
             ?: emptySet(),
         calendarAsked = prefs.getBoolean(KEY_CALENDAR_ASKED, false),
         calendarGoogleOnly = prefs.getBoolean(KEY_CALENDAR_GOOGLE_ONLY, false),
+        // Calendar selection became explicit in 0.5.0: empty used to mean "all visible".
+        // An install with stored preferences but no schema key predates that change and
+        // must be migrated once (see LauncherViewModel.settleCalendarSelection); a fresh
+        // install starts explicit, because there is no earlier view to preserve.
+        calendarSelectionSchema = if (prefs.contains(KEY_CALENDAR_SCHEMA)) {
+            prefs.getBoolean(KEY_CALENDAR_SCHEMA, false)
+        } else {
+            prefs.all.keys.isEmpty()
+        },
         focusWorkMinutes = prefs.getInt(KEY_FOCUS_WORK, 25),
         focusBreakMinutes = prefs.getInt(KEY_FOCUS_BREAK, 5),
         monochromeIcons = prefs.getBoolean(KEY_MONOCHROME_ICONS, true),
@@ -98,6 +107,7 @@ class SettingsStore(context: Context) {
             putStringSet(KEY_SHOWN_CALENDARS, HashSet(next.shownCalendarIds.map { it.toString() }))
             putBoolean(KEY_CALENDAR_ASKED, next.calendarAsked)
             putBoolean(KEY_CALENDAR_GOOGLE_ONLY, next.calendarGoogleOnly)
+            putBoolean(KEY_CALENDAR_SCHEMA, next.calendarSelectionSchema)
             putInt(KEY_FOCUS_WORK, next.focusWorkMinutes)
             putInt(KEY_FOCUS_BREAK, next.focusBreakMinutes)
             putBoolean(KEY_MONOCHROME_ICONS, next.monochromeIcons)
@@ -179,26 +189,54 @@ class SettingsStore(context: Context) {
         )
     }
 
-    fun toggleFavourite(key: String) = update { current ->
-        val layout = current.home
-        // Pinning from the drawer is an arrangement of Home, so it lands on a page that can
-        // actually show it: the active page when it is the apps page, the first apps page
-        // otherwise, and a newly created apps page when there is none at all.
-        val pageId = layout.pinTargetPageId()
-        if (pageId == null) {
-            val withPage = layout.withAppsPage()
-            current.copy(home = withPage.addItem(withPage.pages.last().id, key))
-        } else {
-            val page = layout.page(pageId) ?: return@update current
-            val home = if (key in page.config.itemKeys) {
-                layout.removeItem(pageId, key)
+    /**
+     * Pins or unpins [key].
+     *
+     * Returns false only when the pin was refused because the target page already holds
+     * [LauncherSettings.pinLimit] apps — the caller turns that into the one sentence the
+     * user needs ("remove a pin first") instead of a silent no-op.
+     */
+    fun toggleFavourite(key: String): Boolean {
+        var changed = false
+        update { current ->
+            val layout = current.home
+            // Pinning from the drawer is an arrangement of Home, so it lands on a page that can
+            // actually show it: the active page when it is the apps page, the first apps page
+            // otherwise, and a newly created apps page when there is none at all.
+            val pageId = layout.pinTargetPageId()
+            if (pageId == null) {
+                val withPage = layout.withAppsPage()
+                changed = true
+                current.copy(home = withPage.addItem(withPage.pages.last().id, key))
             } else {
-                // The active page follows the pin, so a pin made from the drawer is
-                // visible on the page the user returns to rather than appearing to do
-                // nothing.
-                layout.addItem(pageId, key).setActivePage(pageId)
+                val page = layout.page(pageId) ?: return@update current
+                if (key in page.config.itemKeys) {
+                    changed = true
+                    current.copy(home = layout.removeItem(pageId, key))
+                } else {
+                    if (page.config.itemKeys.size >= current.pinLimit) return@update current
+                    // The active page follows the pin, so a pin made from the drawer is
+                    // visible on the page the user returns to rather than appearing to do
+                    // nothing.
+                    changed = true
+                    current.copy(home = layout.addItem(pageId, key).setActivePage(pageId))
+                }
             }
-            current.copy(home = home)
+        }
+        return changed
+    }
+
+    /**
+     * Ends the legacy "empty means all calendars" era, once, when the calendars are
+     * first known. [ids] is the previous view written down for an upgrade; null just
+     * records that the new explicit semantics already apply (a fresh install, or a
+     * selection that was already explicit).
+     */
+    fun materializeCalendarSelection(ids: Set<Long>?) = update {
+        if (ids == null) {
+            it.copy(calendarSelectionSchema = true)
+        } else {
+            it.copy(shownCalendarIds = ids, calendarGoogleOnly = false, calendarSelectionSchema = true)
         }
     }
 
@@ -283,6 +321,7 @@ class SettingsStore(context: Context) {
         private const val KEY_SHOWN_CALENDARS = "shown_calendar_ids"
         private const val KEY_CALENDAR_ASKED = "calendar_asked"
         private const val KEY_CALENDAR_GOOGLE_ONLY = "calendar_google_only"
+        private const val KEY_CALENDAR_SCHEMA = "calendar_selection_schema"
         private const val KEY_FOCUS_WORK = "focus_work_minutes"
         private const val KEY_FOCUS_BREAK = "focus_break_minutes"
         private const val KEY_MONOCHROME_ICONS = "monochrome_icons"
@@ -361,6 +400,13 @@ data class LauncherSettings(
      * calendars are never silently mixed in once the user chose Google.
      */
     val calendarGoogleOnly: Boolean = false,
+    /**
+     * True once the calendar selection is known to be explicit: empty means "none
+     * chosen", not "all visible". False on an install that predates the change and
+     * has not been migrated yet; the view model migrates it once, when calendars
+     * are first readable.
+     */
+    val calendarSelectionSchema: Boolean = false,
     /** Default focus work-block length, minutes. The timer screen can pick per session. */
     val focusWorkMinutes: Int = 25,
     /** Default break length, minutes. 0 means no break offered. */

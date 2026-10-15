@@ -124,14 +124,17 @@ class CalendarPermissionTest {
     }
 
     @Test
-    fun googleOnly_neverMixesLocalCalendarsBackIn() {
+    fun effectiveCalendarIds_areExplicit_neverAutoAll() {
         val cals = listOf(
             com.zendolauncher.model.DeviceCalendar(1, "Work", "a@gmail.com", "com.google"),
             com.zendolauncher.model.DeviceCalendar(2, "Local", null, null),
         )
-        assertEquals(null, viewModel.effectiveCalendarIds(emptySet(), cals, false))
+        // Empty means none chosen — never "all visible".
+        assertEquals(emptySet<Long>(), viewModel.effectiveCalendarIds(emptySet(), cals, false))
         assertEquals(setOf(2L), viewModel.effectiveCalendarIds(setOf(2L), cals, false))
-        assertEquals(setOf(1L), viewModel.effectiveCalendarIds(emptySet(), cals, true))
+        // The legacy Google-only filter still narrows the selection to Google
+        // calendars when an upgrading install stored it; after migration it is off.
+        assertEquals(emptySet<Long>(), viewModel.effectiveCalendarIds(emptySet(), cals, true))
         assertEquals(setOf(1L), viewModel.effectiveCalendarIds(setOf(1L, 2L), cals, true))
         assertEquals(
             emptySet<Long>(),

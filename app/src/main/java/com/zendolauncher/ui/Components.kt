@@ -42,6 +42,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.window.Dialog
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.model.LaunchTarget
@@ -230,6 +233,16 @@ fun AppRow(
 }
 
 /**
+ * Grayscale icons by default (monochrome-first design). One composition local instead of
+ * a parameter through every row, so Home, the drawer and Settings always agree. The
+ * toggle lives in Settings → Appearance; when off, the original icon colours show.
+ */
+val LocalMonochromeIcons = staticCompositionLocalOf { true }
+
+/** Value-only desaturation: luminance survives, hue does not. */
+private val MonochromeMatrix = ColorMatrix().apply { setToSaturation(0f) }
+
+/**
  * Icons are loaded off the main thread and only when a layout asks for them. The slot is
  * emitted even while the bitmap is null, so a resolving icon cannot shift the label.
  */
@@ -239,12 +252,14 @@ private fun AppIcon(viewModel: LauncherViewModel, target: LaunchTarget, sizeDp: 
     val bitmap by produceState<Bitmap?>(initialValue = null, target.key) {
         value = viewModel.bitmapFor(target, px)
     }
+    val monochrome = LocalMonochromeIcons.current
     Box(Modifier.size(sizeDp.dp)) {
         bitmap?.let {
             Image(
                 bitmap = it.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
+                colorFilter = if (monochrome) ColorFilter.colorMatrix(MonochromeMatrix) else null,
                 modifier = Modifier.fillMaxSize(),
             )
         }

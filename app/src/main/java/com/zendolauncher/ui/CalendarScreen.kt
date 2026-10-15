@@ -43,9 +43,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 /**
- * Full agenda: week strip + events for the selected date + calendar selection.
- * Home's Upcoming stays focused on the next few; the month grid lives here as a
- * strip, not forced into the widget.
+ * Full agenda: week strip + events for the selected date + the explicit calendar
+ * selection. The Plan page carries the same reading in its compact form; this screen
+ * is the fuller view, and the only place calendars are chosen.
  */
 @Composable
 fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
@@ -136,8 +136,12 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                 }
                 if (events.isEmpty() && !state.calendarLoading) {
                     EmptyNote(
-                        if (selected == today) "Nothing today. The day is open."
-                        else "Nothing on this date.",
+                        when {
+                            state.settings.shownCalendarIds.isEmpty() ->
+                                "No calendars chosen yet. Pick at least one below."
+                            selected == today -> "Nothing today. The day is open."
+                            else -> "Nothing on this date."
+                        },
                     )
                 } else {
                     events.forEach { event ->
@@ -165,22 +169,20 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                         }
                     })
                 }
-                if (state.calendars.size > 1) {
+                if (state.calendars.isNotEmpty()) {
                     Spacer(Modifier.height(LauncherSpace.xl))
                     SectionHeading("Calendars")
                     Spacer(Modifier.height(LauncherSpace.sm))
-                    SecondaryText("Uncheck to hide a calendar from Upcoming.")
-                    ToggleRow(
-                        label = "Google calendars only",
-                        checked = state.settings.calendarGoogleOnly,
-                        onCheckedChange = { viewModel.setCalendarGoogleOnly(it) },
-                    )
-                    Spacer(Modifier.height(LauncherSpace.xs))
                     SecondaryText(
-                        "When on, local and work calendars never mix into the agenda. " +
-                            "Needs a Google account synced on this device.",
+                        "Choose the calendars the agenda may read. Nothing is read until " +
+                            "you choose, and the choice is remembered.",
                     )
-                    // Grouped by account so a Google account is unmistakable; local
+                    if (state.settings.shownCalendarIds.isEmpty()) {
+                        Spacer(Modifier.height(LauncherSpace.xs))
+                        SecondaryText("No calendars chosen yet.")
+                    }
+                    Spacer(Modifier.height(LauncherSpace.xs))
+                    // Grouped by account so an account is unmistakable; local
                     // calendars without account metadata sit under their own header.
                     state.calendars.groupBy { it.accountName ?: "On this device" }
                         .toSortedMap()
@@ -208,15 +210,12 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                 // that could expose private event content.
                 SecondaryText("Source: device provider · Instances")
                 SecondaryText("Permission: granted")
+                SecondaryText("Calendars: ${state.calendars.size} visible")
                 SecondaryText(
-                    "Calendars: ${state.calendars.size} visible" +
-                        if (state.settings.calendarGoogleOnly) " · Google only" else "",
-                )
-                SecondaryText(
-                    "Reading: " + if (state.settings.shownCalendarIds.isEmpty()) {
-                        "all"
+                    if (state.settings.shownCalendarIds.isEmpty()) {
+                        "Reading: none chosen"
                     } else {
-                        state.settings.shownCalendarIds.sorted().joinToString()
+                        "Reading: ${state.settings.shownCalendarIds.size} of ${state.calendars.size} chosen"
                     },
                 )
                 SecondaryText("Events in view: ${state.calendarEvents.size}")
@@ -242,20 +241,16 @@ private fun CalendarToggle(
     state: UiState,
     cal: com.zendolauncher.model.DeviceCalendar,
 ) {
-    val shown = state.settings.shownCalendarIds.isEmpty() || cal.id in state.settings.shownCalendarIds
+    val shown = cal.id in state.settings.shownCalendarIds
     ToggleRow(
         label = cal.name,
         checked = shown,
         onCheckedChange = { on ->
+            // Explicit selection: checking adds, unchecking removes. Empty is stored
+            // as written — it means "none chosen", never "all".
             val current = state.settings.shownCalendarIds.toMutableSet()
-            if (state.settings.shownCalendarIds.isEmpty()) {
-                // First narrowing: start from all, then remove.
-                current.addAll(state.calendars.map { it.id })
-            }
             if (on) current.add(cal.id) else current.remove(cal.id)
-            // All shown == empty filter (same meaning, less storage).
-            val allIds = state.calendars.map { it.id }.toSet()
-            viewModel.setShownCalendars(if (current == allIds) emptySet() else current)
+            viewModel.setShownCalendars(current)
         },
     )
 }

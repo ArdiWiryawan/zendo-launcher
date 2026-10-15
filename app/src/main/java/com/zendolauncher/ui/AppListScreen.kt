@@ -199,6 +199,11 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.sm))
         }
 
+        state.pinNotice?.let {
+            SecondaryText(it)
+            Spacer(Modifier.height(LauncherSpace.sm))
+        }
+
         Spacer(Modifier.height(LauncherSpace.md))
         Row(
             Modifier.fillMaxWidth(),
