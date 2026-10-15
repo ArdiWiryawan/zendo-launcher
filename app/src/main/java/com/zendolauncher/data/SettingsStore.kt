@@ -49,6 +49,7 @@ class SettingsStore(context: Context) {
         reduceMotion = prefs.getBoolean(KEY_REDUCE_MOTION, false),
         shownCalendarIds = prefs.getStringSet(KEY_SHOWN_CALENDARS, null)?.mapNotNull { it.toLongOrNull() }?.toSet()
             ?: emptySet(),
+        calendarAsked = prefs.getBoolean(KEY_CALENDAR_ASKED, false),
         // Migration runs here, on the read path, because this is the only place the store
         // ever learns that no layout has been written yet. It is idempotent: once a layout
         // is stored, the legacy keys are not consulted again. See migrateHome.
@@ -77,6 +78,7 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_PAGING, next.pagingEnabled)
             putBoolean(KEY_REDUCE_MOTION, next.reduceMotion)
             putStringSet(KEY_SHOWN_CALENDARS, HashSet(next.shownCalendarIds.map { it.toString() }))
+            putBoolean(KEY_CALENDAR_ASKED, next.calendarAsked)
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
             putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
             putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
@@ -222,6 +224,7 @@ class SettingsStore(context: Context) {
         private const val KEY_PAGING = "paging_enabled"
         private const val KEY_REDUCE_MOTION = "reduce_motion"
         private const val KEY_SHOWN_CALENDARS = "shown_calendar_ids"
+        private const val KEY_CALENDAR_ASKED = "calendar_asked"
 
         /** Advisory, written beside the blob so a future change can tell old from malformed. */
         const val HOME_PAGES_VERSION = 1
@@ -269,4 +272,11 @@ data class LauncherSettings(
      * ids here; the query filters on them.
      */
     val shownCalendarIds: Set<Long> = emptySet(),
+    /**
+     * True once the calendar permission dialog has been answered (granted or denied).
+     * Combined with the platform rationale flag this distinguishes a first ask from a
+     * permanent denial, so a dead system dialog is never re-fired in a loop — the UI
+     * offers the app Settings page instead.
+     */
+    val calendarAsked: Boolean = false,
 )

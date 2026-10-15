@@ -3,8 +3,6 @@ package com.zendolauncher.ui
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.provider.CalendarContract
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -53,9 +51,6 @@ import java.util.Locale
 fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
     val palette = LauncherColors.current
     val context = LocalContext.current
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { viewModel.refreshCalendar() }
 
     LaunchedEffect(Unit) { viewModel.refreshCalendar() }
 
@@ -112,9 +107,7 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                 EmptyNote("The launcher reads your device calendar only, offline. Nothing is uploaded.")
                 Spacer(Modifier.height(LauncherSpace.xs))
                 SecondaryText("Permission is asked only here, when you open the calendar.")
-                QuietAction("Allow calendar access") {
-                    permissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
-                }
+                CalendarAccessAction(viewModel, state.settings.calendarAsked)
             } else {
                 val label = when (selected) {
                     today -> "TODAY · ${events.size} EVENTS"

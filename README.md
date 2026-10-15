@@ -73,7 +73,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.3.1` (versionCode 8). See the releases list
+The newest build is currently `debug-0.3.2` (versionCode 9). See the releases list
 for its sha256.
 
 To build a fresh one yourself:
@@ -175,6 +175,12 @@ on its own, and it can always be changed back.
 | [docs/today-dashboard-and-calendar.md](docs/today-dashboard-and-calendar.md) | Highlights/tasks models, calendar source, agenda layouts, permissions |
 | [docs/interaction-behavior.md](docs/interaction-behavior.md) | Back, swipe/scroll ownership, paging, drawer, device differences |
 | [docs/implementation-report.md](docs/implementation-report.md) | Files changed, test results, known problems |
+| [docs/compatibility-matrix.md](docs/compatibility-matrix.md) | API/OEM matrix, permission table, verification log |
+| [docs/android-system-capability-matrix.md](docs/android-system-capability-matrix.md) | Direct/Auth/Indirect/Dependent/Denied per phone surface |
+| [docs/calendar-permission-root-cause.md](docs/calendar-permission-root-cause.md) | Repeat-prompt root cause, lifecycle contract, tests |
+| [docs/back-navigation-audit.md](docs/back-navigation-audit.md) | Every Back path, animation evidence, state preservation |
+| [docs/wallpaper-capability-audit.md](docs/wallpaper-capability-audit.md) | Per-target support, probes, version/OEM table |
+| [docs/digital-wellbeing-roadmap.md](docs/digital-wellbeing-roadmap.md) | Shipped controls, approach comparison, next priorities |
 
 ## Licence
 

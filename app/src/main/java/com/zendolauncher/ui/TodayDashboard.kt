@@ -1,7 +1,5 @@
 package com.zendolauncher.ui
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -183,21 +181,13 @@ private fun TasksSection(viewModel: LauncherViewModel, state: UiState) {
 
 @Composable
 private fun UpcomingSection(viewModel: LauncherViewModel, state: UiState) {
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        viewModel.refreshCalendarPermission()
-        if (granted) viewModel.refreshCalendar()
-    }
     SectionHeading("Upcoming")
     Spacer(Modifier.height(LauncherSpace.sm))
     if (!state.calendarPermission) {
         EmptyNote("Calendar access is off. Upcoming stays empty until you allow it.")
         Spacer(Modifier.height(LauncherSpace.xs))
         SecondaryText("The launcher reads your device calendar only, offline. Nothing is uploaded.")
-        QuietAction("Allow calendar access", onClick = {
-            permissionLauncher.launch(android.Manifest.permission.READ_CALENDAR)
-        })
+        CalendarAccessAction(viewModel, state.settings.calendarAsked)
     } else {
         val upcoming = remember(state.calendarEvents) {
             val now = System.currentTimeMillis()

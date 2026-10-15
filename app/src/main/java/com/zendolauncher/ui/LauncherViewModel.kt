@@ -474,6 +474,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun refreshHomeState() {
         _isDefaultHome.value = shortcutRepository.isDefaultHome()
+        // Re-check on every resume/refresh: a grant or revocation made in Settings
+        // while the launcher was away must update the UI without requesting anything.
+        // This reads the current state only; it never launches a permission dialog.
+        _calendarPermission.value = calendarRepository.hasPermission()
     }
 
     /**
@@ -1040,6 +1044,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun refreshCalendarPermission() {
         _calendarPermission.value = calendarRepository.hasPermission()
     }
+
+    /**
+     * Records the user's answer to the calendar permission dialog. A denial marks
+     * the ask as done so the UI can route a repeat tap to the app Settings page
+     * instead of re-firing a system dialog the platform would auto-deny.
+     */
+    fun onCalendarPermissionResult(granted: Boolean) {
+        if (!granted) setCalendarAsked(true)
+        refreshCalendarPermission()
+    }
+
+    fun setCalendarAsked(asked: Boolean) = settingsStore.update { it.copy(calendarAsked = asked) }
 
     fun refreshCalendar() {
         refreshCalendarPermission()

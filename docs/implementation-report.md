@@ -1,5 +1,75 @@
 # Implementation Report
 
+## 0.3.2 — Calendar permission loop fix, Back audit, universal compatibility docs
+
+Tree state: versionName 0.3.2 / versionCode 9 (`app/build.gradle`).
+Method: grep audit + `testDebugUnitTest` + `lintDebug` + `assembleDebug`
+locally, plus CI Build APK. No physical-device run claimed (including no
+TECNO CAMON 40 run — explicitly unverified, checklist below).
+
+### P0 root causes (all traced in source, not guessed)
+
+1. **Repeated calendar permission.** Only one `launch(READ_CALENDAR)` exists
+   (`CalendarAccessAction`), tap-only — no auto-request on composition,
+   resume, or re-entry. Real defects: denial recorded nothing (re-tap looped
+   into an auto-denying dead dialog after "don't ask again") and permission
+   was never re-checked on resume (external grant left stale UI). Fixed with
+   persisted `settings.calendarAsked` + Settings-page routing for permanent
+   denial + resume re-check in `refreshHomeState()`. See
+   `docs/calendar-permission-root-cause.md`.
+2. **Back slide.** No screen-transition animation exists in the tree
+   (`AnimatedContent`/`Crossfade`/`NavHost`: zero hits); only pager flings
+   and genuine programmatic moves (dot tap, add page, Focus shortcut,
+   `reduceMotion` → instant). Plain Home enables no `BackHandler`, so Back
+   falls through with nothing to animate. Ownership table + evidence in
+   `docs/back-navigation-audit.md`.
+3. **Wallpaper false success.** Fixed in 0.3.1 (return-ID gating, capability
+   probe, double-apply guard); capability table added in
+   `docs/wallpaper-capability-audit.md`.
+4. **Data loss scan.** Editor saves are id-keyed (edit never duplicates),
+   archive/delete filter by id, drafts survive rotation; no midnight wipe
+   anywhere. No new defects found.
+
+### Files changed (vs 0.3.1)
+
+New: `ui/CalendarPermission.kt`, `ui/CalendarPermissionTest.kt`, docs
+`calendar-permission-root-cause.md`, `back-navigation-audit.md`,
+`wallpaper-capability-audit.md`, `compatibility-matrix.md`,
+`android-system-capability-matrix.md`, `digital-wellbeing-roadmap.md`.
+
+Changed: `data/SettingsStore.kt` (+`calendarAsked`), `ui/LauncherViewModel.kt`
+(`onCalendarPermissionResult`, `setCalendarAsked`, resume re-check),
+`ui/TodayDashboard.kt` + `ui/CalendarScreen.kt` (shared permission action,
+dead launchers removed), `app/build.gradle` (0.3.2/9), README (0.3.2 pointer
++ doc table).
+
+### Build and test results
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 185 tests, 0 failures (180 carried
+  over + 5 new calendar-permission regression tests).
+- `:app:lintDebug` run; `abortOnError false` per project config.
+- `:app:assembleDebug` BUILD SUCCESSFUL (local). APK staged to `dist/` on CI.
+
+### Verification status (deliverables 5–7)
+
+- TECNO CAMON 40: NOT verified (no device access).
+- Other devices/emulators: NOT verified.
+- Verified: 180+ unit tests incl. 5 new permission regression tests, lint,
+  assemble (local + CI). Manual device checklists live in
+  `calendar-permission-root-cause.md`, `lock-screen-root-cause.md`, and
+  `compatibility-matrix.md`.
+- Permissions/setup for the user: calendar Allow on first use (or Settings
+  after permanent denial); wallpaper needs nothing; default-Home via system
+  picker as before.
+
+### Remaining risks / next
+
+OEM edge-back vs pager feel, `FLAG_LOCK` honoring per ROM, provider quirks
+(all guarded to empty + message). Next: Focus Mode shortcuts (Indirect, no
+permission), then optional local usage summary behind special access.
+
+---
+
 ## 0.3.1 — Lock-screen diagnosis, full-screen editors, task details
 
 Tree state: versionName 0.3.1 / versionCode 8 (`app/build.gradle`).
