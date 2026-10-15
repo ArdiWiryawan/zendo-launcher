@@ -87,6 +87,10 @@ class LauncherActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshHomeState()
+        // Returning from system Settings is exactly when a usage-access grant (or a
+        // revocation) must be re-read; the check reads a state, it never asks for
+        // anything, so it cannot become a repeat prompt.
+        viewModel.refreshUsageAccess()
     }
 
     override fun onStop() {
