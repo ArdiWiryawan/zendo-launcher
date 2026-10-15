@@ -1,5 +1,62 @@
 # Implementation Report
 
+## 0.3.3 — Optional usage summary, Focus links, two more templates
+
+Tree state: versionName 0.3.3 / versionCode 10 (`app/build.gradle`).
+Completes the remaining P2 items: supported system-settings integrations,
+wellbeing/focus features behind explicit checks, and extra templates.
+
+### What shipped
+
+- **Usage summary (optional, numbers only)**: `platform/UsageRepository.kt`
+  (guarded `UsageStatsManager` reads, empty without access), `core/UsageFormat`
+  readouts, VM explicit-load flows, Settings section with access explainer,
+  Load/Refresh, top-8 labeled rows, and revoke path. Manifest gains
+  `PACKAGE_USAGE_STATS` (special access only — granted in system Settings,
+  never requested in-app). No polling, no background work, no enforcement.
+- **Indirect Focus/Wellbeing links**: usage-access deep-link
+  (`ACTION_USAGE_ACCESS_SETTINGS`) + system Settings entry with guidance
+  (stock Android exposes no Focus Mode deep-link; documented instead of hacked).
+- **Templates 11–12**: Charcoal (solid) + Horizon (dark hairline); grayscale
+  invariant still enforced by test.
+- Focus page copy updated (usage now exists as an opt-in Settings feature).
+
+### Files changed (vs 0.3.2)
+
+New: `model/AppUsage.kt`, `core/UsageFormat.kt`,
+`platform/UsageRepository.kt`, `core/UsageFormatTest.kt`,
+`platform/UsageRepositoryTest.kt`.
+
+Changed: `AndroidManifest.xml` (+`PACKAGE_USAGE_STATS`, documented),
+`ui/LauncherViewModel.kt` (usage flows), `ui/SettingsScreen.kt` (usage
+section + access re-check on entry), `ui/HomeScreen.kt` (Focus copy),
+`core/WallpaperTemplate.kt` (+2), `core/WallpaperTemplatesTest.kt`
+(12/6/6), `data/TaskStoreCodecTest.kt` (notes/due cases),
+`ui/LauncherUiTest.kt` (Focus copy), `docs/digital-wellbeing-roadmap.md`
+(shipped checklist), `docs/wallpaper-and-lock-screen.md` (12 templates),
+`app/build.gradle` (0.3.3/10), README (pointer + privacy + feature copy).
+
+### Build and test results
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 189 tests, 0 failures (185 carried
+  over + 4 new: 2 usage-format, 2 usage-guard).
+- `:app:lintDebug` run; `abortOnError false` per project config.
+- `:app:assembleDebug` BUILD SUCCESSFUL (local). APK staged to `dist/` on CI.
+- Test-environment notes: Robolectric's AppOps shadow default-allows the usage
+  op, so the denied path is asserted as the guarded empty answer rather than a
+  staged denial; the usage load test waits boundedly because the query runs on
+  IO while the main looper is pumped manually.
+
+### Verification status
+
+- TECNO CAMON 40: NOT verified (no device access).
+- Other devices/emulators: NOT verified.
+- Verified: 189 unit tests, lint, assemble (local + CI). Manual checklists in
+  `calendar-permission-root-cause.md`, `lock-screen-root-cause.md`,
+  `compatibility-matrix.md`.
+
+---
+
 ## 0.3.2 — Calendar permission loop fix, Back audit, universal compatibility docs
 
 Tree state: versionName 0.3.2 / versionCode 9 (`app/build.gradle`).
@@ -43,7 +100,7 @@ Changed: `data/SettingsStore.kt` (+`calendarAsked`), `ui/LauncherViewModel.kt`
 dead launchers removed), `app/build.gradle` (0.3.2/9), README (0.3.2 pointer
 + doc table).
 
-### Build and test results
+### Build and test results (0.3.2)
 
 - `:app:testDebugUnitTest` BUILD SUCCESSFUL, 185 tests, 0 failures (180 carried
   over + 5 new calendar-permission regression tests).

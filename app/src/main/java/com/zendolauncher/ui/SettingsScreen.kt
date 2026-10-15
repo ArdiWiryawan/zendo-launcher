@@ -21,6 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import com.zendolauncher.BuildConfig
+import com.zendolauncher.core.UsageFormat
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
@@ -51,6 +53,10 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
     // app list uses, so this list reads as app names instead of package ids; a key that no
     // longer resolves is an uninstalled app and falls back to its package name.
     val labels = remember(state.allApps) { state.allApps.associate { it.key to it.label } }
+
+    // Read-only re-check: granting or revoking usage access in Settings while away
+    // updates this screen on return. It never requests anything.
+    LaunchedEffect(Unit) { viewModel.refreshUsageAccess() }
 
     Column(
         Modifier
@@ -263,6 +269,66 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
 
             Spacer(Modifier.height(LauncherSpace.md))
             AccessWindowSection(viewModel, state.settings)
+
+            Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Usage summary (optional)")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText(
+                "Today's foreground minutes per app, read on this device only. " +
+                    "Numbers only: nothing is uploaded and nothing is blocked from them. " +
+                    "Access is granted in system Settings and can be revoked there anytime.",
+            )
+            Spacer(Modifier.height(LauncherSpace.xs))
+            // Usage rows are keyed by package; app-list keys carry the activity,
+            // so labels resolve through a package map, falling back to the id.
+            val pkgLabels = remember(state.allApps) {
+                state.allApps.associate { it.packageName to it.label }
+            }
+            if (!state.usageAccess) {
+                QuietAction("Open usage access settings") {
+                    openSystemSettings(context, Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                }
+                QuietAction("Check again") { viewModel.refreshUsageAccess() }
+                Spacer(Modifier.height(LauncherSpace.xs))
+                SecondaryText(
+                    "OS Focus Mode lives in system Settings under Digital Wellbeing. " +
+                        "The launcher cannot switch it for you, but this opens the way there.",
+                )
+                QuietAction("Open system settings") {
+                    openSystemSettings(context, Settings.ACTION_SETTINGS)
+                }
+            } else {
+                if (state.usageLoading) {
+                    SecondaryText("Loading…")
+                } else {
+                    val entries = state.usageEntries.take(8)
+                    if (entries.isEmpty()) {
+                        EmptyNote("No usage recorded today. Tap Refresh after using some apps.")
+                    } else {
+                        entries.forEachIndexed { index, entry ->
+                            if (index > 0) Hairline()
+                            Row(
+                                Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(
+                                    pkgLabels[entry.packageName] ?: entry.packageName,
+                                    style = LauncherType.body,
+                                    color = palette.primary,
+                                    modifier = Modifier.weight(1f),
+                                )
+                                SecondaryText(UsageFormat.minutes(entry.minutes))
+                            }
+                        }
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
+                    QuietAction("Refresh", onClick = { viewModel.loadUsage() })
+                    QuietAction("Revoke access") {
+                        openSystemSettings(context, Settings.ACTION_USAGE_ACCESS_SETTINGS)
+                    }
+                }
+            }
 
             Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("System settings")

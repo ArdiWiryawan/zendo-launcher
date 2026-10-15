@@ -7,10 +7,10 @@ import org.junit.Test
 class WallpaperTemplatesTest {
 
     @Test
-    fun `ten bundled templates across solid and subtle`() {
-        assertEquals(10, WallpaperTemplates.ALL.size)
-        assertEquals(5, WallpaperTemplates.byCategory(WallpaperCategory.SOLID).size)
-        assertEquals(5, WallpaperTemplates.byCategory(WallpaperCategory.SUBTLE).size)
+    fun `twelve bundled templates across solid and subtle`() {
+        assertEquals(12, WallpaperTemplates.ALL.size)
+        assertEquals(6, WallpaperTemplates.byCategory(WallpaperCategory.SOLID).size)
+        assertEquals(6, WallpaperTemplates.byCategory(WallpaperCategory.SUBTLE).size)
         assertEquals(WallpaperTemplates.ALL.size, WallpaperTemplates.byCategory(null).size)
     }
 

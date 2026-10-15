@@ -445,9 +445,9 @@ private fun FocusPage(viewModel: LauncherViewModel, state: UiState) {
         Spacer(Modifier.height(LauncherSpace.xl))
         SectionHeading("Usage")
         Spacer(Modifier.height(LauncherSpace.sm))
-        // UsageManager needs PACKAGE_USAGE_STATS, which this manifest deliberately does not
-        // request, so there is no number to show and no permission to ask for here.
-        EmptyNote("Usage summary is not built yet. This app does not read usage statistics.")
+        // Usage access is optional and off by default; the summary and its switch
+        // live in Settings, so this stays a route rather than a second switch.
+        EmptyNote("Usage summary is optional and off unless you allow it in Settings.")
         Spacer(Modifier.height(LauncherSpace.xl))
     }
 }

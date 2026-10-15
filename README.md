@@ -61,7 +61,8 @@ All apps   Settings
   The window background and the status and navigation bar icons follow the theme you
   chose, not the system's night setting.
 - **Everything is local.** No account, no network use. Calendar permission is
-  requested only when you open a calendar feature; wallpaper uses the normal
+  requested only when you open a calendar feature; usage statistics is an
+  optional, numbers-only summary behind special access; wallpaper uses the normal
   `SET_WALLPAPER` permission for direct apply (the picker fallback needs none).
 
 ## Download the APK
@@ -73,7 +74,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.3.2` (versionCode 9). See the releases list
+The newest build is currently `debug-0.3.3` (versionCode 10). See the releases list
 for its sha256.
 
 To build a fresh one yourself:
@@ -148,6 +149,8 @@ on its own, and it can always be changed back.
 - The launcher does not declare the `INTERNET` permission. Calendar access
   (`READ_CALENDAR`) is requested only when you open a calendar feature, is
   read-only against the on-device provider, and never uploads anything.
+  Usage statistics (`PACKAGE_USAGE_STATS`) is optional and off by default:
+  the summary is numbers-only, granted in system Settings, revocable there.
   Wallpaper apply uses `SET_WALLPAPER` (normal, auto-granted); the system-picker
   fallback needs no permission.
 - Your app list is discovered through the system's `LauncherApps` service, which is how

@@ -12,9 +12,13 @@
         The system picker fallback needs no permission.
       - READ_CALENDAR (runtime): Upcoming / Calendar agenda. Asked only when the user
         opens a calendar feature, never at startup. All calendar use is read-only and offline.
+      - PACKAGE_USAGE_STATS (special access): optional local usage summary, numbers
+        only. Granted only in system Settings (Usage Access page), never requested
+        in-app, revocable there at any time. No enforcement is built on it.
     -->
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

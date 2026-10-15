@@ -77,6 +77,16 @@ object WallpaperTemplates {
             baseColor = 0xFF3A3A3C, secondaryColor = 0xFF0B0B0C,
             description = "Soft grayscale tonal transition.", darkBackground = true,
         ),
+        WallpaperTemplate(
+            id = "charcoal", name = "Charcoal", category = WallpaperCategory.SOLID,
+            baseColor = 0xFF17181A, description = "Near-black with a breath of gray.", darkBackground = true,
+        ),
+        WallpaperTemplate(
+            id = "horizon", name = "Horizon", category = WallpaperCategory.SUBTLE,
+            pattern = WallpaperPattern.LINES,
+            baseColor = 0xFF0B0B0C, secondaryColor = 0xFF2A2A2C,
+            description = "One quiet hairline on dark.", darkBackground = true,
+        ),
     )
 
     fun byId(id: String?): WallpaperTemplate? = ALL.firstOrNull { it.id == id }

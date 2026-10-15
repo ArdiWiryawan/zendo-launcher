@@ -17,6 +17,7 @@ import com.zendolauncher.data.TaskStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.data.WallpaperStore
 import com.zendolauncher.data.WallpaperTarget
+import com.zendolauncher.model.AppUsage
 import com.zendolauncher.model.CalendarEvent
 import com.zendolauncher.model.DeviceCalendar
 import com.zendolauncher.model.LaunchTarget
@@ -26,6 +27,7 @@ import com.zendolauncher.platform.AppRepository
 import com.zendolauncher.platform.CalendarRepository
 import com.zendolauncher.platform.ShortcutRepository
 import com.zendolauncher.platform.UnavailableZendoSource
+import com.zendolauncher.platform.UsageRepository
 import com.zendolauncher.platform.WallpaperApplier
 import com.zendolauncher.platform.WallpaperApplyResult
 import com.zendolauncher.platform.ZendoSource
@@ -112,6 +114,10 @@ data class UiState(
     val wallpaperTarget: WallpaperTarget = WallpaperTarget.BOTH,
     val wallpaperApplying: Boolean = false,
     val wallpaperMessage: String? = null,
+    // ---- Optional usage summary (special access, numbers only) -------------------
+    val usageAccess: Boolean = false,
+    val usageEntries: List<AppUsage> = emptyList(),
+    val usageLoading: Boolean = false,
     // ---- Overlays and editors (ephemeral) ----------------------------------------
     val editingHighlightId: String? = null,
     /** Draft title in the full-screen highlight editor. Lives here so rotation keeps it. */
@@ -172,6 +178,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val taskStore = TaskStore(application)
     private val wallpaperStore = WallpaperStore(application)
     private val calendarRepository = CalendarRepository(application)
+    private val usageRepository = UsageRepository(application)
     private val appLauncher = AppLauncher(application)
 
     /** Swap this for a Supabase-backed implementation once the backend allows it. */
@@ -239,6 +246,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _taskError = MutableStateFlow<String?>(null)
     private val _showDiscardTask = MutableStateFlow(false)
     private val _confirmDeleteTask = MutableStateFlow<String?>(null)
+    // Usage summary: explicit loads only, never background polling.
+    private val _usageAccess = MutableStateFlow(false)
+    private val _usageEntries = MutableStateFlow<List<AppUsage>>(emptyList())
+    private val _usageLoading = MutableStateFlow(false)
 
     /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
     private var settingsReturn: Screen = Screen.HOME
@@ -347,6 +358,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val taskError: String?,
         val showDiscardT: Boolean,
         val confirmDelT: String?,
+        val usageAccess: Boolean,
+        val usageEntries: List<AppUsage>,
+        val usageLoading: Boolean,
     )
 
     private val today: Flow<TodayBundle> = combine(
@@ -376,6 +390,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _taskError,
         _showDiscardTask,
         _confirmDeleteTask,
+        _usageAccess,
+        _usageEntries,
+        _usageLoading,
     ) { args: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         TodayBundle(
@@ -405,6 +422,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             taskError = args[23] as String?,
             showDiscardT = args[24] as Boolean,
             confirmDelT = args[25] as String?,
+            usageAccess = args[26] as Boolean,
+            usageEntries = args[27] as List<AppUsage>,
+            usageLoading = args[28] as Boolean,
         )
     }
 
@@ -438,6 +458,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 taskEditorError = t.taskError,
                 showDiscardTask = t.showDiscardT,
                 confirmDeleteTaskId = t.confirmDelT,
+                usageAccess = t.usageAccess,
+                usageEntries = t.usageEntries,
+                usageLoading = t.usageLoading,
             )
         }.stateIn(
             viewModelScope,
@@ -1159,6 +1182,36 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun setPagingEnabled(enabled: Boolean) = settingsStore.update { it.copy(pagingEnabled = enabled) }
 
     fun setReduceMotion(enabled: Boolean) = settingsStore.update { it.copy(reduceMotion = enabled) }
+
+    // ---- Optional usage summary (special access, numbers only) ----------------------
+
+    /** Re-reads special-access state. Read-only; granting happens in system Settings. */
+    fun refreshUsageAccess() {
+        _usageAccess.value = usageRepository.hasAccess()
+        if (!usageRepository.hasAccess()) _usageEntries.value = emptyList()
+    }
+
+    /**
+     * Loads today's summary on an explicit tap. No polling, no background work:
+     * each load is one bounded provider query for the current day.
+     */
+    fun loadUsage() {
+        if (!usageRepository.hasAccess()) {
+            _usageAccess.value = false
+            _usageEntries.value = emptyList()
+            return
+        }
+        _usageAccess.value = true
+        _usageLoading.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            _usageEntries.value = try {
+                usageRepository.todaySummary()
+            } catch (_: Exception) {
+                emptyList()
+            }
+            _usageLoading.value = false
+        }
+    }
 
     suspend fun bitmapFor(target: LaunchTarget, sizePx: Int): Bitmap? =
         withContext(Dispatchers.IO) { appRepository.bitmapFor(target, sizePx) }

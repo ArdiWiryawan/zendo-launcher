@@ -5,17 +5,18 @@ Method: source read + unit tests. No device run claimed for OEM lock behavior.
 
 ## Templates
 
-Bundled in `core/WallpaperTemplate.kt` (`WallpaperTemplates.ALL`, 10 items).
+Bundled in `core/WallpaperTemplate.kt` (`WallpaperTemplates.ALL`, 12 items).
 No network, no heavy assets. Preview is Compose (`ui/WallpaperScreen.kt`
 `WallpaperPreviewBox`); apply renders a 1080x1920 Bitmap on demand
 (`platform/WallpaperApplier.kt` `render`) and recycles it after hand-off.
 
-Solid (5): Obsidian `#000000`, Paper `#F7F7F5`, Stone `#A8A8A6`,
-Graphite `#2B2D30`, Mist `#E4E6E8`.
+Solid (6): Obsidian `#000000`, Paper `#F7F7F5`, Stone `#A8A8A6`,
+Graphite `#2B2D30`, Mist `#E4E6E8`, Charcoal `#17181A`.
 
-Subtle (5): Soft gradient (vertical black gradient), Soft grain (deterministic
+Subtle (6): Soft gradient (vertical black gradient), Soft grain (deterministic
 random dots, seed = id hash), Linear (one hairline at 70% height on paper),
-Two-tone (72/28 dark/light split), Tonal drift (diagonal grayscale gradient).
+Two-tone (72/28 dark/light split), Tonal drift (diagonal grayscale gradient),
+Horizon (one hairline on dark).
 
 First release is grayscale-first: `WallpaperTemplatesTest` asserts every base
 color has max-min RGB spread <= 12.

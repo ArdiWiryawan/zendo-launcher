@@ -463,7 +463,7 @@ class LauncherUiTest {
         rule.onNodeWithText("Focus session").assertIsDisplayed()
         rule.onNodeWithText("Sessions are not built yet. Nothing here runs a timer or blocks apps.")
             .performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Usage summary is not built yet. This app does not read usage statistics.")
+        rule.onNodeWithText("Usage summary is optional and off unless you allow it in Settings.")
             .performScrollTo().assertIsDisplayed()
     }
 
