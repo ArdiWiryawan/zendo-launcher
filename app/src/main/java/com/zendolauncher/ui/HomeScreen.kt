@@ -223,6 +223,7 @@ private fun PageBody(page: HomePage, viewModel: LauncherViewModel, state: UiStat
     when (page.type) {
         PageType.TODAY -> TodayPage(viewModel, state)
         PageType.APPS -> LaunchPage(page, viewModel, state)
+        PageType.PLAN -> PlanFocusPage(viewModel, state)
         PageType.NOTES -> FocusPage(viewModel, state)
         PageType.WIDGET -> WidgetPage(page)
     }
@@ -327,6 +328,7 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
 
         if (targets.isEmpty()) {
             EmptyNote("No pinned apps here yet. Open All apps and pin the ones you want.")
+            QuietAction("Open All apps", onClick = { viewModel.openApps() })
         } else {
             targets.forEach { target ->
                 Row(
@@ -688,6 +690,7 @@ private fun currentLocale(): Locale = LocalConfiguration.current.locales[0]
 private fun PageType.label(): String = when (this) {
     PageType.TODAY -> "Today"
     PageType.APPS -> "Apps"
+    PageType.PLAN -> "Plan & Focus"
     PageType.NOTES -> "Focus"
     PageType.WIDGET -> "Widget"
 }

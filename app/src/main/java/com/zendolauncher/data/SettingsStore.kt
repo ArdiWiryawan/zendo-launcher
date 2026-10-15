@@ -5,8 +5,10 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.HomeLayoutCodec
+import com.zendolauncher.core.HomePage
 import com.zendolauncher.core.PageConfig
 import com.zendolauncher.core.PageType
+import com.zendolauncher.core.defaultName
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -41,6 +43,8 @@ class SettingsStore(context: Context) {
         onboardingSeen = prefs.getBoolean(KEY_ONBOARDING_SEEN, false),
         distract = prefs.getStringSet(KEY_DISTRACT, null)?.toSet() ?: emptySet(),
         pauseEnabled = prefs.getBoolean(KEY_PAUSE, false),
+        pauseMessage = prefs.getString(KEY_PAUSE_MESSAGE, null)?.takeIf { it.isNotBlank() }
+            ?: DEFAULT_PAUSE_MESSAGE,
         windowEnabled = prefs.getBoolean(KEY_WINDOW_ENABLED, false),
         windowStartMinute = prefs.getInt(KEY_WINDOW_START, DEFAULT_WINDOW_START),
         windowEndMinute = prefs.getInt(KEY_WINDOW_END, DEFAULT_WINDOW_END),
@@ -50,6 +54,8 @@ class SettingsStore(context: Context) {
         shownCalendarIds = prefs.getStringSet(KEY_SHOWN_CALENDARS, null)?.mapNotNull { it.toLongOrNull() }?.toSet()
             ?: emptySet(),
         calendarAsked = prefs.getBoolean(KEY_CALENDAR_ASKED, false),
+        focusWorkMinutes = prefs.getInt(KEY_FOCUS_WORK, 25),
+        focusBreakMinutes = prefs.getInt(KEY_FOCUS_BREAK, 5),
         // Migration runs here, on the read path, because this is the only place the store
         // ever learns that no layout has been written yet. It is idempotent: once a layout
         // is stored, the legacy keys are not consulted again. See migrateHome.
@@ -69,6 +75,7 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_ONBOARDING_SEEN, next.onboardingSeen)
             putStringSet(KEY_DISTRACT, HashSet(next.distract))
             putBoolean(KEY_PAUSE, next.pauseEnabled)
+            putString(KEY_PAUSE_MESSAGE, next.pauseMessage)
             putBoolean(KEY_WINDOW_ENABLED, next.windowEnabled)
             // Stored raw. Normalising here would silently move a mistyped entry on the
             // next unrelated settings write; the gate clamps on read instead.
@@ -79,6 +86,8 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_REDUCE_MOTION, next.reduceMotion)
             putStringSet(KEY_SHOWN_CALENDARS, HashSet(next.shownCalendarIds.map { it.toString() }))
             putBoolean(KEY_CALENDAR_ASKED, next.calendarAsked)
+            putInt(KEY_FOCUS_WORK, next.focusWorkMinutes)
+            putInt(KEY_FOCUS_BREAK, next.focusBreakMinutes)
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
             putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
             putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
@@ -95,10 +104,38 @@ class SettingsStore(context: Context) {
      * model has to know how to clamp a page count or repair a duplicate id.
      */
     private fun readHome(): HomeLayout = HomeLayout.sanitize(
-        HomeLayoutCodec.decode(prefs.getString(KEY_HOME_PAGES, null))
-            ?.copy(activePageId = prefs.getString(KEY_HOME_ACTIVE_PAGE, null))
-            ?: migratedHome(),
+        withPlanPage(
+            HomeLayoutCodec.decode(prefs.getString(KEY_HOME_PAGES, null))
+                ?.copy(activePageId = prefs.getString(KEY_HOME_ACTIVE_PAGE, null))
+                ?: migratedHome(),
+        ),
     )
+
+    /**
+     * One-time, idempotent upgrade for layouts stored before the Plan & Focus
+     * page existed: inserts one after the first Today page when there is room.
+     * Renames, order, pins, and the active page are untouched; a layout that
+     * already has the page (or is full) is returned as-is.
+     */
+    private fun withPlanPage(layout: HomeLayout): HomeLayout {
+        if (layout.pages.any { it.type == PageType.PLAN }) return layout
+        if (layout.pages.size >= HomeLayout.MAX_PAGES) return layout
+        val at = (layout.pages.indexOfFirst { it.type == PageType.TODAY } + 1)
+            .coerceIn(0, layout.pages.size)
+        val page = HomePage(
+            "p_plan",
+            PageType.PLAN,
+            PageType.PLAN.defaultName(),
+        ).let { candidate ->
+            // Never collide with a stored id (e.g. a user page already named so).
+            if (layout.pages.any { it.id == candidate.id }) {
+                candidate.copy(id = HomeLayout.newId())
+            } else {
+                candidate
+            }
+        }
+        return layout.copy(pages = layout.pages.toMutableList().apply { add(at, page) })
+    }
 
     /**
      * The layout to use when nothing has been stored yet.
@@ -214,6 +251,7 @@ class SettingsStore(context: Context) {
         private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
         private const val KEY_DISTRACT = "distract_set"
         private const val KEY_PAUSE = "pause_enabled"
+        private const val KEY_PAUSE_MESSAGE = "pause_message"
         private const val KEY_WINDOW_ENABLED = "access_window_enabled"
         private const val KEY_WINDOW_START = "access_window_start_minute"
         private const val KEY_WINDOW_END = "access_window_end_minute"
@@ -225,9 +263,14 @@ class SettingsStore(context: Context) {
         private const val KEY_REDUCE_MOTION = "reduce_motion"
         private const val KEY_SHOWN_CALENDARS = "shown_calendar_ids"
         private const val KEY_CALENDAR_ASKED = "calendar_asked"
+        private const val KEY_FOCUS_WORK = "focus_work_minutes"
+        private const val KEY_FOCUS_BREAK = "focus_break_minutes"
 
         /** Advisory, written beside the blob so a future change can tell old from malformed. */
         const val HOME_PAGES_VERSION = 1
+
+        /** Default pause-dialog reminder, used until the user writes their own. */
+        const val DEFAULT_PAUSE_MESSAGE = "Take a breath. Open it anyway?"
 
         /** 22:00 — a default the user is expected to change, not a recommendation. */
         const val DEFAULT_WINDOW_START = 22 * 60
@@ -247,6 +290,8 @@ data class LauncherSettings(
     val onboardingSeen: Boolean = false,
     val distract: Set<String> = emptySet(),
     val pauseEnabled: Boolean = false,
+    /** Reminder line shown in the intentional-pause dialog. User-written. */
+    val pauseMessage: String = SettingsStore.DEFAULT_PAUSE_MESSAGE,
     /**
      * Optional daily access window, minute-of-day local. Off by default and only ever
      * consulted by the pause gate — nothing polls it, so it is a launch-time check.
@@ -279,4 +324,8 @@ data class LauncherSettings(
      * offers the app Settings page instead.
      */
     val calendarAsked: Boolean = false,
+    /** Default focus work-block length, minutes. The timer screen can pick per session. */
+    val focusWorkMinutes: Int = 25,
+    /** Default break length, minutes. 0 means no break offered. */
+    val focusBreakMinutes: Int = 5,
 )

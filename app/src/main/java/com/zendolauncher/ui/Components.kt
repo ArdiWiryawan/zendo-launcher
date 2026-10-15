@@ -419,10 +419,11 @@ fun SecondaryText(text: String, modifier: Modifier = Modifier) {
 
 /**
  * The intentional pause: a calm monochrome dialog over the current list. Continue
- * launches once; Cancel returns. No timer, no journaling.
+ * launches once; Cancel returns. No timer, no journaling. The message is the
+ * user's own reminder when they wrote one.
  */
 @Composable
-fun PauseDialog(label: String, onContinue: () -> Unit, onCancel: () -> Unit) {
+fun PauseDialog(label: String, message: String, onContinue: () -> Unit, onCancel: () -> Unit) {
     Dialog(onDismissRequest = onCancel) {
         Column(
             Modifier
@@ -432,7 +433,7 @@ fun PauseDialog(label: String, onContinue: () -> Unit, onCancel: () -> Unit) {
         ) {
             Text(text = label, style = LauncherType.body, color = LauncherColors.current.primary)
             Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText("Take a breath. Open it anyway?")
+            SecondaryText(message)
             Spacer(Modifier.height(LauncherSpace.md))
             Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
                 QuietAction("Continue", onClick = onContinue)

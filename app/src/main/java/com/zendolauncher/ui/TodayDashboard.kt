@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
 import com.zendolauncher.core.archivedList
 import com.zendolauncher.core.homeSummary
 import com.zendolauncher.core.primary
+import com.zendolauncher.core.UpcomingItem
+import com.zendolauncher.core.UpcomingMerge
 import com.zendolauncher.core.visible
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
@@ -43,12 +45,16 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 /**
- * The Today dashboard: Highlights, Tasks, Upcoming. One coherent page with
- * separators, not three card stacks. All data is local and persistent.
+ * The Today dashboard: action, highlights, tasks, upcoming. One coherent page
+ * with separators, not three card stacks. All data is local and persistent.
  */
 @Composable
 fun TodayDashboard(viewModel: LauncherViewModel, state: UiState) {
     Column {
+        TodayActionSection(viewModel, state)
+        Spacer(Modifier.height(LauncherSpace.lg))
+        SectionSeparator()
+        Spacer(Modifier.height(LauncherSpace.md))
         HighlightsSection(viewModel, state)
         Spacer(Modifier.height(LauncherSpace.lg))
         SectionSeparator()
@@ -64,6 +70,68 @@ fun TodayDashboard(viewModel: LauncherViewModel, state: UiState) {
 @Composable
 private fun SectionSeparator() {
     Hairline()
+}
+
+/**
+ * The day's headline action: dominant, completable, editable inline. The draft
+ * lives in the view model so rotation keeps it; saving a blank refuses inline.
+ */
+@Composable
+private fun TodayActionSection(viewModel: LauncherViewModel, state: UiState) {
+    val palette = LauncherColors.current
+    SectionHeading("Today's action")
+    Spacer(Modifier.height(LauncherSpace.sm))
+    if (state.editingTodayAction) {
+        var draft by remember(state.todayActionDraft) { mutableStateOf(state.todayActionDraft) }
+        BasicTextField(
+            value = draft,
+            onValueChange = {
+                draft = it
+                viewModel.updateTodayActionDraft(it)
+            },
+            singleLine = true,
+            textStyle = LauncherType.body.copy(color = palette.primary),
+            cursorBrush = SolidColor(palette.primary),
+            keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { viewModel.saveTodayAction() }),
+            modifier = Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Today's action" },
+            decorationBox = { inner ->
+                if (draft.isEmpty()) SecondaryText("What is the one thing for today?")
+                inner()
+            },
+        )
+        state.todayActionError?.let {
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText(it)
+        }
+        Spacer(Modifier.height(LauncherSpace.xs))
+        Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.md)) {
+            QuietAction("Save", onClick = { viewModel.saveTodayAction() })
+            QuietAction("Cancel", onClick = { viewModel.cancelTodayActionEdit() })
+        }
+    } else if (state.todayActionTitle.isBlank()) {
+        EmptyNote("Name the one thing that matters today.")
+        QuietAction("Set today's action", onClick = { viewModel.editTodayAction() })
+    } else {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = state.todayActionTitle,
+                style = LauncherType.body,
+                color = if (state.todayActionDone) palette.secondary else palette.primary,
+                modifier = Modifier.weight(1f),
+            )
+            QuietAction(
+                if (state.todayActionDone) "Reopen" else "Done",
+                onClick = { viewModel.toggleTodayAction() },
+                modifier = Modifier.semantics {
+                    contentDescription = (if (state.todayActionDone) "Reopen " else "Complete ") + state.todayActionTitle
+                },
+            )
+        }
+        QuietAction("Edit", onClick = { viewModel.editTodayAction() })
+    }
 }
 
 @Composable
@@ -183,23 +251,49 @@ private fun TasksSection(viewModel: LauncherViewModel, state: UiState) {
 private fun UpcomingSection(viewModel: LauncherViewModel, state: UiState) {
     SectionHeading("Upcoming")
     Spacer(Modifier.height(LauncherSpace.sm))
-    if (!state.calendarPermission) {
-        EmptyNote("Calendar access is off. Upcoming stays empty until you allow it.")
-        Spacer(Modifier.height(LauncherSpace.xs))
-        SecondaryText("The launcher reads your device calendar only, offline. Nothing is uploaded.")
-        CalendarAccessAction(viewModel, state.settings.calendarAsked)
-    } else {
-        val upcoming = remember(state.calendarEvents) {
-            val now = System.currentTimeMillis()
-            state.calendarEvents.filter { it.endMillis >= now }.sortedBy { it.startMillis }.take(3)
-        }
-        if (upcoming.isEmpty()) {
-            EmptyNote("Nothing upcoming in the next days.")
+    val items = remember(state.calendarEvents, state.tasks) {
+        UpcomingMerge.next(state.calendarEvents, state.tasks, System.currentTimeMillis(), 3)
+    }
+    if (items.isEmpty()) {
+        if (!state.calendarPermission) {
+            EmptyNote("Calendar access is off. Upcoming stays empty until you allow it.")
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText("The launcher reads your device calendar only, offline. Nothing is uploaded.")
+            CalendarAccessAction(viewModel, state.settings.calendarAsked)
         } else {
-            upcoming.forEach { event ->
-                UpcomingRow(event.startMillis, event.endMillis, event.title, event.allDay)
-                Spacer(Modifier.height(LauncherSpace.sm))
+            EmptyNote("Nothing upcoming in the next days.")
+        }
+    } else {
+        items.forEach { item ->
+            when (item) {
+                is UpcomingItem.Event -> {
+                    val e = item.event
+                    UpcomingRow(e.startMillis, e.endMillis, e.title, e.allDay)
+                }
+                is UpcomingItem.Task -> {
+                    val due = Instant.ofEpochMilli(item.dueMillis).atZone(ZoneId.systemDefault())
+                    Row {
+                        Column(horizontalAlignment = Alignment.Start, modifier = Modifier.width(52.dp)) {
+                            Text(
+                                text = due.format(DateTimeFormatter.ofPattern("d MMM")),
+                                style = LauncherType.body,
+                                color = LauncherColors.current.primary,
+                            )
+                            SecondaryText("Due")
+                        }
+                        Spacer(Modifier.width(LauncherSpace.md))
+                        Column(Modifier.weight(1f)) {
+                            Text(text = item.task.title, style = LauncherType.body, color = LauncherColors.current.primary)
+                            SecondaryText("Task")
+                        }
+                    }
+                }
             }
+            Spacer(Modifier.height(LauncherSpace.sm))
+        }
+        if (!state.calendarPermission) {
+            SecondaryText("Calendar access is off — showing due tasks only.")
+            CalendarAccessAction(viewModel, state.settings.calendarAsked)
         }
     }
     Spacer(Modifier.height(LauncherSpace.xs))

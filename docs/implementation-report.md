@@ -1,5 +1,87 @@
 # Implementation Report
 
+## 0.4.0 — Three pages, focus timer, setup and permission center
+
+Tree state: versionName 0.4.0 / versionCode 11 (`app/build.gradle`).
+Default Home is now Today / Plan & Focus / Essentials; existing installs gain
+the Plan page once, after Today, without touching order, pins, or names.
+
+### What shipped
+
+- **Today action**: one completable headline (`TodayActionStore`), inline
+  edit with VM-held draft, blank refused inline, persisted, never auto-cleared.
+- **Plan & Focus page** (`PageType.PLAN`): merged agenda (Instances-based
+  calendar occurrences + due local tasks, sources labeled, overlap-based day
+  matching, deduped) with event-details deep-links, plus the focus timer.
+- **Focus timer**: timestamp-based start/pause/resume/finish/break
+  (`FocusSession` pure math, `FocusStore` persistence + history), 1-second UI
+  tick only while running, natural-end auto-complete exactly once, death
+  recovery via `recover()` on read, next-event overlap warning (warn only,
+  never interrupt), start-from-task, per-session durations with persisted
+  defaults, history with clear.
+- **Calendar repository on Instances**: recurring/modified/deleted instances
+  and multi-day spans resolved by the provider, Events-table fallback,
+  (event, start) dedup.
+- **Setup + Permission Center**: skippable first-run checklist with live OS
+  status (default Home, calendar, essentials, focus defaults, wallpaper,
+  pause) and a permissions screen re-checking truth on every entry
+  (calendar, usage, wallpaper, default Home).
+- **Pause reminder note**: user-written line in the pause dialog.
+- Essentials empty state gained an "Open All apps" action; Launch renamed
+  Essentials for fresh installs.
+
+### Decisions recorded
+
+- Highlights are dateless by design: no midnight wipe exists, edits are
+  explicit, and history is the archive list — nothing is silently overwritten.
+- No calendar write, no AppWidgetHost, no AccessibilityService, no blocking
+  claims; each documented where it would live.
+
+### Files changed (vs 0.3.3)
+
+New: `data/TodayActionStore.kt`, `core/FocusSession.kt`, `data/FocusStore.kt`,
+`core/UpcomingMerge.kt`, `ui/PlanFocusPage.kt`, `ui/SetupScreens.kt`,
+`core/FocusSessionTest.kt`, `core/UpcomingMergeTest.kt`,
+`data/TodayActionStoreTest.kt`, `data/FocusStorePersistenceTest.kt`,
+`ui/FocusStateTest.kt`.
+
+Changed: `platform/CalendarRepository.kt` (Instances + fallback + event URI),
+`core/CalendarWeek.kt` (+`coversDate`), `core/HomeLayout.kt` (`PLAN`,
+new DEFAULT), `core/Highlight.kt` (doc touch only),
+`data/SettingsStore.kt` (PLAN migration, pause message, focus defaults),
+`ui/LauncherViewModel.kt` (today action, focus, setup/permissions nav,
+event URI, focus-from-task), `LauncherActivity.kt` (SETUP/PERMISSIONS),
+`ui/HomeScreen.kt` (PLAN branch, Essentials action), `ui/TodayDashboard.kt`
+(action section, merged Upcoming), `ui/CalendarScreen.kt` (overlap matching),
+`ui/HighlightOverlays.kt` (Focus action), `ui/Components.kt` (pause message),
+`ui/SettingsScreen.kt` (pause note, setup/permissions rows),
+`core/WallpaperTemplate.kt` (doc touch only), tests for the new DEFAULT and
+migration, `app/build.gradle` (0.4.0/11), README (three pages, pointer).
+
+### Build and test results
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 203 tests, 0 failures (189 carried
+  over + 14 new: 5 focus math, 3 upcoming merge/date-span, 1 today-action
+  store, 1 focus persistence, 3 focus/today/setup state, 1 plan-page
+  migration).
+- `:app:lintDebug` run; `abortOnError false` per project config.
+- `:app:assembleDebug` BUILD SUCCESSFUL (local). APK staged to `dist/` on CI.
+- A red-green pass is recorded honestly: the suite first failed on 4 missing
+  cross-package imports, 1 wrong test import, 2 stale expectations (1970-based
+  session recovered by design; repaired layout now gains the plan page), and
+  the fixes touched tests and imports only where the behavior was already
+  correct.
+
+### Verification status
+
+- TECNO CAMON 40: NOT verified (no device access).
+- Other devices/emulators: NOT verified.
+- Verified: unit tests, lint, assemble (local + CI). Manual checklists in
+  `calendar-permission-root-cause.md`, `lock-screen-root-cause.md`,
+  `compatibility-matrix.md`.
+
+---
+
 ## 0.3.3 — Optional usage summary, Focus links, two more templates
 
 Tree state: versionName 0.3.3 / versionCode 10 (`app/build.gradle`).

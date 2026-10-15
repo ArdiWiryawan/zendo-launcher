@@ -19,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.LauncherActivity
 import com.zendolauncher.core.HomeLayout
+import com.zendolauncher.core.PageType
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.model.LaunchTarget
@@ -451,32 +452,42 @@ class LauncherUiTest {
     }
 
     /**
-     * A page that is not the active one still resolves its own rows, and every page renders
-     * something true: the Focus page's unbuilt sections say so in words.
+     * The Plan & Focus page renders the merged agenda and the real timer idle
+     * state. Found by type rather than index so the test does not depend on
+     * which stored layout this JVM happens to hold.
      */
     @Test
-    fun focusPage_rendersHonestEmptyStates() {
-        viewModel.goToPage(2)
+    fun planPage_rendersAgendaAndFocus() {
+        val index = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.PLAN }
+        assertTrue(index >= 0)
+        viewModel.goToPage(index)
         rule.waitForIdle()
-        assertEquals("p_focus", viewModel.state.value.settings.home.activePageId)
+        assertEquals(
+            viewModel.state.value.settings.home.pages[index].id,
+            viewModel.state.value.settings.home.activePageId,
+        )
 
-        rule.onNodeWithText("Focus session").assertIsDisplayed()
-        rule.onNodeWithText("Sessions are not built yet. Nothing here runs a timer or blocks apps.")
-            .performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Usage summary is optional and off unless you allow it in Settings.")
-            .performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Agenda").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Focus").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Start focus").performScrollTo().assertIsDisplayed()
     }
 
     /**
-     * The Launch page keeps the apps it was migrated with. Robolectric finds no installed
-     * apps, so no row can be resolved; what must hold is that the page exists, is reachable
-     * and states its own emptiness rather than borrowing another page's.
+     * The Essentials page keeps the apps it was migrated with. Robolectric finds
+     * no installed apps, so no row can be resolved; what must hold is that the
+     * page exists, is reachable and states its own emptiness rather than
+     * borrowing another page's.
      */
     @Test
     fun launchPage_showsItsOwnEmptyState() {
-        viewModel.goToPage(1)
+        val index = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.APPS }
+        assertTrue(index >= 0)
+        viewModel.goToPage(index)
         rule.waitForIdle()
-        assertEquals("p_launch", viewModel.state.value.settings.home.activePageId)
+        assertEquals(
+            viewModel.state.value.settings.home.pages[index].id,
+            viewModel.state.value.settings.home.activePageId,
+        )
 
         rule.onNodeWithText("Essentials").assertIsDisplayed()
         rule.onNodeWithText("No pinned apps here yet. Open All apps and pin the ones you want.")
@@ -484,36 +495,43 @@ class LauncherUiTest {
     }
 
     /**
-     * Renames and reorders are written to the store, so this test puts back what it changes:
-     * the layout lives in SharedPreferences, which Robolectric keeps for the whole JVM, and a
-     * page left renamed or out of order would be read by whichever test runs next. The
-     * last-page-removal rule is a pure model rule and is covered there instead.
+     * Renames and reorders are written to the store, so this test snapshots the
+     * layout first and restores it afterwards: the layout lives in
+     * SharedPreferences, which Robolectric keeps for the whole JVM, and a page
+     * left renamed or out of order would be read by whichever test runs next.
      */
     @Test
     fun editMode_renamesAndReordersPages_andPutsThemBack() {
+        val startIds = viewModel.state.value.settings.home.pages.map { it.id }
+        val startNames = viewModel.state.value.settings.home.pages.associate { it.id to it.name }
+        // The plan page exists in fresh and migrated layouts alike.
+        assertTrue("p_plan" in startIds)
+
         viewModel.enterPageEdit()
         rule.waitForIdle()
         // The bar's controls are the only way out of editing, so the name is not enough:
         // it has to be a control that is actually there.
         rule.onNodeWithText("Done").assertIsDisplayed()
 
-        viewModel.renamePage("p_focus", "Deep work")
+        viewModel.renamePage("p_plan", "Deep work")
         rule.waitForIdle()
-        assertEquals("Deep work", viewModel.state.value.settings.home.page("p_focus")?.name)
-        viewModel.renamePage("p_focus", "Focus")
+        assertEquals("Deep work", viewModel.state.value.settings.home.page("p_plan")?.name)
+        viewModel.renamePage("p_plan", startNames.getValue("p_plan"))
         rule.waitForIdle()
 
-        viewModel.movePage("p_focus", -1)
+        val from = viewModel.state.value.settings.home.pages.indexOfFirst { it.id == "p_plan" }
+        viewModel.movePage("p_plan", -from)
+        rule.waitForIdle()
+        assertEquals(0, viewModel.state.value.settings.home.pages.indexOfFirst { it.id == "p_plan" })
+        viewModel.movePage("p_plan", from)
         rule.waitForIdle()
         assertEquals(
-            listOf("p_today", "p_focus", "p_launch"),
+            startIds,
             viewModel.state.value.settings.home.pages.map { it.id },
         )
-        viewModel.movePage("p_focus", 2)
-        rule.waitForIdle()
         assertEquals(
-            HomeLayout.DEFAULT.pages.map { it.id },
-            viewModel.state.value.settings.home.pages.map { it.id },
+            startNames,
+            viewModel.state.value.settings.home.pages.associate { it.id to it.name },
         )
 
         viewModel.leavePageEdit()

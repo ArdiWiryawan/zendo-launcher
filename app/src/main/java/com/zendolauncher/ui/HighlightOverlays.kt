@@ -213,6 +213,7 @@ private fun AllTasksDialog(viewModel: LauncherViewModel, state: UiState) {
                                 if (task.done) "Uncheck" else "Check",
                                 onClick = { viewModel.toggleTask(task.id) },
                             )
+                            QuietAction("Focus", onClick = { viewModel.focusFromTask() })
                             QuietAction(
                                 if (task.showOnHome) "Hide from Home" else "Show on Home",
                                 onClick = { viewModel.setTaskVisible(task.id, !task.showOnHome) },

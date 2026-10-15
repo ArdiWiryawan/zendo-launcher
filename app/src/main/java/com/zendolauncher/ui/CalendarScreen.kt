@@ -59,11 +59,10 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
     }
     val week = remember(selected) { CalendarWeek.weekFor(selected) }
     val today = remember { LocalDate.now() }
+    val zone = remember { ZoneId.systemDefault() }
     val events = remember(state.calendarEvents, selected) {
-        val zone = ZoneId.systemDefault()
         state.calendarEvents.filter {
-            val d = Instant.ofEpochMilli(it.startMillis).atZone(zone).toLocalDate()
-            d == selected
+            CalendarWeek.coversDate(it.startMillis, it.endMillis, selected, zone)
         }.sortedBy { it.startMillis }
     }
 
@@ -92,9 +91,8 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
             Text("Your week", style = LauncherType.title, color = palette.primary)
             Spacer(Modifier.height(LauncherSpace.md))
             WeekStrip(week, selected, today, hasEvent = { date ->
-                val zone = ZoneId.systemDefault()
                 state.calendarEvents.any {
-                    Instant.ofEpochMilli(it.startMillis).atZone(zone).toLocalDate() == date
+                    CalendarWeek.coversDate(it.startMillis, it.endMillis, date, zone)
                 }
             }, onSelect = { viewModel.selectDate(it) })
             Spacer(Modifier.height(LauncherSpace.lg))

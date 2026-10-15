@@ -25,6 +25,8 @@ import com.zendolauncher.ui.HighlightEditorScreen
 import com.zendolauncher.ui.HomeScreen
 import com.zendolauncher.ui.LauncherViewModel
 import com.zendolauncher.ui.OnboardingScreen
+import com.zendolauncher.ui.PermissionsScreen
+import com.zendolauncher.ui.SetupScreen
 import com.zendolauncher.ui.PauseDialog
 import com.zendolauncher.ui.Screen
 import com.zendolauncher.ui.SettingsScreen
@@ -121,6 +123,12 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
     BackHandler(enabled = state.screen == Screen.WALLPAPERS || state.screen == Screen.CALENDAR) {
         viewModel.goHome()
     }
+    BackHandler(enabled = state.screen == Screen.SETUP) {
+        viewModel.backFromSetup()
+    }
+    BackHandler(enabled = state.screen == Screen.PERMISSIONS) {
+        viewModel.backFromPermissions()
+    }
     BackHandler(enabled = state.screen == Screen.HOME && state.pageEditing) {
         viewModel.leavePageEdit()
     }
@@ -166,12 +174,15 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
             Screen.CALENDAR -> CalendarScreen(viewModel, state)
             Screen.HIGHLIGHT_EDITOR -> HighlightEditorScreen(viewModel, state)
             Screen.TASK_EDITOR -> TaskEditorScreen(viewModel, state)
+            Screen.SETUP -> SetupScreen(viewModel, state)
+            Screen.PERMISSIONS -> PermissionsScreen(viewModel, state)
         }
         // Launcher-level pre-launch only: the dialog interposes here, over whichever
         // list the tap came from, and Home underneath is untouched.
         state.pendingPause?.let {
             PauseDialog(
                 label = it.label,
+                message = state.settings.pauseMessage,
                 onContinue = { viewModel.confirmPause() },
                 onCancel = { viewModel.cancelPause() },
             )

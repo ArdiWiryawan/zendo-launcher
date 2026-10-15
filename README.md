@@ -48,9 +48,11 @@ All apps   Settings
   for it, but Zendo publishes no planning API, so connecting it fetches nothing and the
   block never appears. See [docs/zendo-integration.md](docs/zendo-integration.md) for the
   verified data contract and the backend change required.
-- **Today dashboard, local and persistent.** Highlights stay until you archive them,
-  tasks keep their completion state, and Upcoming reads your device calendar
-  only after you allow it.
+- **Today dashboard, local and persistent.** A completable headline action,
+  highlights that stay until archived, tasks that keep their state, and
+  Upcoming merging real calendar events with due local tasks.
+- **Plan & Focus page.** Week agenda from the device calendar plus a real
+  timestamp-based focus timer with history — no calendar or usage access needed.
 - **Wallpaper gallery.** Ten quiet grayscale templates with preview and
   Home / Lock screen / Both targets, applied through `WallpaperManager` with
   a system-picker fallback. The lock background is set where the device
@@ -74,7 +76,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.3.3` (versionCode 10). See the releases list
+The newest build is currently `debug-0.4.0` (versionCode 11). See the releases list
 for its sha256.
 
 To build a fresh one yourself:
@@ -84,7 +86,7 @@ To build a fresh one yourself:
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
-Pushing a tag like `v0.3.0` builds a signed release APK and attaches it to a GitHub
+Pushing a tag like `v0.4.0` builds a signed release APK and attaches it to a GitHub
 Release, once release signing secrets are configured. See
 [docs/build-and-release.md](docs/build-and-release.md).
 

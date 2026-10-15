@@ -5,16 +5,20 @@ import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zendolauncher.core.AppQuery
+import com.zendolauncher.core.FocusRecord
+import com.zendolauncher.core.FocusSession
 import com.zendolauncher.core.Highlight
 import com.zendolauncher.core.TaskItem
 import com.zendolauncher.core.WallpaperTemplates
 import com.zendolauncher.data.FocusNoteStore
+import com.zendolauncher.data.FocusStore
 import com.zendolauncher.data.HighlightStore
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.TaskStore
 import com.zendolauncher.data.ThemeMode
+import com.zendolauncher.data.TodayActionStore
 import com.zendolauncher.data.WallpaperStore
 import com.zendolauncher.data.WallpaperTarget
 import com.zendolauncher.model.AppUsage
@@ -53,7 +57,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, WALLPAPERS, CALENDAR, HIGHLIGHT_EDITOR, TASK_EDITOR }
+enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, WALLPAPERS, CALENDAR, HIGHLIGHT_EDITOR, TASK_EDITOR, SETUP, PERMISSIONS }
 
 data class UiState(
     val screen: Screen = Screen.HOME,
@@ -104,6 +108,15 @@ data class UiState(
     // ---- Today dashboard (local, persistent) -----------------------------------
     val highlights: List<Highlight> = emptyList(),
     val tasks: List<TaskItem> = emptyList(),
+    /** The day's headline action. Empty means none set yet. */
+    val todayActionTitle: String = "",
+    val todayActionDone: Boolean = false,
+    val editingTodayAction: Boolean = false,
+    val todayActionDraft: String = "",
+    val todayActionError: String? = null,
+    // ---- Focus timer ------------------------------------------------------------
+    val focusSession: FocusSession = FocusSession(),
+    val focusHistory: List<FocusRecord> = emptyList(),
     // ---- Calendar (device provider, read-only) ---------------------------------
     val calendars: List<DeviceCalendar> = emptyList(),
     val calendarEvents: List<CalendarEvent> = emptyList(),
@@ -176,6 +189,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val focusNoteStore = FocusNoteStore(application)
     private val highlightStore = HighlightStore(application)
     private val taskStore = TaskStore(application)
+    private val todayActionStore = TodayActionStore(application)
+    private val focusStore = FocusStore(application)
     private val wallpaperStore = WallpaperStore(application)
     private val calendarRepository = CalendarRepository(application)
     private val usageRepository = UsageRepository(application)
@@ -246,6 +261,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _taskError = MutableStateFlow<String?>(null)
     private val _showDiscardTask = MutableStateFlow(false)
     private val _confirmDeleteTask = MutableStateFlow<String?>(null)
+    // Today action inline-edit draft (one line; submitted or discarded at once).
+    private val _editingTodayAction = MutableStateFlow(false)
+    private val _todayActionDraft = MutableStateFlow("")
+    private val _todayActionError = MutableStateFlow<String?>(null)
     // Usage summary: explicit loads only, never background polling.
     private val _usageAccess = MutableStateFlow(false)
     private val _usageEntries = MutableStateFlow<List<AppUsage>>(emptyList())
@@ -253,6 +272,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
     private var settingsReturn: Screen = Screen.HOME
+
+    /** Where Back returns from Setup / Permissions (usually HOME or SETTINGS). */
+    private var setupReturn: Screen = Screen.HOME
 
     /** Drawer scroll position, retained across re-entry; see AppListScreen. */
     var drawerIndex: Int = 0
@@ -334,6 +356,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private data class TodayBundle(
         val highlights: List<Highlight>,
         val tasks: List<TaskItem>,
+        val actionTitle: String,
+        val actionDone: Boolean,
+        val editingAction: Boolean,
+        val actionDraft: String,
+        val actionError: String?,
+        val focusSession: FocusSession,
+        val focusHistory: List<FocusRecord>,
         val calendars: List<DeviceCalendar>,
         val events: List<CalendarEvent>,
         val permission: Boolean,
@@ -366,6 +395,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val today: Flow<TodayBundle> = combine(
         highlightStore.highlights,
         taskStore.tasks,
+        todayActionStore.title,
+        todayActionStore.done,
+        _editingTodayAction,
+        _todayActionDraft,
+        _todayActionError,
+        focusStore.session,
+        focusStore.history,
         _calendars,
         _calendarEvents,
         _calendarPermission,
@@ -398,33 +434,40 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         TodayBundle(
             highlights = args[0] as List<Highlight>,
             tasks = args[1] as List<TaskItem>,
-            calendars = args[2] as List<DeviceCalendar>,
-            events = args[3] as List<CalendarEvent>,
-            permission = args[4] as Boolean,
-            date = args[5] as LocalDate,
-            wallpaperId = args[6] as String?,
-            wallpaperTarget = args[7] as WallpaperTarget,
-            applying = args[8] as Boolean,
-            message = args[9] as String?,
-            editingId = args[10] as String?,
-            draftTitle = args[11] as String,
-            draftNote = args[12] as String,
-            draftPin = args[13] as Boolean,
-            draftError = args[14] as String?,
-            showDiscardH = args[15] as Boolean,
-            confirmDelH = args[16] as String?,
-            showAllH = args[17] as Boolean,
-            showAllT = args[18] as Boolean,
-            editingTask = args[19] as String?,
-            taskTitle = args[20] as String,
-            taskDue = args[21] as Long?,
-            taskNotes = args[22] as String,
-            taskError = args[23] as String?,
-            showDiscardT = args[24] as Boolean,
-            confirmDelT = args[25] as String?,
-            usageAccess = args[26] as Boolean,
-            usageEntries = args[27] as List<AppUsage>,
-            usageLoading = args[28] as Boolean,
+            actionTitle = args[2] as String,
+            actionDone = args[3] as Boolean,
+            editingAction = args[4] as Boolean,
+            actionDraft = args[5] as String,
+            actionError = args[6] as String?,
+            focusSession = args[7] as FocusSession,
+            focusHistory = args[8] as List<FocusRecord>,
+            calendars = args[9] as List<DeviceCalendar>,
+            events = args[10] as List<CalendarEvent>,
+            permission = args[11] as Boolean,
+            date = args[12] as LocalDate,
+            wallpaperId = args[13] as String?,
+            wallpaperTarget = args[14] as WallpaperTarget,
+            applying = args[15] as Boolean,
+            message = args[16] as String?,
+            editingId = args[17] as String?,
+            draftTitle = args[18] as String,
+            draftNote = args[19] as String,
+            draftPin = args[20] as Boolean,
+            draftError = args[21] as String?,
+            showDiscardH = args[22] as Boolean,
+            confirmDelH = args[23] as String?,
+            showAllH = args[24] as Boolean,
+            showAllT = args[25] as Boolean,
+            editingTask = args[26] as String?,
+            taskTitle = args[27] as String,
+            taskDue = args[28] as Long?,
+            taskNotes = args[29] as String,
+            taskError = args[30] as String?,
+            showDiscardT = args[31] as Boolean,
+            confirmDelT = args[32] as String?,
+            usageAccess = args[33] as Boolean,
+            usageEntries = args[34] as List<AppUsage>,
+            usageLoading = args[35] as Boolean,
         )
     }
 
@@ -434,6 +477,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 pendingPause = pendingPause,
                 highlights = t.highlights,
                 tasks = t.tasks,
+                todayActionTitle = t.actionTitle,
+                todayActionDone = t.actionDone,
+                editingTodayAction = t.editingAction,
+                todayActionDraft = t.actionDraft,
+                todayActionError = t.actionError,
+                focusSession = t.focusSession,
+                focusHistory = t.focusHistory,
                 calendars = t.calendars,
                 calendarEvents = t.events,
                 calendarPermission = t.permission,
@@ -530,6 +580,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         // WALLPAPERS and CALENDAR are leaves of HOME; returning goes to HOME.
         settingsReturn = when (from) {
             Screen.APPS -> Screen.APPS
+            Screen.SETUP, Screen.PERMISSIONS -> from
             else -> Screen.HOME
         }
         _screen.value = Screen.SETTINGS
@@ -635,6 +686,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 goHome()
                 return true
             }
+            Screen.SETUP -> {
+                backFromSetup()
+                return true
+            }
+            Screen.PERMISSIONS -> {
+                backFromPermissions()
+                return true
+            }
             Screen.HIGHLIGHT_EDITOR -> {
                 backFromHighlightEditor()
                 return true
@@ -703,10 +762,41 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     /** Stores the Focus page's note. Written on every keystroke; there is no save step. */
     fun setFocusNote(note: String) { focusNoteStore.write(note) }
 
-    /** Leaves onboarding for good: the seen flag is what keeps goHome() from returning here. */
+    /** Leaves onboarding for the setup checklist. Seen is set when setup finishes. */
     fun dismissOnboarding() {
+        _screen.value = Screen.SETUP
+    }
+
+    /** Finishes first-run setup for good. Every step is optional and repeatable later. */
+    fun finishSetup() {
         settingsStore.update { it.copy(onboardingSeen = true) }
         _screen.value = Screen.HOME
+    }
+
+    fun openSetup(from: Screen = Screen.HOME) {
+        setupReturn = from
+        _screen.value = Screen.SETUP
+    }
+
+    fun backFromSetup() {
+        // First-run Back is a Skip: the session continues on Home and nothing is lost,
+        // and onboarding will not show again.
+        if (!settingsStore.settings.value.onboardingSeen) {
+            finishSetup()
+            return
+        }
+        _screen.value = setupReturn
+        setupReturn = Screen.HOME
+    }
+
+    fun openPermissions(from: Screen = Screen.HOME) {
+        setupReturn = from
+        _screen.value = Screen.PERMISSIONS
+    }
+
+    fun backFromPermissions() {
+        _screen.value = setupReturn
+        setupReturn = Screen.HOME
     }
 
     /** Re-opens onboarding from Settings without clearing the seen flag. */
@@ -817,6 +907,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setPauseEnabled(enabled: Boolean) = settingsStore.update { it.copy(pauseEnabled = enabled) }
 
+    /** The user-written reminder shown in the pause dialog. Blank resets to the default. */
+    fun setPauseMessage(message: String) = settingsStore.update {
+        it.copy(pauseMessage = message.trim().ifEmpty { com.zendolauncher.data.SettingsStore.DEFAULT_PAUSE_MESSAGE })
+    }
+
     /**
      * The access-window toggle. Its values live on even while it is off, so turning it
      * back on restores the last window rather than resetting it.
@@ -839,6 +934,72 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     internal var nowMinuteOfDay: () -> Int = {
         val now = LocalTime.now()
         now.hour * 60 + now.minute
+    }
+
+    // ---- Today action (the day's headline, completable) ---------------------------
+
+    fun editTodayAction() {
+        _todayActionDraft.value = todayActionStore.title.value
+        _todayActionError.value = null
+        _editingTodayAction.value = true
+    }
+
+    fun updateTodayActionDraft(draft: String) {
+        _todayActionDraft.value = draft
+        if (_todayActionError.value != null && draft.isNotBlank()) _todayActionError.value = null
+    }
+
+    fun saveTodayAction(): Boolean {
+        if (!todayActionStore.save(_todayActionDraft.value)) {
+            _todayActionError.value = "Give today a headline first."
+            return false
+        }
+        _editingTodayAction.value = false
+        _todayActionError.value = null
+        return true
+    }
+
+    fun cancelTodayActionEdit() {
+        _editingTodayAction.value = false
+        _todayActionError.value = null
+    }
+
+    fun toggleTodayAction() = todayActionStore.setDone(!todayActionStore.done.value)
+
+    // ---- Focus timer ---------------------------------------------------------------
+
+    fun startFocus(workMinutes: Int? = null, breakMinutes: Int? = null) {
+        val settings = settingsStore.settings.value
+        focusStore.startWork(
+            workMinutes ?: settings.focusWorkMinutes,
+            breakMinutes ?: settings.focusBreakMinutes,
+        )
+    }
+
+    /** Starts a work block and jumps to the Plan & Focus page. */
+    fun focusFromTask() {
+        _showAllTasks.value = false
+        _editingTaskId.value = null
+        startFocus()
+        val index = settingsStore.settings.value.home.pages.indexOfFirst { it.type == com.zendolauncher.core.PageType.PLAN }
+        if (index >= 0) goToPage(index)
+    }
+
+    fun pauseFocus() = focusStore.pause()
+
+    fun resumeFocus() = focusStore.resume()
+
+    fun finishFocus(naturally: Boolean = false) = focusStore.finish(naturally)
+
+    fun startFocusBreak() = focusStore.startBreak()
+
+    fun clearFocusHistory() = focusStore.clearHistory()
+
+    fun setFocusDefaults(workMinutes: Int, breakMinutes: Int) = settingsStore.update {
+        it.copy(
+            focusWorkMinutes = workMinutes.coerceIn(5, 180),
+            focusBreakMinutes = breakMinutes.coerceIn(0, 60),
+        )
     }
 
     // ---- Highlights (persistent, never auto-erased) ---------------------------------
@@ -1121,16 +1282,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun eventsFor(date: LocalDate): List<CalendarEvent> {
         val zone = ZoneId.systemDefault()
         return _calendarEvents.value.filter {
-            val d = java.time.Instant.ofEpochMilli(it.startMillis).atZone(zone).toLocalDate()
-            d == date || (it.allDay && d == date)
+            com.zendolauncher.core.CalendarWeek.coversDate(it.startMillis, it.endMillis, date, zone)
         }.sortedBy { it.startMillis }
     }
 
-    fun upcomingFromToday(limit: Int = 5): List<CalendarEvent> {
-        if (!calendarRepository.hasPermission()) return emptyList()
-        val now = System.currentTimeMillis()
-        return _calendarEvents.value.filter { it.endMillis >= now }.sortedBy { it.startMillis }.take(limit)
-    }
+    /** Deep-link for an event's details, opened in the user's own calendar app. */
+    fun eventDetailsUri(eventId: Long): android.net.Uri =
+        calendarRepository.eventUri(eventId)
 
     // ---- Wallpaper ------------------------------------------------------------------
 

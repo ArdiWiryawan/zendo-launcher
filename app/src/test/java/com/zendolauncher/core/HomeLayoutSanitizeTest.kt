@@ -107,16 +107,16 @@ class HomeLayoutSanitizeTest {
 
     @Test
     fun `the active index resolves and the page lookup finds by id`() {
-        val layout = HomeLayout.DEFAULT.setActivePage("p_focus")
-        assertEquals(2, layout.activeIndex)
-        assertEquals("p_focus", layout.page("p_focus")?.id)
+        val layout = HomeLayout.DEFAULT.setActivePage("p_plan")
+        assertEquals(1, layout.activeIndex)
+        assertEquals("p_plan", layout.page("p_plan")?.id)
         assertNull(layout.page("absent"))
     }
 
     @Test
     fun `add page inserts after the active one and refuses past the limit`() {
         val added = HomeLayout.DEFAULT.setActivePage("p_today").addPage(PageType.APPS, "Extra")!!
-        assertEquals(listOf("p_today", added.second, "p_launch", "p_focus"), added.first.pages.map { it.id })
+        assertEquals(listOf("p_today", added.second, "p_plan", "p_launch"), added.first.pages.map { it.id })
 
         val full = HomeLayout((1..HomeLayout.MAX_PAGES).map { HomePage("p$it", PageType.APPS, "Page $it") })
         assertNull(full.addPage(PageType.APPS, "One too many"))
@@ -144,22 +144,22 @@ class HomeLayoutSanitizeTest {
 
     @Test
     fun `removing a page that is not active leaves the active id alone`() {
-        assertEquals("p_today", HomeLayout.DEFAULT.removePage("p_focus").activePageId)
+        assertEquals("p_today", HomeLayout.DEFAULT.removePage("p_plan").activePageId)
     }
 
     @Test
     fun `a page moved to a clamped index keeps its own id`() {
         val moved = HomeLayout.DEFAULT.movePage("p_today", 99)
-        assertEquals(listOf("p_launch", "p_focus", "p_today"), moved.pages.map { it.id })
+        assertEquals(listOf("p_plan", "p_launch", "p_today"), moved.pages.map { it.id })
         assertEquals("p_today", moved.pages.last().id)
     }
 
     @Test
     fun `reordering never renumbers ids so the active page is unaffected`() {
-        val before = HomeLayout.DEFAULT.setActivePage("p_focus")
+        val before = HomeLayout.DEFAULT.setActivePage("p_plan")
         val after = before.movePage("p_today", 2)
-        assertEquals("p_focus", after.activePageId)
-        assertEquals("p_focus", after.pages[after.activeIndex].id)
+        assertEquals("p_plan", after.activePageId)
+        assertEquals("p_plan", after.pages[after.activeIndex].id)
     }
 
     @Test
@@ -182,7 +182,7 @@ class HomeLayoutSanitizeTest {
     fun `removing an item everywhere leaves no page holding a hidden key`() {
         val layout = HomeLayout.DEFAULT
             .addItem("p_launch", "com.example.notes/.Main")
-            .addItem("p_focus", "com.example.notes/.Main")
+            .addItem("p_plan", "com.example.notes/.Main")
         assertEquals(0, layout.removeItemEverywhere("com.example.notes/.Main").pages.count {
             "com.example.notes/.Main" in it.config.itemKeys
         })
@@ -209,7 +209,7 @@ class HomeLayoutSanitizeTest {
         assertEquals(listOf("a", "b", "c"), layout.moveItem("p_launch", 0, -5).page("p_launch")!!.config.itemKeys)
         assertEquals(listOf("a", "b", "c"), layout.moveItem("p_launch", 0, 99).page("p_launch")!!.config.itemKeys)
         // A page with no items has nowhere to move one to, and no other page is touched.
-        assertEquals(0, layout.moveItem("p_focus", 0, 1).page("p_focus")!!.config.itemKeys.size)
+        assertEquals(0, layout.moveItem("p_plan", 0, 1).page("p_plan")!!.config.itemKeys.size)
         assertEquals(listOf("a", "b", "c"), layout.moveItem("p_launch", 7, 0).page("p_launch")!!.config.itemKeys)
     }
 
@@ -222,10 +222,10 @@ class HomeLayoutSanitizeTest {
 
     @Test
     fun `the default layout names the three pages migration builds on`() {
-        assertEquals(listOf("p_today", "p_launch", "p_focus"), HomeLayout.DEFAULT.pages.map { it.id })
+        assertEquals(listOf("p_today", "p_plan", "p_launch"), HomeLayout.DEFAULT.pages.map { it.id })
         assertEquals(PageType.TODAY, HomeLayout.DEFAULT.page("p_today")?.type)
+        assertEquals(PageType.PLAN, HomeLayout.DEFAULT.page("p_plan")?.type)
         assertEquals(PageType.APPS, HomeLayout.DEFAULT.page("p_launch")?.type)
-        assertEquals(PageType.NOTES, HomeLayout.DEFAULT.page("p_focus")?.type)
     }
 
     @Test

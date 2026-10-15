@@ -20,4 +20,20 @@ object CalendarWeek {
         val b = java.time.Instant.ofEpochMilli(bMillis).atZone(zone).toLocalDate()
         return a == b
     }
+
+    /** True when [startMillis, endMillis) touches [date] — covers multi-day spans. */
+    fun coversDate(
+        startMillis: Long,
+        endMillis: Long,
+        date: LocalDate,
+        zone: java.time.ZoneId = java.time.ZoneId.systemDefault(),
+    ): Boolean {
+        val dayStart = date.atStartOfDay(zone).toInstant().toEpochMilli()
+        val dayEnd = date.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        // Zero-length instants belong to the day they start on.
+        if (endMillis <= startMillis) {
+            return startMillis in dayStart until dayEnd
+        }
+        return startMillis < dayEnd && endMillis > dayStart
+    }
 }

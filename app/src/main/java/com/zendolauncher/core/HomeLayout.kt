@@ -25,6 +25,9 @@ enum class PageType {
     /** The one page that holds an ordered list of [com.zendolauncher.model.LaunchTarget.key] values. */
     APPS,
 
+    /** Calendar agenda merged with due tasks, plus the focus timer. */
+    PLAN,
+
     /** Focus session state and a quick note. */
     NOTES,
 
@@ -36,6 +39,7 @@ enum class PageType {
 fun PageType.defaultName(): String = when (this) {
     PageType.TODAY -> "Today"
     PageType.APPS -> "Apps"
+    PageType.PLAN -> "Plan & Focus"
     PageType.NOTES -> "Focus"
     PageType.WIDGET -> "Widget"
 }
@@ -236,8 +240,8 @@ data class HomeLayout(
         val DEFAULT: HomeLayout = HomeLayout(
             pages = listOf(
                 HomePage("p_today", PageType.TODAY, "Today", PageConfig(showClock = true)),
-                HomePage("p_launch", PageType.APPS, "Launch", PageConfig(heading = "Essentials")),
-                HomePage("p_focus", PageType.NOTES, "Focus"),
+                HomePage("p_plan", PageType.PLAN, "Plan & Focus"),
+                HomePage("p_launch", PageType.APPS, "Essentials", PageConfig(heading = "Essentials")),
             ),
             activePageId = "p_today",
         )

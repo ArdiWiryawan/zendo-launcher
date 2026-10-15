@@ -77,9 +77,9 @@ class HomeMigrationTest {
             listOf("com.example.notes/.MainActivity", "com.example.docs/Shortcut"),
             launch.config.itemKeys,
         )
-        // The other two pages are the default, untouched.
+        // The other pages are the default, untouched.
         assertEquals(PageType.TODAY, home.page("p_today")?.type)
-        assertEquals(PageType.NOTES, home.page("p_focus")?.type)
+        assertEquals(PageType.PLAN, home.page("p_plan")?.type)
     }
 
     /**
@@ -163,7 +163,9 @@ class HomeMigrationTest {
             remove(KEY_HOME_ACTIVE_PAGE)
         }
         val home = store().read().home
-        assertEquals(2, home.pages.map { it.id }.distinct().size)
+        // Duplicate ids repaired, plus the one-time Plan & Focus upgrade.
+        assertEquals(3, home.pages.map { it.id }.distinct().size)
+        assertTrue(home.pages.any { it.type == PageType.PLAN })
         assertEquals(home.pages.first().id, home.activePageId)
     }
 
@@ -233,8 +235,30 @@ class HomeMigrationTest {
 
     @Test
     fun `the active page is restored from its own key`() {
-        store().setActivePage("p_focus")
-        assertEquals("p_focus", store().read().home.activePageId)
+        store().setActivePage("p_plan")
+        assertEquals("p_plan", store().read().home.activePageId)
+    }
+
+    /**
+     * Layouts stored before the Plan & Focus page existed gain exactly one,
+     * after Today, without touching order, pins, or the active page — and a
+     * second read changes nothing further.
+     */
+    @Test
+    fun `a stored layout without a plan page gains one after today`() {
+        prefs.edit {
+            putString(
+                KEY_HOME_PAGES,
+                """[{"id":"p_today","type":"TODAY","name":"Today","showClock":true},{"id":"p_launch","type":"APPS","name":"Launch","items":["k"]}]""",
+            )
+            putString(KEY_HOME_ACTIVE_PAGE, "p_launch")
+        }
+        val home = store().read().home
+        assertEquals(listOf("p_today", "p_plan", "p_launch"), home.pages.map { it.id })
+        assertEquals(PageType.PLAN, home.page("p_plan")?.type)
+        assertEquals(listOf("k"), home.page("p_launch")!!.config.itemKeys)
+        assertEquals("p_launch", home.activePageId)
+        assertEquals(home, store().read().home)
     }
 
     private companion object {

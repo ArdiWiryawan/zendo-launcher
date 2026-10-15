@@ -18,20 +18,29 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.core.UsageFormat
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.LayoutMode
+import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
@@ -177,6 +186,13 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             SecondaryText("Programmatic page jumps stop animating. Swipes still follow your finger.")
 
             Spacer(Modifier.height(LauncherSpace.xl))
+            SectionHeading("Setup & permissions")
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText("First-run checklist and one place for every capability.")
+            QuietAction("Review setup") { viewModel.openSetup(Screen.SETTINGS) }
+            QuietAction("Permission center") { viewModel.openPermissions(Screen.SETTINGS) }
+
+            Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("Home app")
             Spacer(Modifier.height(LauncherSpace.sm))
             SecondaryText(
@@ -253,6 +269,8 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                     "This only interposes on launches from this launcher; it does not " +
                     "block apps system-wide, and web links opened in Chrome are not intercepted.",
             )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            PauseMessageField(viewModel, state.settings.pauseMessage)
             Spacer(Modifier.height(LauncherSpace.md))
             if (state.allApps.isEmpty()) {
                 EmptyNote("No apps listed yet.")
@@ -483,6 +501,41 @@ private fun AccessWindowSection(viewModel: LauncherViewModel, settings: Launcher
             "does not block apps system-wide, and opening the same app from another " +
             "launcher or from a notification is untouched.",
     )
+}
+
+/**
+ * The user's own pause reminder, one line. Commits on Done; blank resets to
+ * the default line rather than storing an empty dialog.
+ */
+@Composable
+private fun PauseMessageField(viewModel: LauncherViewModel, current: String) {
+    val palette = LauncherColors.current
+    var draft by remember(current) { mutableStateOf(current) }
+    SecondaryText("Reminder note")
+    BasicTextField(
+        value = draft,
+        onValueChange = { draft = it },
+        singleLine = true,
+        textStyle = LauncherType.body.copy(color = palette.primary),
+        cursorBrush = SolidColor(palette.primary),
+        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { viewModel.setPauseMessage(draft) }),
+        modifier = Modifier
+            .fillMaxWidth()
+            .semantics { contentDescription = "Pause reminder note" },
+        decorationBox = { inner ->
+            if (draft.isEmpty()) SecondaryText("Take a breath. Open it anyway?")
+            inner()
+        },
+    )
+    Spacer(Modifier.height(LauncherSpace.xs))
+    Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
+        QuietAction("Save note", onClick = { viewModel.setPauseMessage(draft) })
+        QuietAction("Reset", onClick = {
+            draft = SettingsStore.DEFAULT_PAUSE_MESSAGE
+            viewModel.setPauseMessage("")
+        })
+    }
 }
 
 /** Half-hour steps: fine enough to place a window, coarse enough to reach by tapping. */
