@@ -57,6 +57,16 @@ class SettingsStore(context: Context) {
         calendarGoogleOnly = prefs.getBoolean(KEY_CALENDAR_GOOGLE_ONLY, false),
         focusWorkMinutes = prefs.getInt(KEY_FOCUS_WORK, 25),
         focusBreakMinutes = prefs.getInt(KEY_FOCUS_BREAK, 5),
+        monochromeIcons = prefs.getBoolean(KEY_MONOCHROME_ICONS, true),
+        pinLimit = prefs.getInt(KEY_PIN_LIMIT, DEFAULT_PIN_LIMIT)
+            .coerceIn(MIN_PIN_LIMIT, MAX_PIN_LIMIT),
+        screenTimeEnabled = prefs.getBoolean(KEY_SCREEN_TIME_ENABLED, false),
+        screenTimeHidden = prefs.getBoolean(KEY_SCREEN_TIME_HIDDEN, false),
+        zendoLastImportAt = prefs.getLong(KEY_ZENDO_LAST_IMPORT_AT, 0L),
+        zendoLastImportExportedAt = prefs.getString(KEY_ZENDO_LAST_IMPORT_EXPORTED_AT, null)
+            ?.takeIf { it.isNotBlank() },
+        zendoLastImportDate = prefs.getString(KEY_ZENDO_LAST_IMPORT_DATE, null)
+            ?.takeIf { it.isNotBlank() },
         // Migration runs here, on the read path, because this is the only place the store
         // ever learns that no layout has been written yet. It is idempotent: once a layout
         // is stored, the legacy keys are not consulted again. See migrateHome.
@@ -90,6 +100,13 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_CALENDAR_GOOGLE_ONLY, next.calendarGoogleOnly)
             putInt(KEY_FOCUS_WORK, next.focusWorkMinutes)
             putInt(KEY_FOCUS_BREAK, next.focusBreakMinutes)
+            putBoolean(KEY_MONOCHROME_ICONS, next.monochromeIcons)
+            putInt(KEY_PIN_LIMIT, next.pinLimit)
+            putBoolean(KEY_SCREEN_TIME_ENABLED, next.screenTimeEnabled)
+            putBoolean(KEY_SCREEN_TIME_HIDDEN, next.screenTimeHidden)
+            putLong(KEY_ZENDO_LAST_IMPORT_AT, next.zendoLastImportAt)
+            putString(KEY_ZENDO_LAST_IMPORT_EXPORTED_AT, next.zendoLastImportExportedAt)
+            putString(KEY_ZENDO_LAST_IMPORT_DATE, next.zendoLastImportDate)
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
             putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
             putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
@@ -268,9 +285,21 @@ class SettingsStore(context: Context) {
         private const val KEY_CALENDAR_GOOGLE_ONLY = "calendar_google_only"
         private const val KEY_FOCUS_WORK = "focus_work_minutes"
         private const val KEY_FOCUS_BREAK = "focus_break_minutes"
+        private const val KEY_MONOCHROME_ICONS = "monochrome_icons"
+        private const val KEY_PIN_LIMIT = "pin_limit"
+        private const val KEY_SCREEN_TIME_ENABLED = "screen_time_enabled"
+        private const val KEY_SCREEN_TIME_HIDDEN = "screen_time_hidden"
+        private const val KEY_ZENDO_LAST_IMPORT_AT = "zendo_last_import_at"
+        private const val KEY_ZENDO_LAST_IMPORT_EXPORTED_AT = "zendo_last_import_exported_at"
+        private const val KEY_ZENDO_LAST_IMPORT_DATE = "zendo_last_import_date"
 
         /** Advisory, written beside the blob so a future change can tell old from malformed. */
         const val HOME_PAGES_VERSION = 1
+
+        /** Pinned-apps limit. The brief fixes the choice at 5 or 6; six is the default. */
+        const val MIN_PIN_LIMIT = 5
+        const val MAX_PIN_LIMIT = 6
+        const val DEFAULT_PIN_LIMIT = 6
 
         /** Default pause-dialog reminder, used until the user writes their own. */
         const val DEFAULT_PAUSE_MESSAGE = "Take a breath. Open it anyway?"
@@ -336,4 +365,23 @@ data class LauncherSettings(
     val focusWorkMinutes: Int = 25,
     /** Default break length, minutes. 0 means no break offered. */
     val focusBreakMinutes: Int = 5,
+    /**
+     * Draw app icons desaturated on launcher pages. The original icon is always
+     * the fallback; nothing is written to other apps either way.
+     */
+    val monochromeIcons: Boolean = true,
+    /** Pinned apps allowed on one page. 5 or 6, never more; the UI explains a full page. */
+    val pinLimit: Int = SettingsStore.DEFAULT_PIN_LIMIT,
+    /**
+     * Screen-time summary. Off and absent everywhere until the user turns it on
+     * in Settings, which then opens the system Usage Access screen. When off, no
+     * usage query ever runs.
+     */
+    val screenTimeEnabled: Boolean = false,
+    /** Hides the numbers while keeping access. Separate from [screenTimeEnabled]. */
+    val screenTimeHidden: Boolean = false,
+    /** Metadata of the last manual Zendo snapshot import. 0/null = never imported. */
+    val zendoLastImportAt: Long = 0L,
+    val zendoLastImportExportedAt: String? = null,
+    val zendoLastImportDate: String? = null,
 )

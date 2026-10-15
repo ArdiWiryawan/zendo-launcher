@@ -3,6 +3,7 @@ package com.zendolauncher.data
 import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
+import com.zendolauncher.core.Origins
 import com.zendolauncher.core.TaskItem
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -123,6 +124,11 @@ class TaskStore(context: Context) {
         persist(_tasks.value.map { if (it.id == id) it.copy(showOnHome = show) else it })
     }
 
+    /** Replaces the whole list (used by imports and restores). Sanitized like every write. */
+    fun replaceAll(items: List<TaskItem>) {
+        persist(items)
+    }
+
     companion object {
         private const val PREFS = "launcher_tasks"
         private const val KEY_ITEMS = "tasks_json"
@@ -145,6 +151,8 @@ class TaskStore(context: Context) {
                     .put("showOnHome", t.showOnHome)
                 t.dueDateMillis?.let { o.put("dueDateMillis", it) }
                 if (t.notes.isNotBlank()) o.put("notes", t.notes)
+                if (t.origin != Origins.LOCAL) o.put("origin", t.origin)
+                t.sourceId?.let { o.put("sourceId", it) }
                 array.put(o)
             }
             return array.toString()
@@ -169,6 +177,8 @@ class TaskStore(context: Context) {
                         dueDateMillis = if (o.has("dueDateMillis")) o.optLong("dueDateMillis") else null,
                         showOnHome = o.optBoolean("showOnHome", true),
                         notes = o.optString("notes", ""),
+                        origin = Origins.normalize(o.optString("origin", "")),
+                        sourceId = o.optString("sourceId", "").takeIf { it.isNotBlank() },
                     )
                 }
                 out

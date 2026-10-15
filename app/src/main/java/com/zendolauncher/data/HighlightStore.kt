@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.zendolauncher.core.Highlight
+import com.zendolauncher.core.Origins
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -90,6 +91,11 @@ class HighlightStore(context: Context) {
         persist(_highlights.value.filterNot { it.id == id })
     }
 
+    /** Replaces the whole list (used by imports and restores). Sanitized like every write. */
+    fun replaceAll(items: List<Highlight>) {
+        persist(items)
+    }
+
     companion object {
         private const val PREFS = "launcher_highlights"
         private const val KEY_ITEMS = "highlights_json"
@@ -103,16 +109,17 @@ class HighlightStore(context: Context) {
         fun encode(items: List<Highlight>): String {
             val array = JSONArray()
             items.forEach { h ->
-                array.put(
-                    JSONObject()
-                        .put("id", h.id)
-                        .put("title", h.title)
-                        .put("note", h.note)
-                        .put("createdAt", h.createdAt)
-                        .put("updatedAt", h.updatedAt)
-                        .put("isPrimary", h.isPrimary)
-                        .put("archived", h.archived),
-                )
+                val o = JSONObject()
+                    .put("id", h.id)
+                    .put("title", h.title)
+                    .put("note", h.note)
+                    .put("createdAt", h.createdAt)
+                    .put("updatedAt", h.updatedAt)
+                    .put("isPrimary", h.isPrimary)
+                    .put("archived", h.archived)
+                if (h.origin != Origins.LOCAL) o.put("origin", h.origin)
+                h.sourceId?.let { o.put("sourceId", it) }
+                array.put(o)
             }
             return array.toString()
         }
@@ -135,6 +142,8 @@ class HighlightStore(context: Context) {
                         updatedAt = o.optLong("updatedAt", System.currentTimeMillis()),
                         isPrimary = o.optBoolean("isPrimary", false),
                         archived = o.optBoolean("archived", false),
+                        origin = Origins.normalize(o.optString("origin", "")),
+                        sourceId = o.optString("sourceId", "").takeIf { it.isNotBlank() },
                     )
                 }
                 out

@@ -2,7 +2,8 @@ package com.zendolauncher.core
 
 /**
  * A persistent user-authored highlight. It stays until the user edits,
- * archives or deletes it — never auto-erased at midnight.
+ * archives or deletes it — never auto-erased at midnight. [origin]/[sourceId]
+ * record a Zendo snapshot import the same way tasks do.
  */
 data class Highlight(
     val id: String,
@@ -12,6 +13,8 @@ data class Highlight(
     val updatedAt: Long = System.currentTimeMillis(),
     val isPrimary: Boolean = false,
     val archived: Boolean = false,
+    val origin: String = Origins.LOCAL,
+    val sourceId: String? = null,
 ) {
     companion object {
         fun newId(): String = "h_" + java.util.UUID.randomUUID().toString().replace("-", "")
@@ -24,7 +27,12 @@ data class Highlight(
                 val id = h.id.takeIf { it.isNotBlank() && seen.add(it) } ?: return@mapNotNull null
                 val title = h.title.trim()
                 if (title.isEmpty()) return@mapNotNull null
-                h.copy(id = id, title = title)
+                h.copy(
+                    id = id,
+                    title = title,
+                    origin = Origins.normalize(h.origin),
+                    sourceId = h.sourceId?.trim()?.takeIf { it.isNotEmpty() },
+                )
             }
             if (repaired.isEmpty()) return emptyList()
             // Exactly one primary among unarchived; first wins, else first unarchived.

@@ -7,6 +7,9 @@ import java.time.ZoneId
  * A small practical task. Stored locally, never auto-created from calendar
  * events. [showOnHome] lets the user choose which tasks appear in the Home summary.
  * [notes] is optional free text; [dueDateMillis] an optional wall-clock due date.
+ *
+ * [origin] is text ("local" or "zendo-pwa") and [sourceId] is the id the Zendo
+ * PWA gave a task, kept so re-importing a snapshot updates instead of duplicating.
  */
 data class TaskItem(
     val id: String,
@@ -17,6 +20,8 @@ data class TaskItem(
     val dueDateMillis: Long? = null,
     val showOnHome: Boolean = true,
     val notes: String = "",
+    val origin: String = Origins.LOCAL,
+    val sourceId: String? = null,
 ) {
     companion object {
         fun newId(): String = "t_" + java.util.UUID.randomUUID().toString().replace("-", "")
@@ -27,7 +32,12 @@ data class TaskItem(
                 val id = t.id.takeIf { it.isNotBlank() && seen.add(it) } ?: return@mapNotNull null
                 val title = t.title.trim()
                 if (title.isEmpty()) return@mapNotNull null
-                t.copy(id = id, title = title)
+                t.copy(
+                    id = id,
+                    title = title,
+                    origin = Origins.normalize(t.origin),
+                    sourceId = t.sourceId?.trim()?.takeIf { it.isNotEmpty() },
+                )
             }.sortedWith(compareBy<TaskItem> { it.done }.thenBy { it.createdAt })
         }
     }
