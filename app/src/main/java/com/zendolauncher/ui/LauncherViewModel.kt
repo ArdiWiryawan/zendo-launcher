@@ -11,6 +11,7 @@ import com.zendolauncher.core.BridgeParse
 import com.zendolauncher.core.BridgePlan
 import com.zendolauncher.core.BridgePlanner
 import com.zendolauncher.core.BridgeSnapshot
+import com.zendolauncher.core.CalendarCache
 import com.zendolauncher.core.DayRecord
 import com.zendolauncher.core.Highlight
 import com.zendolauncher.core.ImportMode
@@ -1505,11 +1506,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      * Called when the Plan page settles into view. Refreshes only when
      * the cache is stale (older than a minute) — returning from an external
      * calendar minutes later re-queries once; swiping past does not hammer the
-     * provider. Pure staleness rule in [calendarStale].
+     * provider. Pure staleness rule in [CalendarCache.isStale].
      */
     fun onPlanPageVisible(nowMillis: Long = System.currentTimeMillis()) {
         if (!calendarRepository.hasPermission()) return
-        if (com.zendolauncher.core.UpcomingMerge.calendarStale(_lastCalendarRefresh.value, nowMillis)) {
+        if (CalendarCache.isStale(_lastCalendarRefresh.value, nowMillis)) {
             refreshCalendarEvents()
         }
     }
