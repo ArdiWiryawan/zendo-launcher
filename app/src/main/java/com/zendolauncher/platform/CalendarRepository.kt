@@ -35,6 +35,7 @@ class CalendarRepository(private val context: Context) {
                     CalendarContract.Calendars.CALENDAR_DISPLAY_NAME,
                     CalendarContract.Calendars.ACCOUNT_NAME,
                     CalendarContract.Calendars.ACCOUNT_TYPE,
+                    CalendarContract.Calendars.SYNC_EVENTS,
                 ),
                 "${CalendarContract.Calendars.VISIBLE}=1",
                 null, null,
@@ -43,12 +44,14 @@ class CalendarRepository(private val context: Context) {
                 val nameCol = c.getColumnIndex(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME)
                 val accountCol = c.getColumnIndex(CalendarContract.Calendars.ACCOUNT_NAME)
                 val typeCol = c.getColumnIndex(CalendarContract.Calendars.ACCOUNT_TYPE)
+                val syncCol = c.getColumnIndex(CalendarContract.Calendars.SYNC_EVENTS)
                 while (c.moveToNext()) {
                     out += DeviceCalendar(
                         id = if (idCol >= 0) c.getLong(idCol) else -1L,
                         name = if (nameCol >= 0) c.getString(nameCol) ?: "Calendar" else "Calendar",
                         accountName = if (accountCol >= 0) c.getString(accountCol) else null,
                         accountType = if (typeCol >= 0) c.getString(typeCol) else null,
+                        syncEvents = if (syncCol >= 0) c.getInt(syncCol) != 0 else true,
                     )
                 }
             }

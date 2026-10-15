@@ -21,6 +21,24 @@ class TaskStore(context: Context) {
     private val _tasks = MutableStateFlow(read())
     val tasks: StateFlow<List<TaskItem>> = _tasks.asStateFlow()
 
+    /** Last created title + time, for the double-submit guard below. */
+    private var _lastCreatedTitle: String? = null
+    private var _lastCreatedAt: Long = 0L
+
+    /**
+     * True when [title] duplicates the record just created — a double tap,
+     * not a second task. Returns the existing record so callers can use it.
+     */
+    private fun dedupeHit(title: String, now: Long): TaskItem? {
+        if (title != _lastCreatedTitle || now - _lastCreatedAt >= DEDUPE_WINDOW_MILLIS) return null
+        return _tasks.value.firstOrNull { it.title == title }
+    }
+
+    private fun markCreated(title: String, now: Long) {
+        _lastCreatedTitle = title
+        _lastCreatedAt = now
+    }
+
     fun read(): List<TaskItem> = TaskItem.sanitizeAll(decode(prefs.getString(KEY_ITEMS, null)))
 
     private fun persist(next: List<TaskItem>) {
@@ -33,8 +51,10 @@ class TaskStore(context: Context) {
         val t = title.trim()
         if (t.isEmpty()) return null
         val now = System.currentTimeMillis()
+        dedupeHit(t, now)?.let { return it }
         val item = TaskItem(id = TaskItem.newId(), title = t, createdAt = now, updatedAt = now)
         persist(listOf(item) + _tasks.value)
+        markCreated(t, now)
         return item
     }
 
@@ -64,6 +84,9 @@ class TaskStore(context: Context) {
         val t = title.trim()
         if (t.isEmpty()) return null
         val now = System.currentTimeMillis()
+        if (id == null) {
+            dedupeHit(t, now)?.let { return it }
+        }
         val current = _tasks.value.toMutableList()
         val result: TaskItem
         if (id != null) {
@@ -86,6 +109,7 @@ class TaskStore(context: Context) {
                 notes = notes.trim(),
             )
             current.add(0, result)
+            markCreated(t, now)
         }
         persist(current)
         return result
@@ -102,6 +126,12 @@ class TaskStore(context: Context) {
     companion object {
         private const val PREFS = "launcher_tasks"
         private const val KEY_ITEMS = "tasks_json"
+
+        /**
+         * Double-tap window for create actions. Same title twice inside it is a
+         * duplicate submission, not two tasks.
+         */
+        const val DEDUPE_WINDOW_MILLIS = 1_500L
 
         fun encode(items: List<TaskItem>): String {
             val array = JSONArray()

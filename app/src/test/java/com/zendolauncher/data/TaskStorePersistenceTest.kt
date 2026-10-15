@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -38,5 +39,17 @@ class TaskStorePersistenceTest {
         assertNull(s.updateDetails(saved.id, "  ", null, ""))
         assertEquals("Prototype", store().read().first { it.id == saved.id }.title)
         s.delete(saved.id)
+    }
+
+    @Test
+    fun `a rapid double quick-add stores one task not twins`() {
+        val s = store()
+        val first = s.add("Buy milk")!!
+        val second = s.add("Buy milk")!!
+        assertEquals(first.id, second.id)
+        assertEquals(1, s.read().count { it.title == "Buy milk" })
+        assertTrue(s.add("Buy bread")!!.id != first.id)
+        s.delete(first.id)
+        s.read().firstOrNull { it.title == "Buy bread" }?.let { s.delete(it.id) }
     }
 }

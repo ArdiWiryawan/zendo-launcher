@@ -22,6 +22,10 @@ class HighlightStore(context: Context) {
     private val _highlights = MutableStateFlow(read())
     val highlights: StateFlow<List<Highlight>> = _highlights.asStateFlow()
 
+    /** Last created title + time, for the double-submit guard in [upsert]. */
+    private var _lastCreatedTitle: String? = null
+    private var _lastCreatedAt: Long = 0L
+
     fun read(): List<Highlight> =
         Highlight.sanitizeAll(decode(prefs.getString(KEY_ITEMS, null)))
 
@@ -35,6 +39,12 @@ class HighlightStore(context: Context) {
         val t = title.trim()
         if (t.isEmpty()) return null
         val now = System.currentTimeMillis()
+        // Double-submit guard: a second tap within the window reuses the record
+        // just created instead of storing a twin. Edits by id are idempotent
+        // already, so only the create path needs it.
+        if (id == null && t == _lastCreatedTitle && now - _lastCreatedAt < DEDUPE_WINDOW_MILLIS) {
+            return _highlights.value.firstOrNull { it.title == t }
+        }
         val current = _highlights.value.toMutableList()
         val result: Highlight
         if (id != null) {
@@ -53,6 +63,8 @@ class HighlightStore(context: Context) {
                 isPrimary = current.none { !it.archived },
             )
             current.add(0, result)
+            _lastCreatedTitle = t
+            _lastCreatedAt = now
         }
         val withPin = if (pinAsPrimary) {
             current.map { it.copy(isPrimary = it.id == result.id && !it.archived) }
@@ -81,6 +93,12 @@ class HighlightStore(context: Context) {
     companion object {
         private const val PREFS = "launcher_highlights"
         private const val KEY_ITEMS = "highlights_json"
+
+        /**
+         * Double-tap window for create actions. Same title twice inside it is a
+         * duplicate submission, not two thoughts.
+         */
+        const val DEDUPE_WINDOW_MILLIS = 1_500L
 
         fun encode(items: List<Highlight>): String {
             val array = JSONArray()

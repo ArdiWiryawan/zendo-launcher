@@ -83,8 +83,7 @@ and an explicit empty Google set yields an empty agenda rather than silently
 mixing local calendars back in (`effectiveCalendarIds`, unit-tested). One
 Google account needs no extra setup beyond the toggle.
 
-**Upcoming algorithm** (`core/UpcomingMerge.next`, pure and unit-tested):
-exclude ended (via conservative `effectiveEnd`: missing/zero end = start +
+**Upcoming algorithm** (`core/UpcomingMerge.next`, pure and unit-tested):exclude ended (via conservative `effectiveEnd`: missing/zero end = start +
 1 h, never indefinite), include in-progress, sort by start, cap at three,
 fill short todays from future dates, all-day handled, deduped by
 (event, start) at the query layer. Tasks join only when undone, visible, and
@@ -103,6 +102,13 @@ Selection: `settings.shownCalendarIds` (empty = all), grouped by account with
 Google accounts tagged, plus `settings.calendarGoogleOnly` (empty Google set
 reads as empty, never as "all mixed back in"). First narrowing expands
 empty→all before removing. All-shown collapses back to empty.
+
+Sync and diagnostics: calendars carry the provider's `SYNC_EVENTS` flag
+(defaulting to syncing when the column is absent, so no false warnings); when
+visible calendars exist but none sync, the Calendar screen says sync looks off
+and points at account sync. A Diagnostics section reports source, permission,
+visible count, reading filter, events in view, and last refresh — counts and
+ids only, never titles or locations.
 
 Formatting: local zone, `HH:mm` times, duration minutes, all-day rows show
 "All-day". Long titles wrap; no clipping path beyond the existing gutter.

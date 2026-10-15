@@ -113,8 +113,13 @@ object WallpaperApplier {
         if (!capability.allowed) {
             return WallpaperApplyResult.Failed("Your device policy does not allow changing the wallpaper.")
         }
+        // Render at the device's wallpaper size, not a hardcoded bitmap: oversized
+        // bitmaps waste memory (and can kill a low-RAM process mid-apply), while
+        // undersized ones upscale blurry. Falls back to 1080x1920 when unset.
+        val width = manager.desiredMinimumWidth.takeIf { it > 0 } ?: 1080
+        val height = manager.desiredMinimumHeight.takeIf { it > 0 } ?: 1920
         val bitmap = try {
-            render(template)
+            render(template, width, height)
         } catch (e: Exception) {
             return WallpaperApplyResult.Failed("Could not render wallpaper.")
         }
@@ -174,7 +179,7 @@ object WallpaperApplier {
         } catch (e: Exception) {
             WallpaperApplyResult.Failed("System rejected the wallpaper.")
         } finally {
-            // Bitmap is small (1080x1920 ARGB ~8MB); recycle after hand-off.
+            // Recycled after hand-off; setBitmap persists synchronously.
             runCatching { bitmap.recycle() }
         }
     }

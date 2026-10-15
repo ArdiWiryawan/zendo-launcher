@@ -194,6 +194,42 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                             }
                         }
                 }
+                if (state.calendars.isNotEmpty() && state.calendars.none { it.syncEvents }) {
+                    Spacer(Modifier.height(LauncherSpace.md))
+                    SecondaryText(
+                        "Sync looks off for these calendars, so new events may not " +
+                            "arrive. Check account sync in system Settings.",
+                    )
+                }
+                Spacer(Modifier.height(LauncherSpace.xl))
+                SectionHeading("Diagnostics")
+                Spacer(Modifier.height(LauncherSpace.xs))
+                // Counts and ids only — never titles, locations, or anything
+                // that could expose private event content.
+                SecondaryText("Source: device provider · Instances")
+                SecondaryText("Permission: granted")
+                SecondaryText(
+                    "Calendars: ${state.calendars.size} visible" +
+                        if (state.settings.calendarGoogleOnly) " · Google only" else "",
+                )
+                SecondaryText(
+                    "Reading: " + if (state.settings.shownCalendarIds.isEmpty()) {
+                        "all"
+                    } else {
+                        state.settings.shownCalendarIds.sorted().joinToString()
+                    },
+                )
+                SecondaryText("Events in view: ${state.calendarEvents.size}")
+                SecondaryText(
+                    if (state.lastCalendarRefresh > 0L) {
+                        "Last refresh: " + java.time.Instant.ofEpochMilli(state.lastCalendarRefresh)
+                            .atZone(ZoneId.systemDefault())
+                            .format(DateTimeFormatter.ofPattern("d MMM, HH:mm"))
+                    } else {
+                        "Last refresh: never"
+                    },
+                )
+                state.calendarError?.let { SecondaryText("Last error: $it") }
             }
             Spacer(Modifier.height(LauncherSpace.xl))
         }

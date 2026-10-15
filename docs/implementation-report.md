@@ -1,5 +1,82 @@
 # Implementation Report
 
+## 0.4.1 — Calendar agenda reliability, wallpaper lifecycle, tasks coherence
+
+Tree state: versionName 0.4.1 / versionCode 12 (`app/build.gradle`).
+Audit-first fixes for four reported symptoms; honestly distinguishes confirmed
+causes from unreproduced hypotheses (see Root causes).
+
+### Root causes
+
+1. **Agenda empty.** No broken data path found in code: permission gating,
+   Instances expansion with Events fallback, overlap matching, and sorting all
+   verify by review and test. Real gaps closed: (a) sync-off blindness —
+   `SYNC_EVENTS` is now read and surfaced with recovery guidance; (b) no
+   diagnostics — Calendar screen now reports source, permission, counts,
+   reading filter, and last refresh (ids/counts only, never event content).
+   Most likely remaining cause on a real device is environmental (no synced
+   Google account, denied permission, sync disabled), each with its own UI
+   state.
+2. **Wallpaper kills launcher.** No in-code trigger exists: no HOME intents,
+   no `ROLE_HOME` requests, no wallpaper services, apply runs on IO, and all
+   launcher state is prefs-backed so recreation restores context. Hardened
+   anyway: render at `desiredMinimumWidth/Height` instead of fixed 1080x1920
+   (memory + crop correctness). Unreproduced — logcat checklist in
+   Limitations; hypothesis (low-RAM kill during oversized bitmap work) now
+   removed by construction.
+3. **Back "animates".** Confirmed absent a second time: zero transition APIs
+   in the tree; the only horizontal motion is pager physics and genuine
+   programmatic moves. The perceived slide is the platform's own edge-back /
+   predictive-back effect. No code change was the correct fix.
+4. **Tasks incoherence.** Confirmed and fixed: no view filters (added
+   Today/Upcoming/All/Done over existing states + per-view empty states),
+   no overdue signal (added quiet "Overdue" word with day counts), rapid
+   double-tap created twin records in tasks AND highlights (1.5 s same-title
+   guard in both stores).
+
+### Files changed (vs 0.4.0)
+
+Changed: `data/HighlightStore.kt` + `data/TaskStore.kt` (double-submit
+guards), `core/TaskItem.kt` (`TaskView`, `forView`, overdue helpers),
+`ui/HighlightOverlays.kt` (view tabs, per-view empty states, overdue meta),
+`model/CalendarEvent.kt` (+`syncEvents`), `platform/CalendarRepository.kt`
+(`SYNC_EVENTS` column), `platform/WallpaperApplier.kt` (device-size render),
+`ui/CalendarScreen.kt` (sync-off hint, Diagnostics), `app/build.gradle`
+(0.4.1/12), README (pointer).
+
+### Calendar / wallpaper / navigation / tasks results
+
+- Calendar: provider path kept (Option A — valid, fixed not rewritten);
+  read-only `READ_CALENDAR` only; verified by unit tests, not a live account.
+- Wallpaper: direct `setBitmap` path kept (no crop intent needed — templates
+  are exact-size renders; no FileProvider/URIs involved); resume restores via
+  persisted selection + page + screen state.
+- Navigation: unchanged, verified again; Back matrix in
+  `docs/back-navigation-audit.md` still accurate.
+- Tasks: filtered views, overdue word, dedupe guards, existing confirms kept;
+  English retained (examples in the request were illustrative, not a locale
+  change order).
+
+### Build and test results
+
+- `:app:testDebugUnitTest` BUILD SUCCESSFUL, 213 tests, 0 failures (209 carried
+  over + 4 new: double-submit guards, view filters, overdue labels).
+- `:app:lintDebug` run; `abortOnError false` per project config.
+- `:app:assembleDebug` BUILD SUCCESSFUL (local). APK staged to `dist/` on CI.
+- Red-green notes: 2 missing cross-package imports, 2 missing test imports,
+  1 wrong-package test import — all compile-time, fixed without touching
+  behavior.
+
+### Remaining limitations
+
+- No live-Google-account verification; no TECNO CAMON 40 run; no emulator run.
+- Wallpaper chooser symptom unreproduced: if seen again, capture logcat lines
+  for `ActivityManager` force-stop/kill, `WallpaperService` exceptions, and
+  the default-Home resolver around the apply timestamp.
+- No month grid anywhere (by design); no calendar write; no widget hosting.
+
+---
+
 ## 0.4.0 — Three pages, focus timer, setup and permission center
 
 Tree state: versionName 0.4.0 / versionCode 11 (`app/build.gradle`).

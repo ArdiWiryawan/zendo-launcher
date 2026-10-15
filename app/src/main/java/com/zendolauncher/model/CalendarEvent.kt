@@ -18,6 +18,12 @@ data class DeviceCalendar(
     val accountName: String? = null,
     /** Account type, e.g. com.google for Google calendars. Null when undisclosed. */
     val accountType: String? = null,
+    /**
+     * Whether the provider marks this calendar for syncing. Defaults to true
+     * when the column is absent: only an explicit 0 reads as "sync off", so a
+     * provider that hides the column never triggers a false warning.
+     */
+    val syncEvents: Boolean = true,
 ) {
     /** True only when the provider identifies a Google account behind this calendar. */
     val isGoogle: Boolean get() = accountType == "com.google"

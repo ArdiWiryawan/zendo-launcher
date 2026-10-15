@@ -27,11 +27,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
+import com.zendolauncher.core.TaskView
 import com.zendolauncher.core.archivedList
+import com.zendolauncher.core.forView
+import com.zendolauncher.core.overdueLabel
 import com.zendolauncher.core.visible
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
+import java.time.LocalDate
 
 /**
  * Saved-list dialogs for highlights and tasks. Editing itself lives in the
@@ -171,17 +175,43 @@ private fun AllTasksDialog(viewModel: LauncherViewModel, state: UiState) {
         }
     }
     Dialog(onDismissRequest = { viewModel.closeAllTasks() }) {
+        val today = remember { LocalDate.now() }
+        var view by remember { mutableStateOf(TaskView.ALL) }
+        val shown = remember(state.tasks, view) { state.tasks.forView(view, today) }
         Column(
             Modifier
                 .fillMaxWidth()
                 .padding(LauncherSpace.lg),
         ) {
             Text("All tasks", style = LauncherType.title, color = palette.primary)
+            Spacer(Modifier.height(LauncherSpace.xs))
+            // Four views over the same states — no second model, no new storage.
+            ChoiceRow(
+                label = "",
+                options = listOf(
+                    TaskView.TODAY to "Today",
+                    TaskView.UPCOMING to "Upcoming",
+                    TaskView.ALL to "All",
+                    TaskView.DONE to "Done",
+                ),
+                selected = view,
+                onSelect = { view = it },
+            )
             Spacer(Modifier.height(LauncherSpace.sm))
             SecondaryText("${state.tasks.count { it.done }}/${state.tasks.size} done")
             Spacer(Modifier.height(LauncherSpace.sm))
+            if (shown.isEmpty()) {
+                EmptyNote(
+                    when (view) {
+                        TaskView.TODAY -> "No tasks due today. Add one below or check Upcoming."
+                        TaskView.UPCOMING -> "No upcoming tasks."
+                        TaskView.DONE -> "Completed tasks will appear here."
+                        TaskView.ALL -> "No tasks yet."
+                    },
+                )
+            }
             LazyColumn(Modifier.weight(1f, fill = false)) {
-                items(state.tasks, key = { it.id }) { task ->
+                items(shown, key = { it.id }) { task ->
                     Column(Modifier.fillMaxWidth().padding(vertical = LauncherSpace.xs)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
@@ -199,6 +229,7 @@ private fun AllTasksDialog(viewModel: LauncherViewModel, state: UiState) {
                         }
                         val meta = buildList {
                             task.dueDateMillis?.let { add("Due ${formatDue(it)}") }
+                            task.overdueLabel(today)?.let { add(it) }
                             if (task.notes.isNotBlank()) add(task.notes.lines().first().take(60))
                             if (!task.showOnHome) add("Hidden from Home")
                         }

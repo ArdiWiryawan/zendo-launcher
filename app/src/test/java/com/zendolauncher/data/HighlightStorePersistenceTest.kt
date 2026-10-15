@@ -54,4 +54,14 @@ class HighlightStorePersistenceTest {
         val s = store()
         assertNull(s.upsert("  ", "  ", null, false))
     }
+
+    @Test
+    fun `a rapid double create stores one record not twins`() {
+        val s = store()
+        val first = s.upsert("Twice", "", null, false)!!
+        val second = s.upsert("Twice", "", null, false)!!
+        assertEquals(first.id, second.id)
+        assertEquals(1, s.read().count { it.title == "Twice" })
+        s.delete(first.id)
+    }
 }
