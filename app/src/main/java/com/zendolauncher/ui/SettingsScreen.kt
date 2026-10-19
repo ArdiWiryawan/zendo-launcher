@@ -8,18 +8,26 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,13 +41,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.dp
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.core.UsageFormat
+import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.SettingsStore
@@ -131,16 +143,48 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 onCheckedChange = { viewModel.setClock24h(it) },
             )
             Spacer(Modifier.height(LauncherSpace.md))
-            ToggleRow(
-                label = "Grayscale icons",
-                checked = state.settings.monochromeIcons,
-                onCheckedChange = { viewModel.setMonochromeIcons(it) },
+            ChoiceRow(
+                label = "App icons",
+                options = listOf(
+                    IconStyle.MONOCHROME to "Monochrome",
+                    IconStyle.TINTED to "Tinted",
+                    IconStyle.NATIVE to "Original",
+                ),
+                selected = state.settings.iconStyle,
+                onSelect = { viewModel.setIconStyle(it) },
             )
             Spacer(Modifier.height(LauncherSpace.xs))
             SecondaryText(
-                "Icons are drawn desaturated by default, so app colours never fight the " +
-                    "page. Turn off to see each app's own icon.",
+                "Monochrome washes every icon toward one colour, so app artwork never " +
+                    "fights the page. Tinted follows the wallpaper's accent. Original " +
+                    "shows each app's own icon; nothing is changed in other apps either way.",
             )
+            if (state.settings.iconStyle != IconStyle.NATIVE) {
+                Spacer(Modifier.height(LauncherSpace.md))
+                TintSwatchRow(
+                    selected = state.settings.iconTint,
+                    onSelect = { viewModel.setIconTint(it) },
+                )
+                Spacer(Modifier.height(LauncherSpace.md))
+                ToggleRow(
+                    label = "Match wallpaper",
+                    checked = state.settings.iconTintMatchWallpaper,
+                    onCheckedChange = { viewModel.setIconTintMatchWallpaper(it) },
+                )
+                Spacer(Modifier.height(LauncherSpace.xs))
+                // The accent follows the design the last apply actually sent to the
+                // system, not the gallery highlight — a tap in Wallpapers must not move
+                // it before anything is applied to the device.
+                SecondaryText(
+                    if (state.settings.iconStyle == IconStyle.TINTED) {
+                        "Tinted follows the design last applied from Wallpapers either way; " +
+                            "the colour above is what Monochrome washes toward."
+                    } else {
+                        "When on, the wash follows the design last applied from Wallpapers — " +
+                            "the default design when none has been."
+                    },
+                )
+            }
             Spacer(Modifier.height(LauncherSpace.md))
             ToggleRow(
                 label = "Reduce launcher transitions",
@@ -149,6 +193,15 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             )
             Spacer(Modifier.height(LauncherSpace.xs))
             SecondaryText("Programmatic page jumps stop animating. Swipes still follow your finger.")
+            Spacer(Modifier.height(LauncherSpace.md))
+            QuietAction("Display & grayscale") {
+                openSystemSettings(context, Settings.ACTION_DISPLAY_SETTINGS)
+            }
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText(
+                "Android's own grayscale and colour-correction controls live under " +
+                    "Display. Turning them on lets the whole device match this page.",
+            )
 
             // ---- Apps ----------------------------------------------------------------
 
@@ -414,6 +467,17 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 "Lock and Home targets appear only where the device supports them. " +
                     "This sets a background; it never draws over your lock screen.",
             )
+            Spacer(Modifier.height(LauncherSpace.md))
+            ToggleRow(
+                label = "Wallpaper on home",
+                checked = state.settings.homeBackdrop,
+                onCheckedChange = { viewModel.setHomeBackdrop(it) },
+            )
+            Spacer(Modifier.height(LauncherSpace.xs))
+            SecondaryText(
+                "Draws the selected design behind the Home pages, below a scrim that " +
+                    "keeps the clock readable. The drawer and Settings stay flat.",
+            )
 
             // ---- Setup, permissions and system ---------------------------------------
 
@@ -674,6 +738,86 @@ private fun PauseMessageField(viewModel: LauncherViewModel, current: String) {
             draft = SettingsStore.DEFAULT_PAUSE_MESSAGE
             viewModel.setPauseMessage("")
         })
+    }
+}
+
+/**
+ * The wash colours offered for monochrome icons, in the order they are drawn: the
+ * product cream first, then the warmer accents, then the quiet cool ones. Fixed list,
+ * never user-typed: a free text colour would be the one control in Settings that can be
+ * wrong, and these six are enough to tune the page without turning Settings into a theme
+ * editor. Selected swatch state is carried by a ring and a marker line, never by the
+ * colour difference itself.
+ */
+private val ICON_TINTS = listOf(
+    "#EDE6D8" to "Cream",
+    "#C9A96A" to "Gold",
+    "#8FD9A5" to "Mint",
+    "#9FB4C7" to "Fog",
+    "#D8B4A6" to "Blush",
+    "#8A8A88" to "Slate",
+)
+
+/**
+ * The tint swatches. Each is a 24dp dot centred on a 48dp-wide, 48dp-tall target — the
+ * minimum touch target, width included, not just height. Six targets and five
+ * [LauncherSpace.xs] gaps are 308dp, so the row fits the 360dp reference screen's content
+ * in one line; on narrower screens the flow wraps the overflow instead of squeezing a
+ * target below its touch size. The selected dot gains a hairline ring and a marker line
+ * beneath it, so selection survives colour blindness and low vision. The stored value is
+ * the `#RRGGBB` string itself; the name is only for the accessibility label.
+ */
+@Composable
+private fun TintSwatchRow(selected: String, onSelect: (String) -> Unit) {
+    val palette = LauncherColors.current
+    Column {
+        Text("Icon colour", style = LauncherType.body, color = palette.primary)
+        Spacer(Modifier.height(LauncherSpace.sm))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
+            verticalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
+            maxItemsInEachRow = ICON_TINTS.size,
+        ) {
+            ICON_TINTS.forEach { (hex, name) ->
+                val isSelected = selected.equals(hex, ignoreCase = true)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .selectable(
+                            selected = isSelected,
+                            role = Role.RadioButton,
+                            onClick = { onSelect(hex) },
+                        )
+                        .semantics { contentDescription = name }
+                        .defaultMinSize(
+                            minWidth = LauncherSpace.touchTarget,
+                            minHeight = LauncherSpace.touchTarget,
+                        ),
+                ) {
+                    Spacer(Modifier.weight(1f))
+                    Box(
+                        Modifier
+                            .size(24.dp)
+                            .background(parseTint(hex), CircleShape)
+                            .border(
+                                BorderStroke(
+                                    LauncherSpace.hairline,
+                                    if (isSelected) palette.primary else Color.Transparent,
+                                ),
+                                CircleShape,
+                            ),
+                    )
+                    Spacer(Modifier.height(LauncherSpace.xs))
+                    Box(
+                        Modifier
+                            .width(20.dp)
+                            .height(LauncherSpace.hairline)
+                            .background(if (isSelected) palette.primary else Color.Transparent),
+                    )
+                    Spacer(Modifier.weight(1f))
+                }
+            }
+        }
     }
 }
 

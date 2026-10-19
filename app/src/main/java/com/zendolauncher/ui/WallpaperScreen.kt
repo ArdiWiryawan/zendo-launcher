@@ -189,6 +189,11 @@ fun WallpaperScreen(viewModel: LauncherViewModel, state: UiState) {
                     "confirms it. It sets a background, never the clock, notifications, " +
                     "or unlock method.",
             )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText(
+                "The selected design can also sit behind your Home pages: turn on " +
+                    "Wallpaper on home in Settings.",
+            )
             Spacer(Modifier.height(LauncherSpace.xl))
         }
     }

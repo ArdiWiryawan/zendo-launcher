@@ -26,6 +26,7 @@ import com.zendolauncher.data.BridgeJson
 import com.zendolauncher.data.FocusNoteStore
 import com.zendolauncher.data.HighlightStore
 import com.zendolauncher.data.HistoryStore
+import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
@@ -133,6 +134,12 @@ data class UiState(
      * page they have since swiped away from.
      */
     val pagerTargetPage: Int? = null,
+    /**
+     * Set by Home's search pill: the drawer takes the cursor into the field and raises
+     * the keyboard on arrival, then clears this. False for every other way in, so a
+     * swipe-up browse does not summon the keyboard.
+     */
+    val autoFocusSearch: Boolean = false,
     /** The Focus page's one line. Empty is the normal state, not a failure. */
     val focusNote: String = "",
     // ---- Today dashboard (local, persistent) -----------------------------------
@@ -165,6 +172,14 @@ data class UiState(
     val selectedDateEpochDay: Long = LocalDate.now().toEpochDay(),
     // ---- Wallpaper ------------------------------------------------------------
     val wallpaperSelectedId: String? = null,
+    /**
+     * The design the last successful apply actually sent to the system, raw from
+     * [WallpaperStore]. Null until one succeeds — the gallery highlight
+     * ([wallpaperSelectedId]) can change on a tap without anything being applied, and
+     * "match wallpaper" must follow the device, not the highlight. Defaults to
+     * [WallpaperTemplates.DEFAULT_ID]'s accent at resolution time when null.
+     */
+    val wallpaperAppliedId: String? = null,
     val wallpaperTarget: WallpaperTarget = WallpaperTarget.BOTH,
     val wallpaperApplying: Boolean = false,
     val wallpaperMessage: String? = null,
@@ -211,6 +226,7 @@ private data class Lists(
     val screen: Screen,
     val pageEditing: Boolean,
     val pagerTargetPage: Int?,
+    val autoFocusSearch: Boolean,
 )
 
 private data class Prefs(
@@ -275,6 +291,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      */
     private val _pageEditing = MutableStateFlow(false)
     private val _pagerTargetPage = MutableStateFlow<Int?>(null)
+
+    /**
+     * Set by Home's search pill: the drawer should put the cursor in the field and raise
+     * the keyboard. Consumed by the drawer on the frame it lands, so re-entering it later
+     * through the ordinary chrome does not raise the keyboard on its own.
+     */
+    private val _autoFocusSearch = MutableStateFlow(false)
 
     // ---- Today / calendar / wallpaper (local, ephemeral UI state is here) ------------
     private val _selectedDate = MutableStateFlow(LocalDate.now())
@@ -368,8 +391,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         }
 
     private val lists: Flow<Lists> =
-        combine(appLists, _screen, _pageEditing, _pagerTargetPage) { apps, screen, pageEditing, pagerTarget ->
-            Lists(apps, screen, pageEditing, pagerTarget)
+        combine(appLists, _screen, _pageEditing, _pagerTargetPage, _autoFocusSearch) {
+                apps, screen, pageEditing, pagerTarget, autoFocusSearch ->
+            Lists(apps, screen, pageEditing, pagerTarget, autoFocusSearch)
         }
 
     private val prefs: Flow<Prefs> =
@@ -395,6 +419,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 isLoading = isLoading,
                 pageEditing = lists.pageEditing,
                 pagerTargetPage = lists.pagerTargetPage,
+                autoFocusSearch = lists.autoFocusSearch,
                 focusNote = prefs.focusNote,
             )
         }
@@ -556,7 +581,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     }
 
     val state: StateFlow<UiState> =
-        combine(base, _pendingPause, today, extras) { base, pendingPause, t, x ->
+        combine(base, _pendingPause, today, extras, wallpaperStore.appliedId) {
+                base, pendingPause, t, x, appliedWallpaperId ->
             base.copy(
                 pendingPause = pendingPause,
                 highlights = t.highlights,
@@ -578,6 +604,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 wallpaperSelectedId = t.wallpaperId
                     ?.takeIf { WallpaperTemplates.byId(it) != null }
                     ?: WallpaperTemplates.DEFAULT_ID,
+                wallpaperAppliedId = appliedWallpaperId,
                 wallpaperTarget = t.wallpaperTarget,
                 wallpaperApplying = t.applying,
                 wallpaperMessage = t.message,
@@ -730,7 +757,17 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         refreshHomeState()
     }
 
-    fun openApps() { _screen.value = Screen.APPS }
+    /**
+     * Opens the drawer. [autoFocusSearch] is the search pill's path: the field takes the
+     * cursor and the keyboard comes up, because the tap already said what the user wants.
+     */
+    fun openApps(autoFocusSearch: Boolean = false) {
+        _screen.value = Screen.APPS
+        _autoFocusSearch.value = autoFocusSearch
+    }
+
+    /** The drawer has landed and taken the focus the search pill asked for. */
+    fun consumeAutoFocusSearch() { _autoFocusSearch.value = false }
 
     fun openSettings(from: Screen = if (_screen.value == Screen.APPS) Screen.APPS else Screen.HOME) {
         // WALLPAPERS and CALENDAR are leaves of HOME; returning goes to HOME.
@@ -759,6 +796,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _screen.value = Screen.HOME
         settingsReturn = Screen.HOME
         _query.value = ""
+        _autoFocusSearch.value = false
     }
 
     // ---- Home: paging ---------------------------------------------------------------
@@ -1087,8 +1125,27 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setClock24h(enabled: Boolean) = settingsStore.update { it.copy(clock24h = enabled) }
 
-    /** Draws launcher-page icons desaturated; the original icon stays the fallback. */
-    fun setMonochromeIcons(enabled: Boolean) = settingsStore.update { it.copy(monochromeIcons = enabled) }
+    /**
+     * How launcher-page icons are drawn. The legacy boolean is kept in step for a
+     * downgrade: any style other than NATIVE desaturates, NATIVE does not.
+     */
+    fun setIconStyle(style: IconStyle) = settingsStore.update {
+        it.copy(iconStyle = style, monochromeIcons = style != IconStyle.NATIVE)
+    }
+
+    /** Legacy boolean form of [setIconStyle], kept for older callers. */
+    fun setMonochromeIcons(enabled: Boolean) =
+        setIconStyle(if (enabled) IconStyle.MONOCHROME else IconStyle.NATIVE)
+
+    /** The wash colour for monochrome icons; the store sanitizes on write. */
+    fun setIconTint(tint: String) = settingsStore.update { it.copy(iconTint = tint) }
+
+    /** When on, the monochrome wash follows the selected wallpaper's accent. */
+    fun setIconTintMatchWallpaper(enabled: Boolean) =
+        settingsStore.update { it.copy(iconTintMatchWallpaper = enabled) }
+
+    /** Draw the selected wallpaper behind the Home pages, below the legibility scrim. */
+    fun setHomeBackdrop(enabled: Boolean) = settingsStore.update { it.copy(homeBackdrop = enabled) }
 
     /** Pinned apps allowed on one page. 5 or 6; the store clamps anything else. */
     fun setPinLimit(limit: Int) = settingsStore.update {
@@ -1562,10 +1619,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             when (result) {
                 is WallpaperApplyResult.Applied -> {
                     wallpaperStore.recordResult(true)
+                    wallpaperStore.recordApplied(template.id)
                     _wallpaperMessage.value = "Applied to ${target.name.lowercase()}."
                 }
                 is WallpaperApplyResult.Partial -> {
                     wallpaperStore.recordResult(true)
+                    wallpaperStore.recordApplied(template.id)
                     _wallpaperMessage.value = result.message
                 }
                 is WallpaperApplyResult.Failed -> {
@@ -1776,25 +1835,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         highlightStore.replaceAll(c.highlights)
         taskStore.replaceAll(c.tasks)
         historyStore.upsertAll(c.days)
-        settingsStore.update {
-            it.copy(
-                theme = c.prefs.theme,
-                layout = c.prefs.layout,
-                clock24h = c.prefs.clock24h,
-                reduceMotion = c.prefs.reduceMotion,
-                swipeUpEnabled = c.prefs.swipeUpEnabled,
-                pagingEnabled = c.prefs.pagingEnabled,
-                monochromeIcons = c.prefs.monochromeIcons,
-                pinLimit = c.prefs.pinLimit,
-                screenTimeEnabled = c.prefs.screenTimeEnabled,
-                screenTimeHidden = c.prefs.screenTimeHidden,
-                pauseEnabled = c.prefs.pauseEnabled,
-                pauseMessage = c.prefs.pauseMessage,
-                windowEnabled = c.prefs.windowEnabled,
-                windowStartMinute = c.prefs.windowStartMinute,
-                windowEndMinute = c.prefs.windowEndMinute,
-            )
-        }
+        settingsStore.update { it.restoredFromBackup(c.prefs) }
         if (!c.prefs.screenTimeEnabled) {
             _usageAccess.value = false
             _usageEntries.value = emptyList()
@@ -1876,3 +1917,30 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     suspend fun bitmapFor(target: LaunchTarget, sizePx: Int): Bitmap? =
         withContext(Dispatchers.IO) { appRepository.bitmapFor(target, sizePx) }
 }
+
+/**
+ * The backup's portable prefs mapped onto the live settings, extracted so the mapping
+ * is testable without a file. The backup predates [IconStyle], so its boolean is the
+ * only icon style it carries: monochrome on restores [IconStyle.MONOCHROME], off
+ * restores [IconStyle.NATIVE] — the same reading [SettingsStore] gives the legacy key,
+ * and the boolean is written back in step so a downgrade still finds it. Everything
+ * the backup does not carry (the tint, the backdrop) is left as it is.
+ */
+internal fun LauncherSettings.restoredFromBackup(prefs: BackupPrefs): LauncherSettings = copy(
+    theme = prefs.theme,
+    layout = prefs.layout,
+    clock24h = prefs.clock24h,
+    reduceMotion = prefs.reduceMotion,
+    swipeUpEnabled = prefs.swipeUpEnabled,
+    pagingEnabled = prefs.pagingEnabled,
+    monochromeIcons = prefs.monochromeIcons,
+    iconStyle = if (prefs.monochromeIcons) IconStyle.MONOCHROME else IconStyle.NATIVE,
+    pinLimit = prefs.pinLimit,
+    screenTimeEnabled = prefs.screenTimeEnabled,
+    screenTimeHidden = prefs.screenTimeHidden,
+    pauseEnabled = prefs.pauseEnabled,
+    pauseMessage = prefs.pauseMessage,
+    windowEnabled = prefs.windowEnabled,
+    windowStartMinute = prefs.windowStartMinute,
+    windowEndMinute = prefs.windowEndMinute,
+)

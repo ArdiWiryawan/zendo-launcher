@@ -22,6 +22,16 @@ class WallpaperStore(context: Context) {
     private val _selectedId = MutableStateFlow(prefs.getString(KEY_ID, null))
     val selectedId: StateFlow<String?> = _selectedId.asStateFlow()
 
+    private val _appliedId = MutableStateFlow(prefs.getString(KEY_APPLIED_ID, null))
+
+    /**
+     * The template id of the last successful apply, or null until one succeeds. This is
+     * what "match wallpaper" resolves its accent from: [selectedId] is the gallery's
+     * highlight and changes on a tap, while this records what the device was actually
+     * asked to show.
+     */
+    val appliedId: StateFlow<String?> = _appliedId.asStateFlow()
+
     private val _target = MutableStateFlow(
         prefs.getString(KEY_TARGET, null)?.let { runCatching { WallpaperTarget.valueOf(it) }.getOrNull() }
             ?: WallpaperTarget.BOTH,
@@ -54,9 +64,21 @@ class WallpaperStore(context: Context) {
         _lastSuccess.value = success
     }
 
+    /**
+     * Records which design the apply actually sent to the system. Called only on a
+     * confirmed apply (Applied or Partial), never on a tap in the gallery: the accent
+     * that "match wallpaper" follows must be the one on the device, not the one merely
+     * highlighted.
+     */
+    fun recordApplied(id: String) {
+        prefs.edit { putString(KEY_APPLIED_ID, id) }
+        _appliedId.value = id
+    }
+
     companion object {
         private const val PREFS = "launcher_wallpaper"
         private const val KEY_ID = "wallpaper_template_id"
+        private const val KEY_APPLIED_ID = "wallpaper_applied_id"
         private const val KEY_TARGET = "wallpaper_target"
         private const val KEY_APPLIED_AT = "wallpaper_applied_at"
         private const val KEY_SUCCESS = "wallpaper_last_success"

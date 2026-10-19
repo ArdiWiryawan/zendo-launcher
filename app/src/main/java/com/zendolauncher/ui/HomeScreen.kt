@@ -1,6 +1,7 @@
 package com.zendolauncher.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
@@ -21,6 +22,7 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,14 +41,20 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -57,11 +65,16 @@ import androidx.compose.ui.zIndex
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.HomePage
 import com.zendolauncher.core.PageType
+import com.zendolauncher.core.WallpaperTemplates
+import com.zendolauncher.model.LaunchTarget
+import com.zendolauncher.platform.WallpaperApplier
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
 import com.zendolauncher.ui.theme.clockSizeSp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -110,10 +123,41 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
         }
     }
 
+    // The text-free wallpaper variant, or null when Home paints its own flat background.
+    val backdrop = homeBackdrop(state)
+    // Legibility scrim: the field fades into the page colour toward the bottom, where the
+    // clock's page content and the chrome compete with the wallpaper's own contrast.
+    val scrim = remember(palette) {
+        Brush.verticalGradient(
+            0f to Color.Transparent,
+            0.55f to palette.background.copy(alpha = 0.55f),
+            1f to palette.background.copy(alpha = 0.92f),
+        )
+    }
+    // One more pass of black in the dark theme, deepening the bottom edge on the
+    // darkest templates without changing the light theme's warmer fade.
+    val darkDeepening = remember {
+        Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.12f))
+    }
+
+    // Wallpaper behind, content in front. Drawn with the same renderer the system
+    // wallpaper uses, so the two can never drift; a bitmap at the window's own size, so
+    // no scaling smears the field. When off, the flat background is painted instead.
+    val wallpaperLayer: Modifier =
+        if (backdrop == null) {
+            Modifier.background(palette.background)
+        } else {
+            Modifier.drawBehind {
+                drawImage(backdrop)
+                drawRect(brush = scrim)
+                if (palette.isDark) drawRect(brush = darkDeepening)
+            }
+        }
+
     Column(
         Modifier
             .fillMaxSize()
-            .background(palette.background)
+            .then(wallpaperLayer)
             .systemBarsPadding(),
     ) {
         if (state.pageEditing) {
@@ -178,6 +222,66 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 }
             }
         } else {
+            // The dock and the search pill belong to the Today page alone: they are its
+            // pinned row and its one affordance into the drawer, and another page — the
+            // Plan & Focus page first of all — carries its own content and does not
+            // inherit them. The gate is the settled page, not the current one: a
+            // half-swipe must not flash the dock onto the page being left or entered.
+            // The bottom chrome itself stays on every page.
+            if (pages.getOrNull(pagerState.settledPage)?.type == PageType.TODAY) {
+                // The dock: the Today page's own pinned order, icon-only, capped at five.
+                // Rendered only when that page actually configures items — an empty dock
+                // would be a gap nobody asked for. No long press here: the pin/hide menu
+                // would need its own copy of AppRow's popup, and a second menu for the same
+                // two actions is how two surfaces start to disagree about the same list.
+                val dock = todayDockTargets(state)
+                if (dock.isNotEmpty()) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = LauncherSpace.gutter),
+                        // Five 48dp targets and four sm gaps are exactly 272dp — the content
+                        // width of the shortest supported screen (320dp minus the gutters). A
+                        // wider gap needed 320dp of content and squeezed the fifth target to
+                        // zero width on every phone, an invisible icon in a row that promised
+                        // five.
+                        horizontalArrangement = Arrangement.spacedBy(LauncherSpace.sm),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        dock.forEach { target ->
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .size(LauncherSpace.touchTarget)
+                                    .clickable(role = Role.Button) { viewModel.launch(target) }
+                                    .semantics { contentDescription = target.label },
+                            ) {
+                                AppIcon(viewModel, target, sizeDp = DOCK_ICON_DP)
+                            }
+                        }
+                    }
+                    Spacer(Modifier.height(LauncherSpace.md))
+                }
+
+                // Search pill: text only, because the drawer's own field is the icon and a
+                // magnifier glyph would be the one pictorial element in the launcher. The
+                // whole pill is the target; the hairline is the same separator the page uses.
+                val pillShape = RoundedCornerShape(999.dp)
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = LauncherSpace.gutter)
+                        .height(LauncherSpace.touchTarget)
+                        .clip(pillShape)
+                        .border(LauncherSpace.hairline, palette.separator, pillShape)
+                        .clickable(role = Role.Button) { viewModel.openApps(autoFocusSearch = true) },
+                ) {
+                    Text("Search apps", style = LauncherType.action, color = palette.secondary)
+                }
+                // 8dp above the bottom chrome, close enough to read as its lid.
+                Spacer(Modifier.height(LauncherSpace.sm))
+            }
             // Swipe-up chrome: the bottom bar owns the vertical swipe so scrollable
             // page content keeps its gesture. Taps still reach the actions; a deliberate
             // upward drag opens the drawer instead.
@@ -591,6 +695,59 @@ private fun PageManagerRow(page: HomePage, index: Int, pageCount: Int, viewModel
 }
 
 // ---- Chrome ------------------------------------------------------------------------
+
+/** The dock icon itself; the 48dp target around it is the touch surface. */
+private const val DOCK_ICON_DP = 40
+
+/** The dock shows at most this many targets: one calm row on the shortest supported width. */
+private const val DOCK_MAX_ITEMS = 5
+
+/**
+ * The Today page's configured items, resolved against the visible apps, capped at
+ * [DOCK_MAX_ITEMS] and kept in the page's own order. Resolution drops hidden or
+ * uninstalled keys rather than backfilling from further down the list: the dock is the
+ * page's order, not a quota to fill.
+ */
+private fun todayDockTargets(state: UiState): List<LaunchTarget> {
+    val keys = state.settings.home.pages
+        .firstOrNull { it.type == PageType.TODAY }
+        ?.config?.itemKeys
+        .orEmpty()
+    if (keys.isEmpty()) return emptyList()
+    val byKey = state.visibleApps.associateBy { it.key }
+    return keys.take(DOCK_MAX_ITEMS).mapNotNull { byKey[it] }
+}
+
+/**
+ * The wallpaper's field, text-free, for Home's own backdrop, or null when the backdrop
+ * is off or no template is known. Rendered at the window's own pixel size and keyed on
+ * template and size through [produceState], so a settled screen renders once — off the
+ * main thread, because a whole-window bitmap is not composition work. With the text off
+ * the render is a single flat fill (see [WallpaperApplier.render]), so it costs one
+ * bitmap, not a re-layout. A render failure is treated exactly like no wallpaper — Home
+ * paints its flat background and says nothing, because the user asked for a picture,
+ * not an error.
+ */
+@Composable
+private fun homeBackdrop(state: UiState): ImageBitmap? {
+    if (!state.settings.homeBackdrop) return null
+    val template = state.wallpaperSelectedId?.let { WallpaperTemplates.byId(it) } ?: return null
+    val size = LocalWindowInfo.current.containerSize
+    val backdrop by produceState<ImageBitmap?>(
+        initialValue = null,
+        template.id,
+        size.width,
+        size.height,
+    ) {
+        value = withContext(Dispatchers.Default) {
+            runCatching {
+                WallpaperApplier.render(template, size.width, size.height, includeText = false)
+                    .asImageBitmap()
+            }.getOrNull()
+        }
+    }
+    return backdrop
+}
 
 /**
  * The page indicator: one dot per page, the current one larger and brighter, each named for

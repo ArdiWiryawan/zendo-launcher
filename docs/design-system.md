@@ -260,3 +260,78 @@ Usage rules the screens actually follow:
 
   Repeated labels are always disambiguated this way: a list of identical "Pin", "Up" or
   "Unpin" words is otherwise indistinguishable to a screen reader.
+
+## 7. Icon styles
+
+- **Three styles, one enum.** `IconStyle` in `data/SettingsStore.kt` is
+  `MONOCHROME` (the default), `TINTED` and `NATIVE`. `SettingsScreen` exposes it as the
+  `ChoiceRow` "App icons" with the option words "Monochrome", "Tinted" and "Original";
+  the words are the user's, the enum names are the code's.
+- **The wash colour is stored as `#RRGGBB`.** `LauncherSettings.iconTint` defaults to
+  `SettingsStore.DEFAULT_ICON_TINT`, `#EDE6D8` (the product cream). `sanitizeIconTint`
+  runs on read and on write: a leading `#` is optional on input, and anything that is not
+  six hex digits is corruption and is replaced by the cream default — the value can only
+  ever come from the fixed swatch list below.
+- **Six swatches, never a colour picker.** `ICON_TINTS` in `SettingsScreen.kt` is Cream
+  `#EDE6D8`, Gold `#C9A96A`, Mint `#8FD9A5`, Fog `#9FB4C7`, Blush `#D8B4A6`, Slate
+  `#8A8A88`, drawn by `TintSwatchRow` as a `24.dp` dot in a target that is `48.dp` in
+  both directions — width included. Six targets and five `4.dp` gaps are `308.dp`, so the
+  row fits the 360dp reference screen's content in one line and wraps the overflow on
+  narrower ones instead of squeezing a target below its touch size. Selection is a
+  hairline ring plus a marker line beneath the dot, never the colour difference alone,
+  and each swatch carries its name as a `contentDescription`. The row appears while the
+  style is anything but `NATIVE`.
+- **"Match wallpaper" follows the applied design, not the highlight.** The toggle sits
+  beside the swatches whenever the style is not `NATIVE`. The accent comes from
+  `WallpaperStore.appliedId`, written only when an apply is confirmed (`Applied` or
+  `Partial`): a tap in the gallery moves `selectedId` and must not move the wash before
+  anything is on the device. An absent or unknown id falls back to
+  `WallpaperTemplates.DEFAULT_ID`'s accent — the same design `applyWallpaper()` applies
+  for an unreadable id — and to the cream default only if even that cannot resolve.
+  `TINTED` follows the applied design with or without the toggle; the note under the
+  control says so.
+- **One resolver, total by construction.** `resolvedIconTint` in `LauncherActivity.kt`
+  decides between the stored swatch and the applied design's accent and always returns a
+  parseable `#RRGGBB`; `LauncherActivity` provides the result through `LocalIconStyle`
+  and `LocalIconTint` (`staticCompositionLocalOf` in `ui/Components.kt`), so every row on
+  Home, in the drawer and in Settings draws with the same resolved pair and no composable
+  needs to know about wallpapers.
+- **Duotone rendering.** `AppIcon` applies
+  `ColorFilter.colorMatrix(duotoneMatrix(tint))` for both `MONOCHROME` and `TINTED`, and
+  no filter at all for `NATIVE`; the filter is `remember`ed per style and tint, so a
+  redraw reuses it. `duotoneMatrix` in `ui/Components.kt` composes a value-only
+  desaturation (`setToSaturation(0f)` — luminance survives, hue does not) with the tint
+  wash `out.c = L * (tintC - 0.08) + 0.08`; the `0.08` floor keeps deep shadows off pure
+  black, which is what makes the cream read as warm paper rather than a contrast clamp.
+  Matrices are cached per tint string, built only from composition (main thread).
+- **Reading a tint never throws.** `parseTint` reproduces `Color.parseColor` without its
+  exception: an unreadable value falls back to the cream default — the one `FallbackTint`
+  constant, mirroring `SettingsStore.DEFAULT_ICON_TINT` — whether it is drawing an icon
+  or a swatch.
+- **The old boolean migrates.** A stored `monochrome_icons` boolean predates the enum:
+  `true` reads back as `MONOCHROME`, `false` as `NATIVE`, which is exactly what the
+  toggle used to mean.
+
+## 8. Home backdrop
+
+- **Off by default, one toggle.** `LauncherSettings.homeBackdrop` (default `false`) is
+  the "Wallpaper on home" `ToggleRow` in Settings, beside the wallpaper gallery. The
+  gallery sets the system wallpaper; the toggle decides whether Home also paints the
+  selected design itself.
+- **A text-free field, at the window's own size.** `homeBackdrop(state)` in
+  `HomeScreen.kt` returns null when the toggle is off or no template is known, and
+  otherwise renders `WallpaperApplier.render(template, size, includeText = false)` at the
+  window's pixel size through `produceState` on `Dispatchers.Default`, keyed on template
+  and size — one render per settled screen, off the main thread. With the text off the
+  render is a single flat fill, so it costs one bitmap, not a re-layout; it is the same
+  renderer the system wallpaper uses, so the two cannot drift.
+- **Drawn behind a scrim, not instead of the page.** When the backdrop is present, Home
+  draws it with `Modifier.drawBehind` — image first, then a vertical scrim that runs from
+  transparent to `background` at `0.55` alpha at the `0.55` stop and `0.92` at the bottom,
+  so the clock's page content and the chrome stay legible over any template; the dark
+  theme adds one more pass of black at `0.12` alpha to deepen the bottom edge. When the
+  backdrop is off, the same slot paints the flat `background` instead.
+- **Home only.** The drawer and Settings stay flat; the note under the toggle says so.
+- **Every failure is a quiet off.** No template (wallpaper set outside the launcher), the
+  toggle off, or a render failure all resolve to the flat background: Home says nothing,
+  because the user asked for a picture, not an error.

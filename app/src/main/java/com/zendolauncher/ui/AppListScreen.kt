@@ -59,8 +59,16 @@ fun AppListScreen(viewModel: LauncherViewModel, state: UiState) {
     val keyboard = LocalSoftwareKeyboardController.current
 
     // The drawer exists to be typed into, so the field takes focus on arrival instead of
-    // costing a tap every time.
-    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+    // costing a tap every time. When Home's search pill opened it, the keyboard is raised
+    // as well — the tap already said what the user wants — and the one-shot flag is
+    // consumed so a later browse-in does not summon it again.
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+        if (state.autoFocusSearch) {
+            keyboard?.show()
+            viewModel.consumeAutoFocusSearch()
+        }
+    }
 
     // Retained across re-entry via the view model (no animation library): leaving for
     // Settings and coming back lands where the list was, not at the top.

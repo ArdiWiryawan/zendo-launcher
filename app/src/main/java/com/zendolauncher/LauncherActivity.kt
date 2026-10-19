@@ -15,9 +15,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.zendolauncher.core.WallpaperTemplates
+import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.AppListScreen
@@ -28,18 +31,21 @@ import com.zendolauncher.ui.ClearHistoryDialog
 import com.zendolauncher.ui.HighlightEditorScreen
 import com.zendolauncher.ui.HistoryScreen
 import com.zendolauncher.ui.HomeScreen
-import com.zendolauncher.ui.LocalMonochromeIcons
+import com.zendolauncher.ui.LocalIconStyle
+import com.zendolauncher.ui.LocalIconTint
 import com.zendolauncher.ui.LauncherViewModel
 import com.zendolauncher.ui.OnboardingScreen
 import com.zendolauncher.ui.PermissionsScreen
 import com.zendolauncher.ui.SetupScreen
 import com.zendolauncher.ui.PauseDialog
 import com.zendolauncher.ui.Screen
+import com.zendolauncher.ui.parseTint
 import com.zendolauncher.ui.SettingsScreen
 import com.zendolauncher.ui.TaskEditorScreen
 import com.zendolauncher.ui.WallpaperScreen
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherTheme
+import java.util.Locale
 
 /**
  * The home screen. singleTask + stateNotNeeded + clearTaskOnLaunch in the manifest
@@ -68,10 +74,13 @@ class LauncherActivity : ComponentActivity() {
             val state by viewModel.state.collectAsStateWithLifecycle()
             LauncherTheme(mode = state.settings.theme) {
                 SystemBarIcons()
-                // Grayscale icons by default: one provider, so Home, the drawer and every
-                // list agree on the Appearance setting.
+                // Icon appearance by default: one provider, so Home, the drawer and every
+                // list agree on the Appearance setting. The tint is provided already
+                // resolved — the stored swatch, or the wallpaper's accent when the user
+                // asked the two to match — so no composable needs to know about wallpapers.
                 CompositionLocalProvider(
-                    LocalMonochromeIcons provides state.settings.monochromeIcons,
+                    LocalIconStyle provides state.settings.iconStyle,
+                    LocalIconTint provides resolvedIconTint(state.settings.iconStyle, state.settings.iconTint, state.settings.iconTintMatchWallpaper, state.wallpaperAppliedId),
                 ) {
                     LauncherRoot(viewModel, state)
                 }
@@ -121,6 +130,32 @@ private fun SystemBarIcons() {
             isAppearanceLightNavigationBars = !dark
         }
     }
+}
+
+/**
+ * The one tint every monochrome icon is washed toward, as `#RRGGBB`.
+ *
+ * TINTED always follows the wallpaper's accent, and MONOCHROME follows it only when
+ * the user asked for the match. The accent comes from [appliedWallpaperId] — the
+ * design the last successful apply actually sent to the system — falling back to
+ * [WallpaperTemplates.DEFAULT_ID] when nothing has been applied or the stored id is
+ * not a template (the same design [LauncherViewModel.applyWallpaper] itself would
+ * apply), and to the cream default on the impossible day even that will not resolve.
+ * [IconStyle.NATIVE] never reads the tint, but returning the stored value keeps this
+ * function total.
+ */
+internal fun resolvedIconTint(
+    style: IconStyle,
+    storedTint: String,
+    matchWallpaper: Boolean,
+    appliedWallpaperId: String?,
+): String {
+    if (style == IconStyle.NATIVE) return storedTint
+    if (style != IconStyle.TINTED && !matchWallpaper) return storedTint
+    val template = appliedWallpaperId?.let { WallpaperTemplates.byId(it) }
+        ?: WallpaperTemplates.byId(WallpaperTemplates.DEFAULT_ID)
+    val accent = template?.dominantAccent() ?: parseTint(SettingsStore.DEFAULT_ICON_TINT)
+    return String.format(Locale.US, "#%06X", accent.toArgb() and 0xFFFFFF)
 }
 
 @Composable

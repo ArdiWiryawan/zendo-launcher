@@ -17,6 +17,32 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 enum class LayoutMode { TEXT, ICON_TEXT }
 
+/** How app icons are drawn on Home and in the drawer. */
+enum class IconStyle {
+    /** Desaturated and washed toward [LauncherSettings.iconTint] (the default). */
+    MONOCHROME,
+
+    /** Desaturated, then tinted with the wallpaper's dominant accent. */
+    TINTED,
+
+    /** The app's own icon, untouched. */
+    NATIVE,
+}
+
+/**
+ * A stored tint that is not a plain `#RRGGBB` hex value is replaced by the default:
+ * the value only ever comes from a fixed swatch list, so anything else is corruption
+ * and the cream default is the honest answer. A leading `#` is optional on input and
+ * always written back.
+ */
+internal fun sanitizeIconTint(raw: String?): String {
+    val value = raw?.trim()?.removePrefix("#")?.uppercase() ?: return SettingsStore.DEFAULT_ICON_TINT
+    if (value.length != 6 || value.any { it !in "0123456789ABCDEF" }) {
+        return SettingsStore.DEFAULT_ICON_TINT
+    }
+    return "#$value"
+}
+
 /**
  * All launcher preferences. Local only — nothing here is ever uploaded.
  * Stored in SharedPreferences: a handful of keys and two ordered string lists do not
@@ -67,6 +93,16 @@ class SettingsStore(context: Context) {
         focusWorkMinutes = prefs.getInt(KEY_FOCUS_WORK, 25),
         focusBreakMinutes = prefs.getInt(KEY_FOCUS_BREAK, 5),
         monochromeIcons = prefs.getBoolean(KEY_MONOCHROME_ICONS, true),
+        // App icon appearance replaced the boolean `monochrome_icons` key. The old key is
+        // still written beside the new ones so a downgrade finds its toggle, and it is
+        // read only when `icon_style` is absent: an install from before the change maps
+        // true → MONOCHROME and false → NATIVE, which is exactly what the toggle meant.
+        iconStyle = prefs.getString(KEY_ICON_STYLE, null)
+            ?.let { name -> IconStyle.entries.firstOrNull { it.name == name } }
+            ?: if (prefs.getBoolean(KEY_MONOCHROME_ICONS, true)) IconStyle.MONOCHROME else IconStyle.NATIVE,
+        iconTint = sanitizeIconTint(prefs.getString(KEY_ICON_TINT, null)),
+        iconTintMatchWallpaper = prefs.getBoolean(KEY_ICON_TINT_MATCH_WALLPAPER, false),
+        homeBackdrop = prefs.getBoolean(KEY_HOME_BACKDROP, false),
         pinLimit = prefs.getInt(KEY_PIN_LIMIT, DEFAULT_PIN_LIMIT)
             .coerceIn(MIN_PIN_LIMIT, MAX_PIN_LIMIT),
         screenTimeEnabled = prefs.getBoolean(KEY_SCREEN_TIME_ENABLED, false),
@@ -111,6 +147,10 @@ class SettingsStore(context: Context) {
             putInt(KEY_FOCUS_WORK, next.focusWorkMinutes)
             putInt(KEY_FOCUS_BREAK, next.focusBreakMinutes)
             putBoolean(KEY_MONOCHROME_ICONS, next.monochromeIcons)
+            putString(KEY_ICON_STYLE, next.iconStyle.name)
+            putString(KEY_ICON_TINT, sanitizeIconTint(next.iconTint))
+            putBoolean(KEY_ICON_TINT_MATCH_WALLPAPER, next.iconTintMatchWallpaper)
+            putBoolean(KEY_HOME_BACKDROP, next.homeBackdrop)
             putInt(KEY_PIN_LIMIT, next.pinLimit)
             putBoolean(KEY_SCREEN_TIME_ENABLED, next.screenTimeEnabled)
             putBoolean(KEY_SCREEN_TIME_HIDDEN, next.screenTimeHidden)
@@ -325,6 +365,10 @@ class SettingsStore(context: Context) {
         private const val KEY_FOCUS_WORK = "focus_work_minutes"
         private const val KEY_FOCUS_BREAK = "focus_break_minutes"
         private const val KEY_MONOCHROME_ICONS = "monochrome_icons"
+        private const val KEY_ICON_STYLE = "icon_style"
+        private const val KEY_ICON_TINT = "icon_tint"
+        private const val KEY_ICON_TINT_MATCH_WALLPAPER = "icon_tint_match_wallpaper"
+        private const val KEY_HOME_BACKDROP = "home_backdrop"
         private const val KEY_PIN_LIMIT = "pin_limit"
         private const val KEY_SCREEN_TIME_ENABLED = "screen_time_enabled"
         private const val KEY_SCREEN_TIME_HIDDEN = "screen_time_hidden"
@@ -342,6 +386,9 @@ class SettingsStore(context: Context) {
 
         /** Default pause-dialog reminder, used until the user writes their own. */
         const val DEFAULT_PAUSE_MESSAGE = "Take a breath. Open it anyway?"
+
+        /** Icon tint heard when none is stored, or when the stored one is not a hex colour. */
+        const val DEFAULT_ICON_TINT = "#EDE6D8"
 
         /** 22:00 — a default the user is expected to change, not a recommendation. */
         const val DEFAULT_WINDOW_START = 22 * 60
@@ -414,8 +461,33 @@ data class LauncherSettings(
     /**
      * Draw app icons desaturated on launcher pages. The original icon is always
      * the fallback; nothing is written to other apps either way.
+     *
+     * Frozen legacy: [iconStyle] is what the UI renders from and what a new install
+     * writes. This field is kept (and still written) only so a downgrade to an older
+     * build still finds the boolean it knows.
      */
     val monochromeIcons: Boolean = true,
+    /**
+     * How app icons are drawn. Replaced the [monochromeIcons] boolean; a fresh
+     * install starts monochrome, which is the product's identity.
+     */
+    val iconStyle: IconStyle = IconStyle.MONOCHROME,
+    /**
+     * Wash colour for [IconStyle.MONOCHROME], `#RRGGBB`. Always sanitized on read
+     * and write, so a consumer can parse it without guarding.
+     */
+    val iconTint: String = SettingsStore.DEFAULT_ICON_TINT,
+    /**
+     * When on, the monochrome wash follows the wallpaper: the tint comes from the
+     * current template's accent, and a wallpaper chosen outside the launcher falls
+     * back to the stored [iconTint]. Only consulted when a wallpaper template is known.
+     */
+    val iconTintMatchWallpaper: Boolean = false,
+    /**
+     * Draw the selected wallpaper behind the Home pages, below a scrim that keeps
+     * text legible. Off by default: Home is a quiet page first and a picture second.
+     */
+    val homeBackdrop: Boolean = false,
     /** Pinned apps allowed on one page. 5 or 6, never more; the UI explains a full page. */
     val pinLimit: Int = SettingsStore.DEFAULT_PIN_LIMIT,
     /**

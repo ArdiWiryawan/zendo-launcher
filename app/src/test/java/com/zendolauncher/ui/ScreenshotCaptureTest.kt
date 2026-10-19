@@ -5,12 +5,21 @@ import android.graphics.Canvas
 import android.graphics.Color as AndroidColor
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.LauncherActivity
+import com.zendolauncher.core.PageType
+import com.zendolauncher.core.WallpaperTemplates
+import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.LayoutMode
+import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
+import com.zendolauncher.ui.theme.LauncherTheme
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -55,6 +64,16 @@ class ScreenshotCaptureTest {
     /** Every capture's digest, so a duplicate is caught rather than shipped. */
     private val seen = LinkedHashMap<String, String>()
 
+    /**
+     * The gold TINTED resolves to for the tinted capture, formatted the way
+     * LauncherActivity formats a resolved accent (and read from the design's own
+     * accent, so a palette change cannot leave the capture lying about it).
+     */
+    private val goldAccent: String = run {
+        val accent = requireNotNull(WallpaperTemplates.byId("less_but_better")).dominantAccent()
+        String.format(Locale.US, "#%06X", accent.toArgb() and 0xFFFFFF)
+    }
+
     private fun contentView(): View {
         val content = rule.activity.findViewById<ViewGroup>(android.R.id.content)
         return if (content.childCount > 0) content.getChildAt(0) else content
@@ -75,6 +94,74 @@ class ScreenshotCaptureTest {
         viewModel.goHome()
         rule.waitForIdle()
         rule.waitUntil(5_000) { !viewModel.state.value.isLoading }
+        rule.waitForIdle()
+    }
+
+    /**
+     * Installs [count] launchable fakes and waits for the rescan to land, so the dock
+     * resolves against the same enumeration a device would hand it.
+     */
+    private fun installCalmApps(count: Int): List<String> {
+        val keys = (1..count).map { index ->
+            FakeApps.install(rule.activity, "com.example.calm$index", "Calm $index")
+        }
+        viewModel.refreshApps()
+        rule.waitUntil(5_000) { viewModel.state.value.visibleApps.size >= count }
+        rule.waitForIdle()
+        return keys
+    }
+
+    /**
+     * Shows Home with the Today dock: the real activity and view model over a crafted
+     * state, because the Today page's item list has no in-app editor yet. [style] and
+     * [tint] are provided the way LauncherActivity resolves them — the stored swatch for
+     * MONOCHROME, or the selected design's accent for TINTED — and the page paints flat
+     * unless [backdrop] asks for the design's field.
+     */
+    private fun showCalmHome(
+        mode: ThemeMode,
+        keys: List<String>,
+        backdrop: Boolean = false,
+        style: IconStyle = IconStyle.MONOCHROME,
+        tint: String = SettingsStore.DEFAULT_ICON_TINT,
+    ) {
+        val base = viewModel.state.value
+        val today = base.settings.home.pages.first { it.type == PageType.TODAY }
+        val home = base.settings.home.updatePageConfig(today.id, today.config.copy(itemKeys = keys))
+        val state = base.copy(
+            settings = base.settings.copy(
+                home = home,
+                theme = mode,
+                iconStyle = style,
+                homeBackdrop = backdrop,
+            ),
+            pagerTargetPage = null,
+        )
+        // Warm the icon cache first: AppIcon loads bitmaps off the main thread, and a
+        // cache hit keeps each of those round-trips down to one raster.
+        val px = (40 * rule.activity.resources.displayMetrics.density).toInt()
+        runBlocking {
+            state.visibleApps.filter { it.key in keys }.forEach { viewModel.bitmapFor(it, px) }
+        }
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = mode) {
+                    CompositionLocalProvider(
+                        LocalIconStyle provides style,
+                        LocalIconTint provides tint,
+                    ) {
+                        HomeScreen(viewModel, state)
+                    }
+                }
+            }
+        }
+        // Bounded frame loop: the one suspension left is the produceState that hands
+        // each warmed bitmap back to its AppIcon, and a capture that skipped it would
+        // ship empty slots.
+        repeat(30) {
+            rule.waitForIdle()
+            Thread.sleep(10)
+        }
         rule.waitForIdle()
     }
 
@@ -182,6 +269,31 @@ class ScreenshotCaptureTest {
         viewModel.openSettings()
         rule.waitForIdle()
         capture("after-settings.png")
+
+        // The Calm Canvas captures. The tinted one carries the dock, because icons are
+        // the only place Home shows the icon tint: TINTED always follows the selected
+        // design's accent, and less_but_better's is gold. The backdrop and the design key
+        // come from the real store; the dock's items can only come in through a crafted
+        // state, the same reason the dock capture below uses one.
+        viewModel.goHome()
+        viewModel.setTheme(ThemeMode.DARK)
+        viewModel.setIconStyle(IconStyle.TINTED)
+        viewModel.setHomeBackdrop(true)
+        viewModel.selectWallpaper("less_but_better")
+        rule.waitForIdle()
+        val calmKeys = installCalmApps(4)
+        showCalmHome(ThemeMode.DARK, calmKeys, backdrop = true, style = IconStyle.TINTED, tint = goldAccent)
+        capture("calm-home-tint-backdrop-dark.png")
+
+        // Then the dock on its own terms: one calm cream row on the flat page.
+        viewModel.setIconStyle(IconStyle.MONOCHROME)
+        viewModel.setHomeBackdrop(false)
+        rule.waitForIdle()
+        showCalmHome(ThemeMode.DARK, calmKeys)
+        capture("calm-home-dock-dark.png")
+
+        showCalmHome(ThemeMode.LIGHT, calmKeys)
+        capture("calm-home-light.png")
 
         assertAllDistinct()
     }

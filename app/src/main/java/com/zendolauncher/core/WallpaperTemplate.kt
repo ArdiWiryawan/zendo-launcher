@@ -1,5 +1,7 @@
 package com.zendolauncher.core
 
+import androidx.compose.ui.graphics.Color
+
 /**
  * One bundled wallpaper design. Three exist, deliberately: a quiet field, the
  * reminder line, and the principle with the wordmark. All grayscale, all drawn
@@ -21,7 +23,25 @@ data class WallpaperTemplate(
     val wordmark: String? = null,
     /** True when light text reads well on it (dark wallpaper). */
     val darkBackground: Boolean = true,
-)
+) {
+
+    /**
+     * The one accent this design contributes when tinted icons follow the wallpaper.
+     * Curated per design rather than sampled from a bitmap: each template is a single
+     * flat field, so the design itself is the honest source, and sampling at icon size
+     * would be noise. Unknown ids fall back to the cream the product calls its tint
+     * default, exactly like an unreadable stored tint does.
+     */
+    fun dominantAccent(): Color = when (id) {
+        // Quiet Stone's own grey, one step lighter so it reads against the field.
+        "quiet_stone" -> Color(0xFF8A8A88)
+        // The warm paper of the reminder line.
+        "kembali" -> Color(0xFFEDE6D8)
+        // A quiet gold for the principle, the warmest of the three.
+        "less_but_better" -> Color(0xFFC9A96A)
+        else -> Color(0xFFEDE6D8)
+    }
+}
 
 object WallpaperTemplates {
 

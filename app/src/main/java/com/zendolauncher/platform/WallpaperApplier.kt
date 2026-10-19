@@ -61,11 +61,22 @@ object WallpaperApplier {
      * The 9:20 design drawn for this device's wallpaper size. The top third stays
      * clear for the lock clock; typography starts at 46% height and is sized from
      * the width, so the layout holds at any screen size.
+     *
+     * [includeText] off draws the field alone. Home uses that variant as its own
+     * backdrop, where the caption would sit under the clock instead of under the
+     * status bar the design was written for. Defaults to true, which is exactly
+     * what the system wallpaper receives.
      */
-    fun render(template: WallpaperTemplate, width: Int = 1080, height: Int = 1920): Bitmap {
+    fun render(
+        template: WallpaperTemplate,
+        width: Int = 1080,
+        height: Int = 1920,
+        includeText: Boolean = true,
+    ): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(template.baseColor.toInt())
+        if (!includeText) return bitmap
         val ink = if (template.darkBackground) Color.WHITE else Color.BLACK
         val left = width * 0.11f
         var baseline = height * 0.46f

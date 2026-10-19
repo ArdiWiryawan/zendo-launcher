@@ -46,7 +46,9 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.window.Dialog
+import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.LayoutMode
+import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
@@ -233,33 +235,103 @@ fun AppRow(
 }
 
 /**
- * Grayscale icons by default (monochrome-first design). One composition local instead of
- * a parameter through every row, so Home, the drawer and Settings always agree. The
- * toggle lives in Settings → Appearance; when off, the original icon colours show.
+ * Icon appearance by default (monochrome-first design). Composition locals instead of
+ * parameters through every row, so Home, the drawer and Settings always agree. The
+ * controls live in Settings → Appearance; when the style is NATIVE the original icon
+ * colours show, and the tint is what a MONOCHROME icon is washed toward.
+ *
+ * [LocalIconTint] is the *resolved* tint: the Activity decides whether it is the stored
+ * swatch or the wallpaper's accent, so no composable needs to know about wallpapers.
  */
-val LocalMonochromeIcons = staticCompositionLocalOf { true }
+val LocalIconStyle = staticCompositionLocalOf { IconStyle.MONOCHROME }
+val LocalIconTint = staticCompositionLocalOf { SettingsStore.DEFAULT_ICON_TINT }
 
-/** Value-only desaturation: luminance survives, hue does not. */
-private val MonochromeMatrix = ColorMatrix().apply { setToSaturation(0f) }
+/**
+ * Duotone: value-only desaturation first — luminance survives, hue does not — then each
+ * channel is washed toward the tint: `out.c = L * (tintC - 0.08) + 0.08`. The 0.08 floor
+ * keeps deep shadows off pure black, which is what makes a cream tint read as warm paper
+ * rather than as a contrast clamp. Matrices are cached per tint: one per colour, built
+ * once, reused by every row that draws with it.
+ */
+internal fun duotoneMatrix(tintHex: String): ColorMatrix = duotoneCache.getOrPut(tintHex) {
+    val tint = parseTint(tintHex)
+    // The tint curve first (this = M), then value-only desaturation applied before it
+    // (this = M × S), so a pixel lands as M(S(pixel)): luminance in, tint out.
+    ColorMatrix(
+        floatArrayOf(
+            tint.red - FLOOR, 0f, 0f, 0f, FLOOR * 255f,
+            0f, tint.green - FLOOR, 0f, 0f, FLOOR * 255f,
+            0f, 0f, tint.blue - FLOOR, 0f, FLOOR * 255f,
+            0f, 0f, 0f, 1f, 0f,
+        ),
+    ).apply {
+        timesAssign(ColorMatrix().apply { setToSaturation(0f) })
+    }
+}
+
+/**
+ * One matrix per tint, cached for the process. Assumption: entries are only ever written
+ * from the main thread — composition is the sole caller — so the map never races.
+ */
+private val duotoneCache = mutableMapOf<String, ColorMatrix>()
+
+/** Shadow floor of the duotone curve, 0..1. Multiplied by 255 for the matrix offset. */
+private const val FLOOR = 0.08f
+
+/**
+ * `#RRGGBB` to a colour, without `Color.parseColor`'s exception: a tint that reached
+ * here past [sanitizeIconTint] would be a stored corruption, and an icon — or a swatch
+ * on the Appearance page — is not worth crashing over. Anything unreadable falls back
+ * to the cream default.
+ */
+internal fun parseTint(tintHex: String): Color {
+    val hex = tintHex.trim().removePrefix("#")
+    if (hex.length != 6) return FallbackTint
+    var value = 0
+    for (c in hex) {
+        val digit = when (c) {
+            in '0'..'9' -> c - '0'
+            in 'a'..'f' -> c - 'a' + 10
+            in 'A'..'F' -> c - 'A' + 10
+            else -> return FallbackTint
+        }
+        value = value shl 4 or digit
+    }
+    return Color(0xFF000000.toInt() or value)
+}
+
+/**
+ * The cream the product calls its tint default, as a [Color]. Must mirror
+ * [SettingsStore.DEFAULT_ICON_TINT] — the one value every fallback path agrees on.
+ */
+private val FallbackTint = Color(0xFFEDE6D8)
 
 /**
  * Icons are loaded off the main thread and only when a layout asks for them. The slot is
  * emitted even while the bitmap is null, so a resolving icon cannot shift the label.
+ *
+ * Internal because the Today dock draws the same icon without a row around it.
  */
 @Composable
-private fun AppIcon(viewModel: LauncherViewModel, target: LaunchTarget, sizeDp: Int) {
+internal fun AppIcon(viewModel: LauncherViewModel, target: LaunchTarget, sizeDp: Int) {
     val px = with(LocalDensity.current) { sizeDp.dp.roundToPx() }
     val bitmap by produceState<Bitmap?>(initialValue = null, target.key) {
         value = viewModel.bitmapFor(target, px)
     }
-    val monochrome = LocalMonochromeIcons.current
+    val style = LocalIconStyle.current
+    val tint = LocalIconTint.current
+    // Allocated once per (style, tint), not once per recomposition: the filter is what
+    // the Image holds on to, and a dock redraws on every settle of the pager.
+    val filter = remember(style, tint) {
+        if (style == IconStyle.NATIVE) null else ColorFilter.colorMatrix(duotoneMatrix(tint))
+    }
     Box(Modifier.size(sizeDp.dp)) {
         bitmap?.let {
             Image(
                 bitmap = it.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Fit,
-                colorFilter = if (monochrome) ColorFilter.colorMatrix(MonochromeMatrix) else null,
+                colorFilter = filter,
                 modifier = Modifier.fillMaxSize(),
             )
         }

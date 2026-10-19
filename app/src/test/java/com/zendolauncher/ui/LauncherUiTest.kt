@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
@@ -21,7 +22,9 @@ import com.zendolauncher.BuildConfig
 import com.zendolauncher.LauncherActivity
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.PageType
+import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.LayoutMode
+import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.LauncherTheme
@@ -67,6 +70,12 @@ class LauncherUiTest {
         viewModel.setTodayEnabled(true)
         viewModel.setClock24h(true)
         viewModel.setPauseEnabled(false)
+        // The icon-appearance keys are written by other tests in this class; restoring
+        // the product defaults here keeps every test independent of execution order.
+        viewModel.setIconStyle(IconStyle.MONOCHROME)
+        viewModel.setIconTint(SettingsStore.DEFAULT_ICON_TINT)
+        viewModel.setIconTintMatchWallpaper(false)
+        viewModel.setHomeBackdrop(false)
         // Home is a pager and the active page is persisted, so a test that swiped away would
         // otherwise leave the next one looking at whatever page it stopped on. The stored id
         // is written first, then the pager is moved, because the move is what the effect
@@ -87,11 +96,20 @@ class LauncherUiTest {
         rule.waitForIdle()
     }
 
+    /**
+     * Waits for the off-main-thread rescan that follows [FakeApps.install] to land in
+     * `visibleApps`, which is what the dock and the drawer resolve against.
+     */
+    private fun awaitVisibleApps(count: Int) {
+        rule.waitUntil(5_000) { viewModel.state.value.visibleApps.size == count }
+        rule.waitForIdle()
+    }
+
     @Before
     fun setUp() = resetSettings()
 
     /**
-     * Toggles appear in document order: 24-hour clock, Grayscale icons, Reduce
+     * Toggles appear in document order: 24-hour clock, Match wallpaper, Reduce
      * transitions, Show today, and the rest. The rows themselves carry no semantics,
      * so they are addressed by position or by their label. Settings scroll, so later
      * rows must be scrolled into view before a tap can land on them.
@@ -146,7 +164,9 @@ class LauncherUiTest {
         rule.onNodeWithText("Home").performClick()
         rule.waitForIdle()
         assertEquals(Screen.HOME, viewModel.state.value.screen)
-        rule.onNodeWithText("Highlights").assertIsDisplayed()
+        // The pill sits below the page's scroll viewport on the smallest Robolectric
+        // screen, so the dashboard below the fold is scrolled to as in the sibling test.
+        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -221,6 +241,127 @@ class LauncherUiTest {
         rule.onAllNodesWithText("Highlights").assertCountEquals(0)
         rule.onAllNodesWithText("Write your priority here. It stays until you edit or archive it.").assertCountEquals(0)
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
+    }
+
+    /**
+     * The Today page's search pill: text only, because the drawer's own field is the
+     * icon and a magnifier glyph would be the one pictorial element in the launcher.
+     * Tapping it opens the drawer with a one-shot ask that the field takes the cursor
+     * and the keyboard comes up; the drawer consumes the ask on arrival, so an ordinary
+     * browse-in does not summon the keyboard later.
+     */
+    @Test
+    fun todaySearchPill_opensTheDrawer_andTheFocusAskIsConsumed() {
+        rule.onNodeWithText("Search apps").assertIsDisplayed()
+
+        rule.onNodeWithText("Search apps").performClick()
+        rule.waitForIdle()
+
+        assertEquals(Screen.APPS, viewModel.state.value.screen)
+        assertFalse(viewModel.state.value.autoFocusSearch)
+    }
+
+    /**
+     * The Today dock: the page's own pinned order, icon-only and capped at five. Items
+     * resolve against the real enumeration — the fakes are installed into Robolectric's
+     * package manager — so this is the production resolution path. The page config has
+     * no in-app editor yet, so HomeScreen is composed over a crafted state; the layout
+     * it carries is what the store would hold.
+     */
+    @Test
+    fun todayDock_rendersPinnedItems_andCapsAtFive() {
+        val keys = (1..6).map { index ->
+            FakeApps.install(rule.activity, "com.example.dock$index", "Dock $index")
+        }
+        viewModel.refreshApps()
+        awaitVisibleApps(6)
+
+        val state = dockState(keys)
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    HomeScreen(viewModel, state)
+                }
+            }
+        }
+        rule.waitForIdle()
+
+        // In the page's own order, five of the six fit; the sixth is not silently
+        // swapped in for one of them. One calm row, no labels and no dots. The
+        // descriptions are the resolved targets' own labels rather than the fixture's
+        // spelling of them: Robolectric's legacy graphics measure every glyph as zero
+        // width, so the platform rewrites a label it cannot measure to the package
+        // name, and the assertion pins what would actually be drawn either way.
+        val resolved = state.visibleApps.associateBy { it.key }
+        keys.take(5).forEach { key ->
+            rule.onNodeWithContentDescription(resolved.getValue(key).label).assertIsDisplayed()
+        }
+        rule.onAllNodesWithContentDescription(resolved.getValue(keys[5]).label).assertCountEquals(0)
+    }
+
+    /**
+     * TINTED is a real render path, not a stored word: the duotone matrix is built from
+     * the wallpaper's accent when one is known. Robolectric finds no apps to wash here,
+     * so the contract is that Home still composes — clock, date and pill — with the
+     * style in place and no wallpaper known.
+     */
+    @Test
+    fun homeScreen_rendersWithTintedIconStyle() {
+        viewModel.setIconStyle(IconStyle.TINTED)
+        rule.waitForIdle()
+        assertEquals(IconStyle.TINTED, viewModel.state.value.settings.iconStyle)
+
+        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
+        rule.onNodeWithText("Search apps").assertIsDisplayed()
+    }
+
+    /**
+     * The dock and the search pill are the Today page's own, and only its: Plan & Focus
+     * carries its own content and must not inherit them. The pager's initial page comes
+     * from `home.activePageId`, so a state whose active page is Plan settles there — the
+     * page renders itself, and neither Today element may appear.
+     */
+    @Test
+    fun home_onAPlanPage_hidesTheTodayDockAndPill() {
+        val keys = (1..2).map { index ->
+            FakeApps.install(rule.activity, "com.example.planpage$index", "Plan page $index")
+        }
+        viewModel.refreshApps()
+        awaitVisibleApps(2)
+
+        val base = viewModel.state.value
+        val today = base.settings.home.pages.first { it.type == PageType.TODAY }
+        val plan = base.settings.home.pages.first { it.type == PageType.PLAN }
+        val home = base.settings.home
+            .updatePageConfig(today.id, today.config.copy(itemKeys = keys))
+            .copy(activePageId = plan.id)
+        val state = base.copy(settings = base.settings.copy(home = home), pagerTargetPage = null)
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    HomeScreen(viewModel, state)
+                }
+            }
+        }
+        rule.waitForIdle()
+
+        // Settled on Plan: its own row proves it, the clock page is not composed, and
+        // neither Today-only element rendered.
+        rule.onNodeWithText("Earlier").assertIsDisplayed()
+        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(0)
+        rule.onAllNodesWithText("Search apps").assertCountEquals(0)
+        val resolved = state.visibleApps.associateBy { it.key }
+        keys.forEach { key ->
+            rule.onAllNodesWithContentDescription(resolved.getValue(key).label).assertCountEquals(0)
+        }
+    }
+
+    /** The Today page's config carrying [keys] as its pinned order, over live state. */
+    private fun dockState(keys: List<String>): UiState {
+        val base = viewModel.state.value
+        val today = base.settings.home.pages.first { it.type == PageType.TODAY }
+        val home = base.settings.home.updatePageConfig(today.id, today.config.copy(itemKeys = keys))
+        return base.copy(settings = base.settings.copy(home = home), pagerTargetPage = null)
     }
 
     @Test
