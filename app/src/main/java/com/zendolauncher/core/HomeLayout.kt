@@ -234,16 +234,17 @@ data class HomeLayout(
         const val MAX_PAGES = 5
 
         /**
-         * The layout a fresh install gets. The three ids are fixed literals rather than
-         * generated, so a stored layout can name them and migration can build on them.
+         * The layout a fresh install gets: one page, holding the apps you pinned.
+         *
+         * Everything else — Today, Plan & Focus, a second app page — is something you
+         * add on purpose from Edit pages. A launcher whose first screen is a dashboard
+         * before you have told it anything is a dashboard you did not ask for.
          */
         val DEFAULT: HomeLayout = HomeLayout(
             pages = listOf(
-                HomePage("p_today", PageType.TODAY, "Today", PageConfig(showClock = true)),
-                HomePage("p_plan", PageType.PLAN, "Plan & Focus"),
-                HomePage("p_launch", PageType.APPS, "Essentials", PageConfig(heading = "Essentials")),
+                HomePage("p_apps", PageType.APPS, "Apps"),
             ),
-            activePageId = "p_today",
+            activePageId = "p_apps",
         )
 
         /** 1 + 32 characters, no separator, so an id is safe inside every encoding. */

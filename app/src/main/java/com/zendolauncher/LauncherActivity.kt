@@ -11,41 +11,29 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.zendolauncher.core.WallpaperTemplates
-import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.AppListScreen
 import com.zendolauncher.ui.BackupRestoreDialog
-import com.zendolauncher.ui.BridgeImportDialog
 import com.zendolauncher.ui.CalendarScreen
 import com.zendolauncher.ui.ClearHistoryDialog
 import com.zendolauncher.ui.HighlightEditorScreen
 import com.zendolauncher.ui.HistoryScreen
 import com.zendolauncher.ui.HomeScreen
-import com.zendolauncher.ui.LocalIconStyle
-import com.zendolauncher.ui.LocalIconTint
 import com.zendolauncher.ui.LauncherViewModel
 import com.zendolauncher.ui.OnboardingScreen
-import com.zendolauncher.ui.PermissionsScreen
-import com.zendolauncher.ui.SetupScreen
 import com.zendolauncher.ui.PauseDialog
 import com.zendolauncher.ui.Screen
-import com.zendolauncher.ui.parseTint
 import com.zendolauncher.ui.SettingsScreen
 import com.zendolauncher.ui.TaskEditorScreen
-import com.zendolauncher.ui.WallpaperScreen
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherTheme
-import java.util.Locale
 
 /**
  * The home screen. singleTask + stateNotNeeded + clearTaskOnLaunch in the manifest
@@ -62,11 +50,9 @@ class LauncherActivity : ComponentActivity() {
         // window). The manifest theme follows the *system* night mode through values-night,
         // but the theme here is app-controlled, so an explicit choice must be applied to
         // the window before it exists: setTheme() after super.onCreate() is too late.
-        // SYSTEM does nothing, keeping the manifest theme and its night-qualified values.
         when (SettingsStore(this).read().theme) {
             ThemeMode.LIGHT -> setTheme(R.style.Theme_ZendoLauncher_Light)
             ThemeMode.DARK -> setTheme(R.style.Theme_ZendoLauncher_Dark)
-            ThemeMode.SYSTEM -> Unit
         }
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -74,16 +60,7 @@ class LauncherActivity : ComponentActivity() {
             val state by viewModel.state.collectAsStateWithLifecycle()
             LauncherTheme(mode = state.settings.theme) {
                 SystemBarIcons()
-                // Icon appearance by default: one provider, so Home, the drawer and every
-                // list agree on the Appearance setting. The tint is provided already
-                // resolved — the stored swatch, or the wallpaper's accent when the user
-                // asked the two to match — so no composable needs to know about wallpapers.
-                CompositionLocalProvider(
-                    LocalIconStyle provides state.settings.iconStyle,
-                    LocalIconTint provides resolvedIconTint(state.settings.iconStyle, state.settings.iconTint, state.settings.iconTintMatchWallpaper, state.wallpaperAppliedId),
-                ) {
-                    LauncherRoot(viewModel, state)
-                }
+                LauncherRoot(viewModel, state)
             }
         }
     }
@@ -96,10 +73,6 @@ class LauncherActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshHomeState()
-        // Returning from system Settings is exactly when a usage-access grant (or a
-        // revocation) must be re-read; the check reads a state, it never asks for
-        // anything, so it cannot become a repeat prompt.
-        viewModel.refreshUsageAccess()
     }
 
     override fun onStop() {
@@ -132,32 +105,6 @@ private fun SystemBarIcons() {
     }
 }
 
-/**
- * The one tint every monochrome icon is washed toward, as `#RRGGBB`.
- *
- * TINTED always follows the wallpaper's accent, and MONOCHROME follows it only when
- * the user asked for the match. The accent comes from [appliedWallpaperId] — the
- * design the last successful apply actually sent to the system — falling back to
- * [WallpaperTemplates.DEFAULT_ID] when nothing has been applied or the stored id is
- * not a template (the same design [LauncherViewModel.applyWallpaper] itself would
- * apply), and to the cream default on the impossible day even that will not resolve.
- * [IconStyle.NATIVE] never reads the tint, but returning the stored value keeps this
- * function total.
- */
-internal fun resolvedIconTint(
-    style: IconStyle,
-    storedTint: String,
-    matchWallpaper: Boolean,
-    appliedWallpaperId: String?,
-): String {
-    if (style == IconStyle.NATIVE) return storedTint
-    if (style != IconStyle.TINTED && !matchWallpaper) return storedTint
-    val template = appliedWallpaperId?.let { WallpaperTemplates.byId(it) }
-        ?: WallpaperTemplates.byId(WallpaperTemplates.DEFAULT_ID)
-    val accent = template?.dominantAccent() ?: parseTint(SettingsStore.DEFAULT_ICON_TINT)
-    return String.format(Locale.US, "#%06X", accent.toArgb() and 0xFFFFFF)
-}
-
 @Composable
 private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.ui.UiState) {
     // Back ownership, most-specific last (last registered wins):
@@ -172,17 +119,12 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
         viewModel.goHome()
     }
     BackHandler(
-        enabled = state.screen == Screen.WALLPAPERS ||
-            state.screen == Screen.CALENDAR ||
-            state.screen == Screen.HISTORY,
+        enabled = state.screen == Screen.CALENDAR || state.screen == Screen.HISTORY,
     ) {
         viewModel.goHome()
     }
-    BackHandler(enabled = state.screen == Screen.SETUP) {
-        viewModel.backFromSetup()
-    }
-    BackHandler(enabled = state.screen == Screen.PERMISSIONS) {
-        viewModel.backFromPermissions()
+    BackHandler(enabled = state.screen == Screen.HOME && state.addingPage) {
+        viewModel.closeAddPage()
     }
     BackHandler(enabled = state.screen == Screen.HOME && state.pageEditing) {
         viewModel.leavePageEdit()
@@ -214,9 +156,6 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
     BackHandler(enabled = state.confirmClearHistory) {
         viewModel.cancelClearHistory()
     }
-    BackHandler(enabled = state.bridgePreview != null) {
-        viewModel.cancelBridgeImport()
-    }
     BackHandler(enabled = state.backupPreview != null) {
         viewModel.cancelBackupRestore()
     }
@@ -234,13 +173,10 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
             Screen.HOME -> HomeScreen(viewModel, state)
             Screen.APPS -> AppListScreen(viewModel, state)
             Screen.SETTINGS -> SettingsScreen(viewModel, state)
-            Screen.WALLPAPERS -> WallpaperScreen(viewModel, state)
             Screen.CALENDAR -> CalendarScreen(viewModel, state)
             Screen.HISTORY -> HistoryScreen(viewModel, state)
             Screen.HIGHLIGHT_EDITOR -> HighlightEditorScreen(viewModel, state)
             Screen.TASK_EDITOR -> TaskEditorScreen(viewModel, state)
-            Screen.SETUP -> SetupScreen(viewModel, state)
-            Screen.PERMISSIONS -> PermissionsScreen(viewModel, state)
         }
         // Launcher-level pre-launch only: the dialog interposes here, over whichever
         // list the tap came from, and Home underneath is untouched.
@@ -252,16 +188,8 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
                 onCancel = { viewModel.cancelPause() },
             )
         }
-        // File-transfer previews and the one destructive confirmation. Rendered at the
+        // The restore preview and the one destructive confirmation. Rendered at the
         // root so they can appear over Settings or History, whichever asked.
-        state.bridgePreview?.let {
-            BridgeImportDialog(
-                preview = it,
-                onMode = { mode -> viewModel.setBridgeImportMode(mode) },
-                onApply = { viewModel.confirmBridgeImport() },
-                onCancel = { viewModel.cancelBridgeImport() },
-            )
-        }
         state.backupPreview?.let {
             BackupRestoreDialog(
                 preview = it,

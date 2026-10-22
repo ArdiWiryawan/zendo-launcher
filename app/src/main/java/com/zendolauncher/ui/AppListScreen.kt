@@ -245,7 +245,6 @@ private fun AppListRow(viewModel: LauncherViewModel, state: UiState, target: Lau
     AppRow(
         viewModel = viewModel,
         target = target,
-        layout = state.settings.layout,
         isFavourite = target.key in pinnedKeys,
         onClick = { viewModel.launch(target) },
         onToggleFavourite = { viewModel.toggleFavourite(target.key) },

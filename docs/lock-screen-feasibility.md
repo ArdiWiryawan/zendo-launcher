@@ -1,5 +1,7 @@
 # Lock Screen Feasibility
 
+> **Historical.** This document describes a feature that was removed in 0.7.0. The launcher no longer draws app artwork, ships a wallpaper gallery, reads usage statistics, or imports Zendo snapshots. Kept for the record and for anyone reading an older build.
+
 Verdict: not feasible as a launcher feature; no path in tree.
 
 Scope: versionName 0.2.2 (`app/build.gradle:23`). Manifest zero `<uses-permission>`, single HOME activity (`app/src/main/AndroidManifest.xml:1-48`).

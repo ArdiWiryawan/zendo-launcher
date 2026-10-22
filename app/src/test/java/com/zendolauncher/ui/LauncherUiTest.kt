@@ -10,21 +10,18 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isToggleable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.printToString
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.LauncherActivity
-import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.PageType
-import com.zendolauncher.data.IconStyle
-import com.zendolauncher.data.LayoutMode
-import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.LauncherTheme
@@ -48,7 +45,9 @@ import org.robolectric.annotation.Config
  * (16-robolectric-13921718), matching the app's compileSdk/targetSdk.
  *
  * Settings live in SharedPreferences, which Robolectric keeps for the whole JVM, so
- * every test resets the settings it depends on instead of assuming defaults.
+ * every test resets the settings and the Home layout it depends on instead of assuming
+ * defaults. A fresh install is a single apps page; any other page is added by a test
+ * that needs it, exactly as a user would.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [36])
@@ -64,22 +63,21 @@ class LauncherUiTest {
         node.config.getOrNull(SemanticsProperties.Text)?.any { regex.containsMatchIn(it.text) } == true
     }
 
+    /**
+     * Back to one apps page, dark, no pause. The layout is trimmed rather than rebuilt
+     * because pages persist in SharedPreferences for the whole JVM: a Today or Plan page
+     * left behind by a test would otherwise be read by the next one.
+     */
     private fun resetSettings() {
-        viewModel.setTheme(ThemeMode.SYSTEM)
-        viewModel.setLayout(LayoutMode.TEXT)
-        viewModel.setTodayEnabled(true)
-        viewModel.setClock24h(true)
+        viewModel.setTheme(ThemeMode.DARK)
         viewModel.setPauseEnabled(false)
-        // The icon-appearance keys are written by other tests in this class; restoring
-        // the product defaults here keeps every test independent of execution order.
-        viewModel.setIconStyle(IconStyle.MONOCHROME)
-        viewModel.setIconTint(SettingsStore.DEFAULT_ICON_TINT)
-        viewModel.setIconTintMatchWallpaper(false)
-        viewModel.setHomeBackdrop(false)
-        // Home is a pager and the active page is persisted, so a test that swiped away would
-        // otherwise leave the next one looking at whatever page it stopped on. The stored id
-        // is written first, then the pager is moved, because the move is what the effect
-        // acts on. Page 0 is the Today page, which is what the default layout starts on.
+        viewModel.setReduceMotion(false)
+        viewModel.setWindowEnabled(false)
+        viewModel.setCalendarAsked(false)
+
+        val pages = viewModel.state.value.settings.home.pages
+        val keep = pages.firstOrNull { it.type == PageType.APPS } ?: pages.first()
+        pages.filter { it.id != keep.id }.forEach { viewModel.removePage(it.id) }
         viewModel.onPagerSettled(0)
         viewModel.goToPage(0)
         viewModel.goHome()
@@ -98,7 +96,7 @@ class LauncherUiTest {
 
     /**
      * Waits for the off-main-thread rescan that follows [FakeApps.install] to land in
-     * `visibleApps`, which is what the dock and the drawer resolve against.
+     * `visibleApps`, which is what the drawers and rows resolve against.
      */
     private fun awaitVisibleApps(count: Int) {
         rule.waitUntil(5_000) { viewModel.state.value.visibleApps.size == count }
@@ -107,15 +105,6 @@ class LauncherUiTest {
 
     @Before
     fun setUp() = resetSettings()
-
-    /**
-     * Toggles appear in document order: 24-hour clock, Match wallpaper, Reduce
-     * transitions, Show today, and the rest. The rows themselves carry no semantics,
-     * so they are addressed by position or by their label. Settings scroll, so later
-     * rows must be scrolled into view before a tap can land on them.
-     */
-    private fun toggleAt(index: Int) =
-        rule.onAllNodes(isToggleable())[index].performScrollTo()
 
     /** The toggleable row that contains [label] as one of its own cells. */
     private fun toggleLabelled(label: String) =
@@ -128,130 +117,47 @@ class LauncherUiTest {
     private val clockPattern = Regex("""\b\d{1,2}:\d{2}\b""")
     private val datePattern = Regex("""\p{L}+,\s*\d{1,2}\s+\p{L}+""")
 
+    // ---- Home: one page, text only ---------------------------------------------------
+
     @Test
-    fun homeScreen_composes_andShowsClockAndDate() {
-        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
-        rule.onAllNodes(textMatching(datePattern)).assertCountEquals(1)
+    fun home_startsWithASingleAppsPage_andNoPageDots() {
+        val home = viewModel.state.value.settings.home
+        assertEquals(1, home.pages.size)
+        assertEquals(PageType.APPS, home.pages.single().type)
+
+        // One page means nothing to indicate and nothing to swipe to.
+        rule.onAllNodesWithText("Apps").assertCountEquals(0)
+        rule.onNodeWithText("No apps on this page yet.").assertIsDisplayed()
+        rule.onNodeWithText("Search apps").assertIsDisplayed()
     }
 
     @Test
-    fun homeScreen_showsTodayEmptyStates_andBottomActions() {
-        // Today dashboard is local and persistent: action, highlights and tasks each
-        // render an honest empty state rather than invented rows. The calendar lives
-        // on the Plan page, so the dashboard's last line is the way into history.
-        rule.onNodeWithText("Name the one thing that matters today.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("No tasks yet. Add the first one below.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("History").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("All apps").assertIsDisplayed()
-        rule.onNodeWithText("Settings").assertIsDisplayed()
+    fun home_hasNoClockOnTheAppsPage() {
+        // The clock belongs to the Today page. On a fresh install there is no Today page,
+        // so the first screen is the list and nothing else.
+        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(0)
     }
 
     @Test
-    fun allAppsAction_navigatesToAppList_andHomeReturns() {
-        rule.onNodeWithText("All apps").performClick()
+    fun home_showsPinnedAppsAsText() {
+        val keys = listOf(
+            FakeApps.install(rule.activity, "com.example.textonly1", "Alpha"),
+            FakeApps.install(rule.activity, "com.example.textonly2", "Beta"),
+        )
+        viewModel.refreshApps()
+        awaitVisibleApps(2)
+        keys.forEach { viewModel.toggleFavourite(it) }
         rule.waitForIdle()
-        assertEquals(Screen.APPS, viewModel.state.value.screen)
 
-        // The screen header, the search field with its placeholder, and the definitive
-        // empty state, which is only true once the enumeration has finished.
-        rule.onNodeWithText("All apps").assertIsDisplayed()
-        rule.onNodeWithText("Search").assertIsDisplayed()
-        awaitEnumeration()
-        rule.onNodeWithText("No launchable apps found.").assertIsDisplayed()
-
-        rule.onNodeWithText("Home").performClick()
-        rule.waitForIdle()
-        assertEquals(Screen.HOME, viewModel.state.value.screen)
-        // The pill sits below the page's scroll viewport on the smallest Robolectric
-        // screen, so the dashboard below the fold is scrolled to as in the sibling test.
-        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
+        assertEquals(keys, viewModel.state.value.settings.home.page("p_apps")?.config?.itemKeys)
+        val resolved = viewModel.state.value.favourites
+        assertEquals(2, resolved.size)
+        // Rendered with the label the launcher resolved, as text — no icon slot at all.
+        resolved.forEach { rule.onNodeWithText(it.label).assertIsDisplayed() }
     }
 
     @Test
-    fun goHome_fromSettings_returnsHome() {
-        rule.onNodeWithText("Settings").performClick()
-        rule.waitForIdle()
-        assertEquals(Screen.SETTINGS, viewModel.state.value.screen)
-        rule.onNodeWithText("24-hour clock").assertIsDisplayed()
-
-        rule.onNodeWithText("Home").performClick()
-        rule.waitForIdle()
-        assertEquals(Screen.HOME, viewModel.state.value.screen)
-    }
-
-    @Test
-    fun search_withNoMatches_showsNothingMatchesEmptyState() {
-        viewModel.openApps()
-        rule.waitForIdle()
-        viewModel.setQuery("zzz")
-        rule.waitForIdle()
-
-        rule.onNodeWithText("Nothing matches \"zzz\".").assertIsDisplayed()
-        rule.onNodeWithText("Results").assertIsDisplayed()
-    }
-
-    @Test
-    fun search_isClearedWhenGoingHome() {
-        viewModel.openApps()
-        viewModel.setQuery("zzz")
-        rule.waitForIdle()
-        viewModel.goHome()
-        rule.waitForIdle()
-        assertEquals("", viewModel.state.value.query)
-    }
-
-    /** Clearing must not require leaving the drawer, which goHome() was the only route to. */
-    @Test
-    fun search_clearAction_emptiesQuery_andStaysOnAppList() {
-        viewModel.openApps()
-        rule.waitForIdle()
-        viewModel.setQuery("zzz")
-        rule.waitForIdle()
-        rule.onNodeWithText("Results").assertIsDisplayed()
-
-        rule.onNodeWithText("Clear").performClick()
-        rule.waitForIdle()
-        assertEquals("", viewModel.state.value.query)
-        assertEquals(Screen.APPS, viewModel.state.value.screen)
-    }
-
-    /** The clear affordance has nothing to clear until something is typed. */
-    @Test
-    fun search_clearAction_absentWhileQueryIsEmpty() {
-        viewModel.openApps()
-        rule.waitForIdle()
-        rule.onAllNodesWithText("Clear").assertCountEquals(0)
-    }
-
-    @Test
-    fun todayBlock_rendersLocalDashboard_andHiddenWhenTodayIsOff() {
-        // Defaults: todayEnabled = true. The dashboard is local (action/highlights/tasks),
-        // so it renders on its own; the clock is the page's own and unaffected by any of it.
-        assertTrue(viewModel.state.value.settings.todayEnabled)
-        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Write your priority here. It stays until you edit or archive it.").performScrollTo().assertIsDisplayed()
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
-
-        // Turning the section off removes the dashboard entirely, and the page still
-        // renders its clock and its date.
-        viewModel.setTodayEnabled(false)
-        rule.waitForIdle()
-        rule.onAllNodesWithText("Highlights").assertCountEquals(0)
-        rule.onAllNodesWithText("Write your priority here. It stays until you edit or archive it.").assertCountEquals(0)
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
-    }
-
-    /**
-     * The Today page's search pill: text only, because the drawer's own field is the
-     * icon and a magnifier glyph would be the one pictorial element in the launcher.
-     * Tapping it opens the drawer with a one-shot ask that the field takes the cursor
-     * and the keyboard comes up; the drawer consumes the ask on arrival, so an ordinary
-     * browse-in does not summon the keyboard later.
-     */
-    @Test
-    fun todaySearchPill_opensTheDrawer_andTheFocusAskIsConsumed() {
+    fun searchPill_opensTheDrawer_andTheFocusAskIsConsumed() {
         rule.onNodeWithText("Search apps").assertIsDisplayed()
 
         rule.onNodeWithText("Search apps").performClick()
@@ -261,183 +167,152 @@ class LauncherUiTest {
         assertFalse(viewModel.state.value.autoFocusSearch)
     }
 
-    /**
-     * The Today dock: the page's own pinned order, icon-only and capped at five. Items
-     * resolve against the real enumeration — the fakes are installed into Robolectric's
-     * package manager — so this is the production resolution path. The page config has
-     * no in-app editor yet, so HomeScreen is composed over a crafted state; the layout
-     * it carries is what the store would hold.
-     */
-    @Test
-    fun todayDock_rendersPinnedItems_andCapsAtFive() {
-        val keys = (1..6).map { index ->
-            FakeApps.install(rule.activity, "com.example.dock$index", "Dock $index")
-        }
-        viewModel.refreshApps()
-        awaitVisibleApps(6)
+    // ---- Adding a page ---------------------------------------------------------------
 
-        val state = dockState(keys)
-        rule.activityRule.scenario.onActivity { activity ->
-            activity.setContent {
-                LauncherTheme(mode = ThemeMode.DARK) {
-                    HomeScreen(viewModel, state)
-                }
-            }
-        }
+    @Test
+    fun editPages_addPage_offersTypes_andCreatesTheChosenOne() {
+        viewModel.enterPageEdit()
+        rule.waitForIdle()
+        rule.onNodeWithText("Add page").performClick()
         rule.waitForIdle()
 
-        // In the page's own order, five of the six fit; the sixth is not silently
-        // swapped in for one of them. One calm row, no labels and no dots. The
-        // descriptions are the resolved targets' own labels rather than the fixture's
-        // spelling of them: Robolectric's legacy graphics measure every glyph as zero
-        // width, so the platform rewrites a label it cannot measure to the package
-        // name, and the assertion pins what would actually be drawn either way.
-        val resolved = state.visibleApps.associateBy { it.key }
-        keys.take(5).forEach { key ->
-            rule.onNodeWithContentDescription(resolved.getValue(key).label).assertIsDisplayed()
-        }
-        rule.onAllNodesWithContentDescription(resolved.getValue(keys[5]).label).assertCountEquals(0)
+        rule.onNodeWithText("Add a page").assertIsDisplayed()
+        rule.onNodeWithText("Today").performClick()
+        rule.waitForIdle()
+
+        val pages = viewModel.state.value.settings.home.pages
+        assertEquals(2, pages.size)
+        assertEquals(PageType.TODAY, pages.last().type)
+        assertFalse(viewModel.state.value.addingPage)
+
+        viewModel.leavePageEdit()
+        viewModel.removePage(pages.last().id)
+        rule.waitForIdle()
     }
 
-    /**
-     * TINTED is a real render path, not a stored word: the duotone matrix is built from
-     * the wallpaper's accent when one is known. Robolectric finds no apps to wash here,
-     * so the contract is that Home still composes — clock, date and pill — with the
-     * style in place and no wallpaper known.
-     */
     @Test
-    fun homeScreen_rendersWithTintedIconStyle() {
-        viewModel.setIconStyle(IconStyle.TINTED)
+    fun addPage_back_closesThePickerWithoutAddingAPage() {
+        val before = viewModel.state.value.settings.home.pages.size
+        viewModel.enterPageEdit()
+        viewModel.openAddPage()
         rule.waitForIdle()
-        assertEquals(IconStyle.TINTED, viewModel.state.value.settings.iconStyle)
+        assertTrue(viewModel.state.value.addingPage)
+
+        assertTrue(viewModel.back())
+        rule.waitForIdle()
+        assertFalse(viewModel.state.value.addingPage)
+        assertEquals(before, viewModel.state.value.settings.home.pages.size)
+        viewModel.leavePageEdit()
+    }
+
+    /** The Today page exists only when it was added: clock, date and the local dashboard. */
+    @Test
+    fun todayPage_rendersClockAndDashboard_onlyWhenAdded() {
+        rule.onAllNodesWithText("Highlights").assertCountEquals(0)
+
+        viewModel.addPage(PageType.TODAY)
+        rule.waitForIdle()
 
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
-        rule.onNodeWithText("Search apps").assertIsDisplayed()
+        rule.onAllNodes(textMatching(datePattern)).assertCountEquals(1)
+        rule.onNodeWithText("Name the one thing that matters today.").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("No tasks yet. Add the first one below.").performScrollTo().assertIsDisplayed()
+
+        val today = viewModel.state.value.settings.home.pages.last()
+        viewModel.removePage(today.id)
+        rule.waitForIdle()
     }
 
     /**
-     * The dock and the search pill are the Today page's own, and only its: Plan & Focus
-     * carries its own content and must not inherit them. The pager's initial page comes
-     * from `home.activePageId`, so a state whose active page is Plan settles there — the
-     * page renders itself, and neither Today element may appear.
+     * The Plan page renders the date navigation and the calendar's permission state.
+     * Robolectric has no calendar permission, so the page must say so instead of drawing
+     * an empty agenda.
      */
     @Test
-    fun home_onAPlanPage_hidesTheTodayDockAndPill() {
-        val keys = (1..2).map { index ->
-            FakeApps.install(rule.activity, "com.example.planpage$index", "Plan page $index")
-        }
-        viewModel.refreshApps()
-        awaitVisibleApps(2)
-
-        val base = viewModel.state.value
-        val today = base.settings.home.pages.first { it.type == PageType.TODAY }
-        val plan = base.settings.home.pages.first { it.type == PageType.PLAN }
-        val home = base.settings.home
-            .updatePageConfig(today.id, today.config.copy(itemKeys = keys))
-            .copy(activePageId = plan.id)
-        val state = base.copy(settings = base.settings.copy(home = home), pagerTargetPage = null)
-        rule.activityRule.scenario.onActivity { activity ->
-            activity.setContent {
-                LauncherTheme(mode = ThemeMode.DARK) {
-                    HomeScreen(viewModel, state)
-                }
-            }
-        }
+    fun planPage_rendersAgendaStates_andDateNavigation() {
+        viewModel.addPage(PageType.PLAN)
         rule.waitForIdle()
 
-        // Settled on Plan: its own row proves it, the clock page is not composed, and
-        // neither Today-only element rendered.
-        rule.onNodeWithText("Earlier").assertIsDisplayed()
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(0)
-        rule.onAllNodesWithText("Search apps").assertCountEquals(0)
-        val resolved = state.visibleApps.associateBy { it.key }
-        keys.forEach { key ->
-            rule.onAllNodesWithContentDescription(resolved.getValue(key).label).assertCountEquals(0)
-        }
+        rule.onNodeWithText("Plan").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Earlier").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Later").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Allow calendar access").performScrollTo().assertIsDisplayed()
+
+        val plan = viewModel.state.value.settings.home.pages.last()
+        viewModel.removePage(plan.id)
+        rule.waitForIdle()
     }
 
-    /** The Today page's config carrying [keys] as its pinned order, over live state. */
-    private fun dockState(keys: List<String>): UiState {
-        val base = viewModel.state.value
-        val today = base.settings.home.pages.first { it.type == PageType.TODAY }
-        val home = base.settings.home.updatePageConfig(today.id, today.config.copy(itemKeys = keys))
-        return base.copy(settings = base.settings.copy(home = home), pagerTargetPage = null)
-    }
+    // ---- Settings --------------------------------------------------------------------
 
     @Test
-    fun settings_24HourToggle_updatesState_andClockRenders12Hour() {
+    fun settings_themeChoice_isLightOrDark_andDefaultsToDark() {
         viewModel.openSettings()
-        rule.waitForIdle()
-        assertTrue(viewModel.state.value.settings.clock24h)
-
-        toggleAt(0).performClick()
-        rule.waitForIdle()
-        assertFalse(viewModel.state.value.settings.clock24h)
-
-        viewModel.goHome()
-        rule.waitForIdle()
-        // Still exactly one clock, now in 12-hour form with an am/pm marker.
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
-        rule.onAllNodes(textMatching(Regex("""\b(AM|PM)\b"""))).assertCountEquals(1)
-    }
-
-    @Test
-    fun settings_themeChoice_updatesState() {
-        viewModel.openSettings()
-        rule.waitForIdle()
-        assertEquals(ThemeMode.SYSTEM, viewModel.state.value.settings.theme)
-
-        rule.onNodeWithText("Dark").performClick()
         rule.waitForIdle()
         assertEquals(ThemeMode.DARK, viewModel.state.value.settings.theme)
 
         rule.onNodeWithText("Light").performClick()
         rule.waitForIdle()
         assertEquals(ThemeMode.LIGHT, viewModel.state.value.settings.theme)
+
+        rule.onNodeWithText("Dark").performClick()
+        rule.waitForIdle()
+        assertEquals(ThemeMode.DARK, viewModel.state.value.settings.theme)
     }
 
+    /** System was a third state that only deferred the choice; it must not come back. */
     @Test
-    fun settings_layoutChoice_updatesState() {
+    fun settings_hasNoSystemThemeOption() {
         viewModel.openSettings()
         rule.waitForIdle()
-        assertEquals(LayoutMode.TEXT, viewModel.state.value.settings.layout)
-
-        rule.onNodeWithText("Icon + text").performClick()
-        rule.waitForIdle()
-        assertEquals(LayoutMode.ICON_TEXT, viewModel.state.value.settings.layout)
-    }
-
-    @Test
-    fun settings_showTodayToggle_updatesState() {
-        viewModel.openSettings()
-        rule.waitForIdle()
-        assertTrue(viewModel.state.value.settings.todayEnabled)
-
-        toggleLabelled("Show today").performClick()
-        rule.waitForIdle()
-        assertFalse(viewModel.state.value.settings.todayEnabled)
+        rule.onAllNodesWithText("System").assertCountEquals(0)
     }
 
     /**
-     * Refresh is not a Home concern: both repositories rescan through
-     * `LauncherApps.Callback` and the one manual control lives on the app list, so its
-     * presence must not depend on the icon layout either.
+     * The rows that were removed: pin limits and order, 24-hour clock, icon style, layout
+     * mode, wallpaper gallery, screen time, Zendo import, gesture toggles. Each was a
+     * setting for something a person either never changes or changes elsewhere.
      */
     @Test
-    fun homeScreen_hasNoRefreshActionInAnyLayout() {
-        rule.onAllNodesWithText("Refresh").assertCountEquals(0)
-        viewModel.setLayout(LayoutMode.ICON_TEXT)
+    fun settings_noLongerShowsTheRowsThatWereRemoved() {
+        viewModel.openSettings()
         rule.waitForIdle()
-        rule.onAllNodesWithText("Refresh").assertCountEquals(0)
+        listOf(
+            "24-hour clock",
+            "Pinned apps per page",
+            "App icons",
+            "Layout",
+            "Match wallpaper",
+            "Open wallpaper gallery",
+            "Screen time summary",
+            "Import a Zendo snapshot",
+            "Horizontal swipe pages Home",
+            "Swipe up on bottom bar opens drawer",
+            "Show today",
+        ).forEach { label ->
+            rule.onAllNodesWithText(label).assertCountEquals(0)
+        }
     }
 
     @Test
-    fun settings_showsEmptyPinnedAndHiddenSections() {
+    fun settings_showsItsRemainingSections() {
         viewModel.openSettings()
         rule.waitForIdle()
-        rule.onNodeWithText("No pinned apps.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("No hidden apps.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("About").performScrollTo().assertIsDisplayed()
+        listOf("Appearance", "Apps", "Calendar", "Data", "Pause", "Home app", "About").forEach { label ->
+            rule.onNodeWithText(label).performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun settings_reduceTransitions_toggles() {
+        viewModel.openSettings()
+        rule.waitForIdle()
+        assertFalse(viewModel.state.value.settings.reduceMotion)
+
+        toggleLabelled("Reduce transitions").performClick()
+        rule.waitForIdle()
+        assertTrue(viewModel.state.value.settings.reduceMotion)
     }
 
     /**
@@ -454,24 +329,49 @@ class LauncherUiTest {
         ).performScrollTo().assertIsDisplayed()
     }
 
-    /**
-     * The drawer's headers come from the same normalisation as the sort, so an accented
-     * name files under the base letter it was ordered by. Everything that is not a
-     * letter shares one bucket instead of each getting its own header.
-     */
+    // ---- Drawer ----------------------------------------------------------------------
+
     @Test
-    fun appList_letterBuckets_followTheSortsNormalisation() {
-        assertEquals("A", letterOf("Ámbar"))
-        assertEquals("Z", letterOf("Zendo"))
-        assertEquals("#", letterOf("7-Zip"))
-        assertEquals("#", letterOf("!Widget"))
+    fun allAppsAction_navigatesToAppList_andHomeReturns() {
+        rule.onNodeWithText("All apps").performClick()
+        rule.waitForIdle()
+        assertEquals(Screen.APPS, viewModel.state.value.screen)
+
+        rule.onNodeWithText("All apps").assertIsDisplayed()
+        rule.onNodeWithText("Search").assertIsDisplayed()
+        awaitEnumeration()
+        rule.onNodeWithText("No launchable apps found.").assertIsDisplayed()
+
+        rule.onNodeWithText("Home").performClick()
+        rule.waitForIdle()
+        assertEquals(Screen.HOME, viewModel.state.value.screen)
+        rule.onNodeWithText("Search apps").assertIsDisplayed()
+    }
+
+    @Test
+    fun search_clearAction_emptiesQuery_andStaysOnAppList() {
+        viewModel.openApps()
+        rule.waitForIdle()
+        viewModel.setQuery("zzz")
+        rule.waitForIdle()
+        rule.onNodeWithText("Results").assertIsDisplayed()
+
+        rule.onNodeWithText("Clear").performClick()
+        rule.waitForIdle()
+        assertEquals("", viewModel.state.value.query)
+        assertEquals(Screen.APPS, viewModel.state.value.screen)
+    }
+
+    @Test
+    fun search_clearAction_absentWhileQueryIsEmpty() {
+        viewModel.openApps()
+        rule.waitForIdle()
+        rule.onAllNodesWithText("Clear").assertCountEquals(0)
     }
 
     /**
      * P1-13: "No launchable apps found." is a claim about the device, so it must not be
-     * made while the first enumeration is still in flight. That window is a few hundred
-     * milliseconds at launch, which a test cannot reliably observe, so the loading state
-     * is rendered directly instead of raced.
+     * made while the first enumeration is still in flight.
      */
     @Test
     fun appList_whileEnumerationInFlight_showsProgressNotTheEmptyState() {
@@ -487,10 +387,6 @@ class LauncherUiTest {
         rule.onAllNodesWithText("No launchable apps found.").assertCountEquals(0)
     }
 
-    /**
-     * The other half of P1-13: a loading flag that never clears is a stuck spinner on a
-     * home screen, so the enumeration must always end, including when it throws.
-     */
     @Test
     fun appList_loadingFlag_clearsAfterEnumeration() {
         rule.waitUntil(5_000) { !viewModel.state.value.isLoading }
@@ -499,11 +395,16 @@ class LauncherUiTest {
         rule.onNodeWithText("No launchable apps found.").assertIsDisplayed()
     }
 
-    /**
-     * P1-11: hiding has no confirmation step, so the undo offer is the only way back.
-     * Robolectric discovers no apps, so no row exists to hide through the UI; the view
-     * model is driven directly, which is where the undo state actually lives.
-     */
+    @Test
+    fun appList_letterBuckets_followTheSortsNormalisation() {
+        assertEquals("A", letterOf("Ámbar"))
+        assertEquals("Z", letterOf("Zendo"))
+        assertEquals("#", letterOf("7-Zip"))
+        assertEquals("#", letterOf("!Widget"))
+    }
+
+    // ---- Hide / pin ------------------------------------------------------------------
+
     @Test
     fun hideApp_offersUndo_andUndoPutsTheAppBack() {
         val key = "com.example.notes/.MainActivity"
@@ -520,7 +421,6 @@ class LauncherUiTest {
         assertNull(viewModel.state.value.undoHidden)
     }
 
-    /** Unhiding is its own undo, so the offer must not outlive it. */
     @Test
     fun unhide_takesDownTheUndoOffer() {
         val key = "com.example.notes/.MainActivity"
@@ -538,8 +438,7 @@ class LauncherUiTest {
     /**
      * P0-4: pinning must not be reachable only through the long press. The row is built
      * with the activity's own view model, so this exercises the affordance as the drawer
-     * composes it; the drawer itself is unusable here because Robolectric discovers no
-     * apps. Every callback is a no-op, because the test is about what the row shows.
+     * composes it.
      */
     @Test
     fun appRow_showsPinAction_whenTheDrawerAsksForIt() {
@@ -549,7 +448,6 @@ class LauncherUiTest {
                     AppRow(
                         viewModel = viewModel,
                         target = LaunchTarget("com.example.notes", ".MainActivity", "Notes"),
-                        layout = LayoutMode.TEXT,
                         isFavourite = false,
                         onClick = {},
                         onToggleFavourite = {},
@@ -565,6 +463,31 @@ class LauncherUiTest {
         // action names the app it acts on.
         rule.onNodeWithContentDescription("Pin Notes").assertIsDisplayed()
     }
+
+    /** The other half of P0-4: Home leaves the action off; the row is already on Home. */
+    @Test
+    fun appRow_hidesPinAction_onHomeRows() {
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    AppRow(
+                        viewModel = viewModel,
+                        target = LaunchTarget("com.example.notes", ".MainActivity", "Notes"),
+                        isFavourite = true,
+                        onClick = {},
+                        onToggleFavourite = {},
+                        onToggleHidden = {},
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onAllNodesWithText("Pin").assertCountEquals(0)
+        rule.onAllNodesWithText("Unpin").assertCountEquals(0)
+        rule.onNodeWithText("Notes").assertIsDisplayed()
+    }
+
+    // ---- Back ------------------------------------------------------------------------
 
     /**
      * The Back contract for Home, in the order the user experiences it. Edit mode is the
@@ -591,68 +514,17 @@ class LauncherUiTest {
         assertFalse(rule.activity.isFinishing)
     }
 
-    /**
-     * The Plan page renders the date navigation and the calendar's permission state.
-     * Found by type rather than index so the test does not depend on which stored
-     * layout this JVM happens to hold. Robolectric has no calendar permission, so the
-     * page must say so instead of drawing an empty agenda.
-     */
-    @Test
-    fun planPage_rendersAgendaStates_andDateNavigation() {
-        // Normalise the ask flag: this JVM shares one prefs file across tests, and the
-        // denied-forever branch swaps the action label.
-        viewModel.setCalendarAsked(false)
-        val index = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.PLAN }
-        assertTrue(index >= 0)
-        viewModel.goToPage(index)
-        rule.waitForIdle()
-        assertEquals(
-            viewModel.state.value.settings.home.pages[index].id,
-            viewModel.state.value.settings.home.activePageId,
-        )
-
-        rule.onNodeWithText("Plan").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Earlier").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Later").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("The launcher reads your device calendar only, offline. Nothing is uploaded.")
-            .performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Allow calendar access").performScrollTo().assertIsDisplayed()
-    }
+    // ---- Edit mode -------------------------------------------------------------------
 
     /**
-     * The Essentials page keeps the apps it was migrated with. Robolectric finds
-     * no installed apps, so no row can be resolved; what must hold is that the
-     * page exists, is reachable and states its own emptiness rather than
-     * borrowing another page's.
-     */
-    @Test
-    fun launchPage_showsItsOwnEmptyState() {
-        val index = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.APPS }
-        assertTrue(index >= 0)
-        viewModel.goToPage(index)
-        rule.waitForIdle()
-        assertEquals(
-            viewModel.state.value.settings.home.pages[index].id,
-            viewModel.state.value.settings.home.activePageId,
-        )
-
-        rule.onNodeWithText("Essentials").assertIsDisplayed()
-        rule.onNodeWithText("No pinned apps here yet. Open All apps and pin the ones you want.")
-            .performScrollTo().assertIsDisplayed()
-    }
-
-    /**
-     * Renames and reorders are written to the store, so this test snapshots the
-     * layout first and restores it afterwards: the layout lives in
-     * SharedPreferences, which Robolectric keeps for the whole JVM, and a page
-     * left renamed or out of order would be read by whichever test runs next.
+     * Renames and reorders are written to the store, so this test restores the layout
+     * afterwards: it lives in SharedPreferences, which Robolectric keeps for the whole JVM.
      */
     @Test
     fun editMode_renamesAndReordersPages_andPutsThemBack() {
         val startIds = viewModel.state.value.settings.home.pages.map { it.id }
         val startNames = viewModel.state.value.settings.home.pages.associate { it.id to it.name }
-        // The plan page exists in fresh and migrated layouts alike.
-        assertTrue("p_plan" in startIds)
+        val pageId = startIds.first()
 
         viewModel.enterPageEdit()
         rule.waitForIdle()
@@ -660,22 +532,25 @@ class LauncherUiTest {
         // it has to be a control that is actually there.
         rule.onNodeWithText("Done").assertIsDisplayed()
 
-        viewModel.renamePage("p_plan", "Deep work")
+        viewModel.renamePage(pageId, "Deep work")
         rule.waitForIdle()
-        assertEquals("Deep work", viewModel.state.value.settings.home.page("p_plan")?.name)
-        viewModel.renamePage("p_plan", startNames.getValue("p_plan"))
+        assertEquals("Deep work", viewModel.state.value.settings.home.page(pageId)?.name)
+        viewModel.renamePage(pageId, startNames.getValue(pageId))
         rule.waitForIdle()
 
-        val from = viewModel.state.value.settings.home.pages.indexOfFirst { it.id == "p_plan" }
-        viewModel.movePage("p_plan", -from)
+        // One page cannot be reordered, so add a second one, move it, then remove it.
+        viewModel.addPage(PageType.NOTES)
         rule.waitForIdle()
-        assertEquals(0, viewModel.state.value.settings.home.pages.indexOfFirst { it.id == "p_plan" })
-        viewModel.movePage("p_plan", from)
+        val added = viewModel.state.value.settings.home.pages.last().id
+        assertEquals(1, viewModel.state.value.settings.home.pages.indexOfFirst { it.id == added })
+
+        viewModel.movePage(added, -1)
         rule.waitForIdle()
-        assertEquals(
-            startIds,
-            viewModel.state.value.settings.home.pages.map { it.id },
-        )
+        assertEquals(0, viewModel.state.value.settings.home.pages.indexOfFirst { it.id == added })
+
+        viewModel.removePage(added)
+        rule.waitForIdle()
+        assertEquals(startIds, viewModel.state.value.settings.home.pages.map { it.id })
         assertEquals(
             startNames,
             viewModel.state.value.settings.home.pages.associate { it.id to it.name },
@@ -684,32 +559,5 @@ class LauncherUiTest {
         viewModel.leavePageEdit()
         rule.waitForIdle()
         assertFalse(viewModel.state.value.pageEditing)
-    }
-
-    /**
-     * The other half of P0-4: Home leaves the action off. Every row there is already
-     * pinned, and the dot already reports that, so an action on each row is only noise.
-     */
-    @Test
-    fun appRow_hidesPinAction_onHomeRows() {
-        rule.activityRule.scenario.onActivity { activity ->
-            activity.setContent {
-                LauncherTheme(mode = ThemeMode.DARK) {
-                    AppRow(
-                        viewModel = viewModel,
-                        target = LaunchTarget("com.example.notes", ".MainActivity", "Notes"),
-                        layout = LayoutMode.TEXT,
-                        isFavourite = true,
-                        onClick = {},
-                        onToggleFavourite = {},
-                        onToggleHidden = {},
-                    )
-                }
-            }
-        }
-        rule.waitForIdle()
-        rule.onAllNodesWithText("Pin").assertCountEquals(0)
-        rule.onAllNodesWithText("Unpin").assertCountEquals(0)
-        rule.onNodeWithText("Notes").assertIsDisplayed()
     }
 }

@@ -11,39 +11,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
-
-enum class LayoutMode { TEXT, ICON_TEXT }
-
-/** How app icons are drawn on Home and in the drawer. */
-enum class IconStyle {
-    /** Desaturated and washed toward [LauncherSettings.iconTint] (the default). */
-    MONOCHROME,
-
-    /** Desaturated, then tinted with the wallpaper's dominant accent. */
-    TINTED,
-
-    /** The app's own icon, untouched. */
-    NATIVE,
-}
-
 /**
- * A stored tint that is not a plain `#RRGGBB` hex value is replaced by the default:
- * the value only ever comes from a fixed swatch list, so anything else is corruption
- * and the cream default is the honest answer. A leading `#` is optional on input and
- * always written back.
+ * The launcher has exactly two looks. There is no "System" state: it existed so the app
+ * could defer the choice, but a launcher that renders a near-white Home screen because the
+ * phone was in light mode is the glare this product was built to remove. Two options, one
+ * tap each, nothing to reason about.
  */
-internal fun sanitizeIconTint(raw: String?): String {
-    val value = raw?.trim()?.removePrefix("#")?.uppercase() ?: return SettingsStore.DEFAULT_ICON_TINT
-    if (value.length != 6 || value.any { it !in "0123456789ABCDEF" }) {
-        return SettingsStore.DEFAULT_ICON_TINT
-    }
-    return "#$value"
-}
+enum class ThemeMode { LIGHT, DARK }
 
 /**
  * All launcher preferences. Local only — nothing here is ever uploaded.
- * Stored in SharedPreferences: a handful of keys and two ordered string lists do not
+ * Stored in SharedPreferences: a handful of keys and one ordered string list do not
  * justify a database or DataStore.
  */
 class SettingsStore(context: Context) {
@@ -56,14 +34,9 @@ class SettingsStore(context: Context) {
 
     fun read(): LauncherSettings = LauncherSettings(
         theme = prefs.getString(KEY_THEME, null)
-            ?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: ThemeMode.SYSTEM,
-        layout = prefs.getString(KEY_LAYOUT, null)
-            ?.let { name -> LayoutMode.entries.firstOrNull { it.name == name } } ?: LayoutMode.TEXT,
+            ?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: ThemeMode.DARK,
         favourites = prefs.getString(KEY_FAVOURITES, "").orEmpty().toKeyList(),
         hidden = prefs.getString(KEY_HIDDEN, "").orEmpty().toKeyList().toSet(),
-        todayEnabled = prefs.getBoolean(KEY_TODAY, true),
-        clock24h = prefs.getBoolean(KEY_CLOCK_24H, true),
-        zendoEnabled = prefs.getBoolean(KEY_ZENDO, false),
         onboardingSeen = prefs.getBoolean(KEY_ONBOARDING_SEEN, false),
         distract = prefs.getStringSet(KEY_DISTRACT, null)?.toSet() ?: emptySet(),
         pauseEnabled = prefs.getBoolean(KEY_PAUSE, false),
@@ -72,8 +45,6 @@ class SettingsStore(context: Context) {
         windowEnabled = prefs.getBoolean(KEY_WINDOW_ENABLED, false),
         windowStartMinute = prefs.getInt(KEY_WINDOW_START, DEFAULT_WINDOW_START),
         windowEndMinute = prefs.getInt(KEY_WINDOW_END, DEFAULT_WINDOW_END),
-        swipeUpEnabled = prefs.getBoolean(KEY_SWIPE_UP, true),
-        pagingEnabled = prefs.getBoolean(KEY_PAGING, true),
         reduceMotion = prefs.getBoolean(KEY_REDUCE_MOTION, false),
         shownCalendarIds = prefs.getStringSet(KEY_SHOWN_CALENDARS, null)?.mapNotNull { it.toLongOrNull() }?.toSet()
             ?: emptySet(),
@@ -88,28 +59,6 @@ class SettingsStore(context: Context) {
         } else {
             prefs.all.keys.isEmpty()
         },
-        focusWorkMinutes = prefs.getInt(KEY_FOCUS_WORK, 25),
-        focusBreakMinutes = prefs.getInt(KEY_FOCUS_BREAK, 5),
-        monochromeIcons = prefs.getBoolean(KEY_MONOCHROME_ICONS, true),
-        // App icon appearance replaced the boolean `monochrome_icons` key. The old key is
-        // still written beside the new ones so a downgrade finds its toggle, and it is
-        // read only when `icon_style` is absent: an install from before the change maps
-        // true → MONOCHROME and false → NATIVE, which is exactly what the toggle meant.
-        iconStyle = prefs.getString(KEY_ICON_STYLE, null)
-            ?.let { name -> IconStyle.entries.firstOrNull { it.name == name } }
-            ?: if (prefs.getBoolean(KEY_MONOCHROME_ICONS, true)) IconStyle.MONOCHROME else IconStyle.NATIVE,
-        iconTint = sanitizeIconTint(prefs.getString(KEY_ICON_TINT, null)),
-        iconTintMatchWallpaper = prefs.getBoolean(KEY_ICON_TINT_MATCH_WALLPAPER, false),
-        homeBackdrop = prefs.getBoolean(KEY_HOME_BACKDROP, false),
-        pinLimit = prefs.getInt(KEY_PIN_LIMIT, DEFAULT_PIN_LIMIT)
-            .coerceIn(MIN_PIN_LIMIT, MAX_PIN_LIMIT),
-        screenTimeEnabled = prefs.getBoolean(KEY_SCREEN_TIME_ENABLED, false),
-        screenTimeHidden = prefs.getBoolean(KEY_SCREEN_TIME_HIDDEN, false),
-        zendoLastImportAt = prefs.getLong(KEY_ZENDO_LAST_IMPORT_AT, 0L),
-        zendoLastImportExportedAt = prefs.getString(KEY_ZENDO_LAST_IMPORT_EXPORTED_AT, null)
-            ?.takeIf { it.isNotBlank() },
-        zendoLastImportDate = prefs.getString(KEY_ZENDO_LAST_IMPORT_DATE, null)
-            ?.takeIf { it.isNotBlank() },
         // Migration runs here, on the read path, because this is the only place the store
         // ever learns that no layout has been written yet. It is idempotent: once a layout
         // is stored, the legacy keys are not consulted again. See migrateHome.
@@ -120,12 +69,8 @@ class SettingsStore(context: Context) {
         val next = transform(_settings.value)
         prefs.edit {
             putString(KEY_THEME, next.theme.name)
-            putString(KEY_LAYOUT, next.layout.name)
             putString(KEY_FAVOURITES, next.favourites.joinToString(SEPARATOR))
             putString(KEY_HIDDEN, next.hidden.joinToString(SEPARATOR))
-            putBoolean(KEY_TODAY, next.todayEnabled)
-            putBoolean(KEY_CLOCK_24H, next.clock24h)
-            putBoolean(KEY_ZENDO, next.zendoEnabled)
             putBoolean(KEY_ONBOARDING_SEEN, next.onboardingSeen)
             putStringSet(KEY_DISTRACT, HashSet(next.distract))
             putBoolean(KEY_PAUSE, next.pauseEnabled)
@@ -135,26 +80,11 @@ class SettingsStore(context: Context) {
             // next unrelated settings write; the gate clamps on read instead.
             putInt(KEY_WINDOW_START, next.windowStartMinute)
             putInt(KEY_WINDOW_END, next.windowEndMinute)
-            putBoolean(KEY_SWIPE_UP, next.swipeUpEnabled)
-            putBoolean(KEY_PAGING, next.pagingEnabled)
             putBoolean(KEY_REDUCE_MOTION, next.reduceMotion)
             putStringSet(KEY_SHOWN_CALENDARS, HashSet(next.shownCalendarIds.map { it.toString() }))
             putBoolean(KEY_CALENDAR_ASKED, next.calendarAsked)
             putBoolean(KEY_CALENDAR_GOOGLE_ONLY, next.calendarGoogleOnly)
             putBoolean(KEY_CALENDAR_SCHEMA, next.calendarSelectionSchema)
-            putInt(KEY_FOCUS_WORK, next.focusWorkMinutes)
-            putInt(KEY_FOCUS_BREAK, next.focusBreakMinutes)
-            putBoolean(KEY_MONOCHROME_ICONS, next.monochromeIcons)
-            putString(KEY_ICON_STYLE, next.iconStyle.name)
-            putString(KEY_ICON_TINT, sanitizeIconTint(next.iconTint))
-            putBoolean(KEY_ICON_TINT_MATCH_WALLPAPER, next.iconTintMatchWallpaper)
-            putBoolean(KEY_HOME_BACKDROP, next.homeBackdrop)
-            putInt(KEY_PIN_LIMIT, next.pinLimit)
-            putBoolean(KEY_SCREEN_TIME_ENABLED, next.screenTimeEnabled)
-            putBoolean(KEY_SCREEN_TIME_HIDDEN, next.screenTimeHidden)
-            putLong(KEY_ZENDO_LAST_IMPORT_AT, next.zendoLastImportAt)
-            putString(KEY_ZENDO_LAST_IMPORT_EXPORTED_AT, next.zendoLastImportExportedAt)
-            putString(KEY_ZENDO_LAST_IMPORT_DATE, next.zendoLastImportDate)
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
             putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
             putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
@@ -173,8 +103,7 @@ class SettingsStore(context: Context) {
      * A stored layout is returned as the user arranged it. In particular the read path
      * never inserts a page: an earlier build re-added the Plan & Focus page whenever it
      * was missing, which meant a deleted page came back the next time the launcher
-     * started. Fresh installs and the legacy migration still get that page, because
-     * [HomeLayout.DEFAULT] carries it and [migratedHome] builds on that default.
+     * started.
      */
     private fun readHome(): HomeLayout = HomeLayout.sanitize(
         HomeLayoutCodec.decode(prefs.getString(KEY_HOME_PAGES, null))
@@ -185,13 +114,13 @@ class SettingsStore(context: Context) {
     /**
      * The layout to use when nothing has been stored yet.
      *
-     * On a fresh install this is simply [HomeLayout.DEFAULT]. On an install that already
-     * had favourites, there is something to lose, so it is carried onto the Launch page —
-     * in the returned layout, never by writing on a read. That is the whole migration: the
-     * legacy keys are read once, folded into a page, and left on disk untouched. A
-     * downgrade to 0.2.3 therefore still finds its `favourites` list exactly as it left it,
-     * and the next write of any setting persists the migrated layout, after which the
-     * legacy keys are simply never consulted again.
+     * On a fresh install this is [HomeLayout.DEFAULT] — one page holding the apps you
+     * pinned. On an install that already had favourites, there is something to lose, so
+     * it is carried onto that page — in the returned layout, never by writing on a read.
+     * That is the whole migration: the legacy keys are read once, folded into a page, and
+     * left on disk untouched. A downgrade therefore still finds its `favourites` list
+     * exactly as it left it, and the next write of any setting persists the migrated
+     * layout, after which the legacy keys are simply never consulted again.
      */
     private fun migratedHome(): HomeLayout {
         val legacyFavourites = prefs.getString(KEY_FAVOURITES, "").orEmpty().toKeyList()
@@ -209,8 +138,8 @@ class SettingsStore(context: Context) {
      * Pins or unpins [key].
      *
      * Returns false only when the pin was refused because the target page already holds
-     * [LauncherSettings.pinLimit] apps — the caller turns that into the one sentence the
-     * user needs ("remove a pin first") instead of a silent no-op.
+     * [MAX_PINS_PER_PAGE] apps — the caller turns that into the one sentence the user
+     * needs ("remove a pin first") instead of a silent no-op.
      */
     fun toggleFavourite(key: String): Boolean {
         var changed = false
@@ -230,7 +159,7 @@ class SettingsStore(context: Context) {
                     changed = true
                     current.copy(home = layout.removeItem(pageId, key))
                 } else {
-                    if (page.config.itemKeys.size >= current.pinLimit) return@update current
+                    if (page.config.itemKeys.size >= MAX_PINS_PER_PAGE) return@update current
                     // The active page follows the pin, so a pin made from the drawer is
                     // visible on the page the user returns to rather than appearing to do
                     // nothing.
@@ -265,16 +194,6 @@ class SettingsStore(context: Context) {
         current.copy(hidden = hidden, favourites = current.favourites - key, home = home)
     }
 
-    /**
-     * Moves a pinned app within the page that holds it. A key on no page is a no-op, since
-     * there is no order to disturb.
-     */
-    fun moveFavourite(key: String, delta: Int) = update { current ->
-        val page = current.home.pages.firstOrNull { key in it.config.itemKeys } ?: return@update current
-        val index = page.config.itemKeys.indexOf(key)
-        current.copy(home = current.home.moveItem(page.id, index, index + delta))
-    }
-
     // ---- Home pages ----------------------------------------------------------------
 
     fun setActivePage(id: String) = update { it.copy(home = it.home.setActivePage(id)) }
@@ -297,7 +216,7 @@ class SettingsStore(context: Context) {
     fun movePage(id: String, toIndex: Int) = update { it.copy(home = it.home.movePage(id, toIndex)) }
 
     fun setPageType(id: String, type: PageType) = update { current ->
-        // Re-typing keeps the item list, so a Launch page switched to Focus and back finds
+        // Re-typing keeps the item list, so an Apps page switched to Note and back finds
         // its apps still there.
         current.copy(home = current.home.setType(id, type))
     }
@@ -315,12 +234,8 @@ class SettingsStore(context: Context) {
         private const val PREFS = "launcher_settings"
         private const val SEPARATOR = "\n"
         private const val KEY_THEME = "theme"
-        private const val KEY_LAYOUT = "layout"
         private const val KEY_FAVOURITES = "favourites"
         private const val KEY_HIDDEN = "hidden"
-        private const val KEY_TODAY = "today_enabled"
-        private const val KEY_CLOCK_24H = "clock_24h"
-        private const val KEY_ZENDO = "zendo_enabled"
         private const val KEY_ONBOARDING_SEEN = "onboarding_seen"
         private const val KEY_DISTRACT = "distract_set"
         private const val KEY_PAUSE = "pause_enabled"
@@ -331,40 +246,24 @@ class SettingsStore(context: Context) {
         private const val KEY_HOME_PAGES = "home_pages"
         private const val KEY_HOME_ACTIVE_PAGE = "home_active_page_id"
         private const val KEY_HOME_PAGES_VERSION = "home_pages_version"
-        private const val KEY_SWIPE_UP = "swipe_up_enabled"
-        private const val KEY_PAGING = "paging_enabled"
         private const val KEY_REDUCE_MOTION = "reduce_motion"
         private const val KEY_SHOWN_CALENDARS = "shown_calendar_ids"
         private const val KEY_CALENDAR_ASKED = "calendar_asked"
         private const val KEY_CALENDAR_GOOGLE_ONLY = "calendar_google_only"
         private const val KEY_CALENDAR_SCHEMA = "calendar_selection_schema"
-        private const val KEY_FOCUS_WORK = "focus_work_minutes"
-        private const val KEY_FOCUS_BREAK = "focus_break_minutes"
-        private const val KEY_MONOCHROME_ICONS = "monochrome_icons"
-        private const val KEY_ICON_STYLE = "icon_style"
-        private const val KEY_ICON_TINT = "icon_tint"
-        private const val KEY_ICON_TINT_MATCH_WALLPAPER = "icon_tint_match_wallpaper"
-        private const val KEY_HOME_BACKDROP = "home_backdrop"
-        private const val KEY_PIN_LIMIT = "pin_limit"
-        private const val KEY_SCREEN_TIME_ENABLED = "screen_time_enabled"
-        private const val KEY_SCREEN_TIME_HIDDEN = "screen_time_hidden"
-        private const val KEY_ZENDO_LAST_IMPORT_AT = "zendo_last_import_at"
-        private const val KEY_ZENDO_LAST_IMPORT_EXPORTED_AT = "zendo_last_import_exported_at"
-        private const val KEY_ZENDO_LAST_IMPORT_DATE = "zendo_last_import_date"
 
         /** Advisory, written beside the blob so a future change can tell old from malformed. */
         const val HOME_PAGES_VERSION = 1
 
-        /** Pinned-apps limit. The brief fixes the choice at 5 or 6; six is the default. */
-        const val MIN_PIN_LIMIT = 5
-        const val MAX_PIN_LIMIT = 6
-        const val DEFAULT_PIN_LIMIT = 6
+        /**
+         * Pinned apps allowed on one page. Six is not a user choice any more: it is the
+         * number that fits the shortest supported screen as two calm columns, and a
+         * setting for it was one more row that only ever said "the cap is the cap".
+         */
+        const val MAX_PINS_PER_PAGE = 6
 
         /** Default pause-dialog reminder, used until the user writes their own. */
         const val DEFAULT_PAUSE_MESSAGE = "Take a breath. Open it anyway?"
-
-        /** Icon tint heard when none is stored, or when the stored one is not a hex colour. */
-        const val DEFAULT_ICON_TINT = "#EDE6D8"
 
         /** 22:00 — a default the user is expected to change, not a recommendation. */
         const val DEFAULT_WINDOW_START = 22 * 60
@@ -374,13 +273,10 @@ class SettingsStore(context: Context) {
 }
 
 data class LauncherSettings(
-    val theme: ThemeMode = ThemeMode.SYSTEM,
-    val layout: LayoutMode = LayoutMode.TEXT,
+    /** Light or dark. Defaults to dark: the calmest first impression of this launcher. */
+    val theme: ThemeMode = ThemeMode.DARK,
     val favourites: List<String> = emptyList(),
     val hidden: Set<String> = emptySet(),
-    val todayEnabled: Boolean = true,
-    val clock24h: Boolean = true,
-    val zendoEnabled: Boolean = false,
     val onboardingSeen: Boolean = false,
     val distract: Set<String> = emptySet(),
     val pauseEnabled: Boolean = false,
@@ -400,11 +296,7 @@ data class LauncherSettings(
      * kept only so a downgrade still finds it; nothing reads it for display any more.
      */
     val home: HomeLayout = HomeLayout.DEFAULT,
-    /** Swipe up on Home chrome opens the drawer. Enabled by default. */
-    val swipeUpEnabled: Boolean = true,
-    /** Horizontal swipe pages Home. Enabled by default. */
-    val pagingEnabled: Boolean = true,
-    /** When on, programmatic page moves jump instead of animating. */
+    /** When on, programmatic page moves jump instead of animating. Accessibility, not taste. */
     val reduceMotion: Boolean = false,
     /**
      * Calendar ids to show. Empty means all visible calendars. The selection UI writes
@@ -430,52 +322,4 @@ data class LauncherSettings(
      * are first readable.
      */
     val calendarSelectionSchema: Boolean = false,
-    /** Default focus work-block length, minutes. The timer screen can pick per session. */
-    val focusWorkMinutes: Int = 25,
-    /** Default break length, minutes. 0 means no break offered. */
-    val focusBreakMinutes: Int = 5,
-    /**
-     * Draw app icons desaturated on launcher pages. The original icon is always
-     * the fallback; nothing is written to other apps either way.
-     *
-     * Frozen legacy: [iconStyle] is what the UI renders from and what a new install
-     * writes. This field is kept (and still written) only so a downgrade to an older
-     * build still finds the boolean it knows.
-     */
-    val monochromeIcons: Boolean = true,
-    /**
-     * How app icons are drawn. Replaced the [monochromeIcons] boolean; a fresh
-     * install starts monochrome, which is the product's identity.
-     */
-    val iconStyle: IconStyle = IconStyle.MONOCHROME,
-    /**
-     * Wash colour for [IconStyle.MONOCHROME], `#RRGGBB`. Always sanitized on read
-     * and write, so a consumer can parse it without guarding.
-     */
-    val iconTint: String = SettingsStore.DEFAULT_ICON_TINT,
-    /**
-     * When on, the monochrome wash follows the wallpaper: the tint comes from the
-     * current template's accent, and a wallpaper chosen outside the launcher falls
-     * back to the stored [iconTint]. Only consulted when a wallpaper template is known.
-     */
-    val iconTintMatchWallpaper: Boolean = false,
-    /**
-     * Draw the selected wallpaper behind the Home pages, below a scrim that keeps
-     * text legible. Off by default: Home is a quiet page first and a picture second.
-     */
-    val homeBackdrop: Boolean = false,
-    /** Pinned apps allowed on one page. 5 or 6, never more; the UI explains a full page. */
-    val pinLimit: Int = SettingsStore.DEFAULT_PIN_LIMIT,
-    /**
-     * Screen-time summary. Off and absent everywhere until the user turns it on
-     * in Settings, which then opens the system Usage Access screen. When off, no
-     * usage query ever runs.
-     */
-    val screenTimeEnabled: Boolean = false,
-    /** Hides the numbers while keeping access. Separate from [screenTimeEnabled]. */
-    val screenTimeHidden: Boolean = false,
-    /** Metadata of the last manual Zendo snapshot import. 0/null = never imported. */
-    val zendoLastImportAt: Long = 0L,
-    val zendoLastImportExportedAt: String? = null,
-    val zendoLastImportDate: String? = null,
 )

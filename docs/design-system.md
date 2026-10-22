@@ -8,6 +8,12 @@ It describes the shipped system. It does not restate the audit that produced it
 (`docs/ui-ux-audit.md`) or the change log that applied it (`docs/ui-ux-implementation.md`);
 finding ids are named only where a rule exists because of one.
 
+> **Removed in 0.7.0.** The launcher draws no app artwork and ships no wallpaper
+> gallery. Sections 5 (Icons), 7 (Icon styles) and 8 (Home backdrop) below are kept as
+> history: the tokens, the `AppIcon` composable, the duotone matrix and the wallpaper
+> templates they describe are gone, and the light palette was re-tuned to the warmer
+> paper listed in section 1.
+
 ## 1. Monochrome identity
 
 The palette is `LauncherPalette` in `ui/theme/Theme.kt`: a background, two text tones and
@@ -15,14 +21,14 @@ one separator tone, plus an `isDark` flag. There is no fourth colour.
 
 | Role | Light (`LightPalette`) | Dark (`DarkPalette`) | Used for |
 | --- | --- | --- | --- |
-| `background` | `0xFFF7F7F5` | `0xFF0B0B0C` | The page, and nothing else |
-| `primary` | `0xFF111112` | `0xFFF2F2F0` | Titles, row labels, selected values, hairlines that mean "selected" |
-| `secondary` | `0xFF6E6E6C` | `0xFF8A8A88` | Section headings, dates, empty notes, unselected values, the favourite dot |
-| `separator` | `0xFFE2E2DE` | `0xFF1F1F21` | Every hairline, and the one elevated container Material3 needs |
+| `background` | `0xFFEFEDE6` | `0xFF0B0B0C` | The page, and nothing else |
+| `primary` | `0xFF1A1A19` | `0xFFF2F2F0` | Titles, row labels, selected values, hairlines that mean "selected" |
+| `secondary` | `0xFF6B6B67` | `0xFF8A8A88` | Section headings, dates, empty notes, unselected values, the favourite dot |
+| `separator` | `0xFFDCD9D0` | `0xFF1F1F21` | Every hairline, and the one elevated container Material3 needs |
 
 `LauncherColors.current` (`ui/theme/Theme.kt`) is the accessor components read; it returns
-`LocalPalette.current`. `LauncherTheme(mode)` picks `LightPalette`, `DarkPalette`, or, for
-`ThemeMode.SYSTEM`, whichever `isSystemInDarkTheme()` reports.
+`LocalPalette.current`. `LauncherTheme(mode)` picks `LightPalette` or `DarkPalette`. There is no third,
+`SYSTEM` state: the theme is either light or dark, and dark is the default.
 
 There is no accent colour, and none can appear by accident. `ColorScheme.inLauncherPalette`
 in `ui/theme/Theme.kt` maps the Material3 roles the product reads onto these tones:
@@ -42,7 +48,7 @@ Colour never carries meaning alone. Every state that changes a colour also chang
 a weight, a marker, or a semantic property:
 
 - A pinned row's dot is decorative; `AppRow` also sets `stateDescription` to
-  "In Essentials" or "Not in Essentials".
+  "On Home" or "Not on Home".
 - `ToggleRow` changes the word, the weight and the tone together.
 - `ChoiceRow` marks the selected option with a hairline and a weight change as well as
   with tone (P0-6).

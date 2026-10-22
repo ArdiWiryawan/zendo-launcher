@@ -1,5 +1,7 @@
 # Wallpaper and Lock Screen
 
+> **Historical.** This document describes a feature that was removed in 0.7.0. The launcher no longer draws app artwork, ships a wallpaper gallery, reads usage statistics, or imports Zendo snapshots. Kept for the record and for anyone reading an older build.
+
 Scope: versionName 0.5.0 (`app/build.gradle`), minSdk 26 / targetSdk 36.
 Method: source read + unit tests (`WallpaperTemplatesTest`,
 `WallpaperApplierTest`). No device run claimed for OEM lock behavior.

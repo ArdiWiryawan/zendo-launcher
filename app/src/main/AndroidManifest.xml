@@ -7,18 +7,12 @@
       lets the launcher see packages that expose a MAIN/LAUNCHER activity on API 30+.
       QUERY_ALL_PACKAGES is deliberately NOT used.
 
-      Optional permissions, each requested only when its feature is used:
-      - SET_WALLPAPER (normal, auto-granted): direct apply of bundled templates.
-        The system picker fallback needs no permission.
-      - READ_CALENDAR (runtime): Upcoming / Calendar agenda. Asked only when the user
-        opens a calendar feature, never at startup. All calendar use is read-only and offline.
-      - PACKAGE_USAGE_STATS (special access): optional local usage summary, numbers
-        only. Granted only in system Settings (Usage Access page), never requested
-        in-app, revocable there at any time. No enforcement is built on it.
+      READ_CALENDAR (runtime): the optional Plan page agenda. Asked only when the user
+      opens a calendar feature, never at startup; all calendar use is read-only and
+      offline. There is no wallpaper permission, no usage-stats access and no network
+      permission: the bundled wallpaper gallery and the screen-time summary were removed.
     -->
-    <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <uses-permission android:name="android.permission.READ_CALENDAR" />
-    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />

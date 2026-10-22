@@ -8,8 +8,7 @@
     </style>
 
     <!-- Near-white window, dark system-bar icons. -->
-    <style name="Theme.ZendoLauncher.Light" parent="Theme.ZendoLauncher.Base">
-        <item name="android:windowBackground">@color/launcher_window_background_light</item>
+    <style name="Theme.ZendoLauncher.Light" parent="Theme.ZendoLauncher.Base">        <item name="android:windowBackground">@color/launcher_window_background_light</item>
         <item name="android:windowLightStatusBar">true</item>
         <!-- API 27. On 26 the nav icons stay light, which is only wrong for the single
              pre-Compose frame of a light-themed window; SystemBarIcons corrects it as
@@ -24,7 +23,8 @@
         <item name="android:windowLightNavigationBar" tools:targetApi="27">false</item>
     </style>
 
-    <!-- Applied from the manifest. Follows the system by default; LauncherActivity
-         overrides it before super.onCreate() when the user picked an explicit theme. -->
-    <style name="Theme.ZendoLauncher" parent="Theme.ZendoLauncher.Light" />
+    <!-- Applied from the manifest. Dark is the product's first impression, so the window
+         behind the very first frame is dark too; LauncherActivity overrides it before
+         super.onCreate() when the user picked Light. -->
+    <style name="Theme.ZendoLauncher" parent="Theme.ZendoLauncher.Dark" />
 </resources>

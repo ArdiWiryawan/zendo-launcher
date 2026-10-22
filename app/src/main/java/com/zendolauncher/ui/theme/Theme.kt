@@ -1,6 +1,5 @@
 package com.zendolauncher.ui.theme
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
@@ -21,6 +20,11 @@ import com.zendolauncher.data.ThemeMode
 /**
  * Monochrome palette. Two tones of text and one hairline separator carry the whole
  * hierarchy, so there is nothing to make loud.
+ *
+ * Light is a warm paper, not white: a full-white Home screen on an OLED phone is a
+ * lamp pointed at the user's face at night, and the earlier #F7F7F5 read as glare in a
+ * dark room. #EFEDE6 keeps the same two-tone hierarchy at roughly 88% luminance, which
+ * is still unmistakably light while being comfortable to hold.
  */
 @Immutable
 data class LauncherPalette(
@@ -40,10 +44,10 @@ val DarkPalette = LauncherPalette(
 )
 
 val LightPalette = LauncherPalette(
-    background = Color(0xFFF7F7F5),
-    primary = Color(0xFF111112),
-    secondary = Color(0xFF6E6E6C),
-    separator = Color(0xFFE2E2DE),
+    background = Color(0xFFEFEDE6),
+    primary = Color(0xFF1A1A19),
+    secondary = Color(0xFF6B6B67),
+    separator = Color(0xFFDCD9D0),
     isDark = false,
 )
 
@@ -164,10 +168,12 @@ private fun ColorScheme.inLauncherPalette(palette: LauncherPalette): ColorScheme
 
 @Composable
 fun LauncherTheme(mode: ThemeMode, content: @Composable () -> Unit) {
+    // Two themes, because two are enough: System was a third state that only meant
+    // "the app does not know what it is", and it made the light palette appear on
+    // phones the user had already decided should be dark.
     val palette = when (mode) {
         ThemeMode.LIGHT -> LightPalette
         ThemeMode.DARK -> DarkPalette
-        ThemeMode.SYSTEM -> if (isSystemInDarkTheme()) DarkPalette else LightPalette
     }
     val scheme = if (palette.isDark) {
         darkColorScheme().inLauncherPalette(palette)

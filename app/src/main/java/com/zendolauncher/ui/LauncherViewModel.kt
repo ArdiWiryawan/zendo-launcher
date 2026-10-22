@@ -1,23 +1,17 @@
 package com.zendolauncher.ui
 
 import android.app.Application
-import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.core.AppQuery
-import com.zendolauncher.core.BridgeParse
-import com.zendolauncher.core.BridgePlan
-import com.zendolauncher.core.BridgePlanner
-import com.zendolauncher.core.BridgeSnapshot
 import com.zendolauncher.core.CalendarCache
 import com.zendolauncher.core.DayRecord
 import com.zendolauncher.core.Highlight
-import com.zendolauncher.core.ImportMode
-import com.zendolauncher.core.Origins
+import com.zendolauncher.core.HomeLayout
+import com.zendolauncher.core.PageType
 import com.zendolauncher.core.TaskItem
-import com.zendolauncher.core.WallpaperTemplates
 import com.zendolauncher.core.primary
 import com.zendolauncher.data.BackupContents
 import com.zendolauncher.data.BackupParse
@@ -26,16 +20,11 @@ import com.zendolauncher.data.BridgeJson
 import com.zendolauncher.data.FocusNoteStore
 import com.zendolauncher.data.HighlightStore
 import com.zendolauncher.data.HistoryStore
-import com.zendolauncher.data.IconStyle
-import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.TaskStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.data.TodayActionStore
-import com.zendolauncher.data.WallpaperStore
-import com.zendolauncher.data.WallpaperTarget
-import com.zendolauncher.model.AppUsage
 import com.zendolauncher.model.CalendarEvent
 import com.zendolauncher.model.DeviceCalendar
 import com.zendolauncher.model.LaunchTarget
@@ -43,9 +32,6 @@ import com.zendolauncher.platform.AppLauncher
 import com.zendolauncher.platform.AppRepository
 import com.zendolauncher.platform.CalendarRepository
 import com.zendolauncher.platform.ShortcutRepository
-import com.zendolauncher.platform.UsageRepository
-import com.zendolauncher.platform.WallpaperApplier
-import com.zendolauncher.platform.WallpaperApplyResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -63,25 +49,11 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, WALLPAPERS, CALENDAR, HISTORY, HIGHLIGHT_EDITOR, TASK_EDITOR, SETUP, PERMISSIONS }
-
-/**
- * The planned result of a picked snapshot file, held while the user reviews and
- * confirms it. The plan is computed once per mode; applying it writes exactly the
- * lists the preview counted.
- */
-data class BridgePreviewUi(
-    val fileName: String,
-    val snapshot: BridgeSnapshot,
-    val plan: BridgePlan,
-) {
-    val mode: ImportMode get() = plan.mode
-}
+enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, CALENDAR, HISTORY, HIGHLIGHT_EDITOR, TASK_EDITOR }
 
 /** A parsed backup file waiting on the restore confirmation. */
 data class BackupPreviewUi(
@@ -156,10 +128,10 @@ data class UiState(
     val historyLoading: Boolean = false,
     val historyMessage: String? = null,
     val confirmClearHistory: Boolean = false,
-    // ---- Zendo bridge & backup (manual files only) --------------------------------
-    val bridgePreview: BridgePreviewUi? = null,
+    // ---- Backup (manual files only) ----------------------------------------------
     val backupPreview: BackupPreviewUi? = null,
-    val zendoMessage: String? = null,
+    /** One sentence about the last import, restore or export. Null when there is none. */
+    val dataMessage: String? = null,
     // ---- Calendar (device provider, read-only) ---------------------------------
     val calendars: List<DeviceCalendar> = emptyList(),
     val calendarEvents: List<CalendarEvent> = emptyList(),
@@ -170,23 +142,9 @@ data class UiState(
     /** Last successful events refresh, wall-clock millis. 0 = never. */
     val lastCalendarRefresh: Long = 0L,
     val selectedDateEpochDay: Long = LocalDate.now().toEpochDay(),
-    // ---- Wallpaper ------------------------------------------------------------
-    val wallpaperSelectedId: String? = null,
-    /**
-     * The design the last successful apply actually sent to the system, raw from
-     * [WallpaperStore]. Null until one succeeds — the gallery highlight
-     * ([wallpaperSelectedId]) can change on a tap without anything being applied, and
-     * "match wallpaper" must follow the device, not the highlight. Defaults to
-     * [WallpaperTemplates.DEFAULT_ID]'s accent at resolution time when null.
-     */
-    val wallpaperAppliedId: String? = null,
-    val wallpaperTarget: WallpaperTarget = WallpaperTarget.BOTH,
-    val wallpaperApplying: Boolean = false,
-    val wallpaperMessage: String? = null,
-    // ---- Optional usage summary (special access, numbers only) -------------------
-    val usageAccess: Boolean = false,
-    val usageEntries: List<AppUsage> = emptyList(),
-    val usageLoading: Boolean = false,
+    // ---- Edit pages: the "add a page" picker -------------------------------------
+    /** True while the type picker is up. See [LauncherViewModel.openAddPage]. */
+    val addingPage: Boolean = false,
     // ---- Overlays and editors (ephemeral) ----------------------------------------
     val editingHighlightId: String? = null,
     /** Draft title in the full-screen highlight editor. Lives here so rotation keeps it. */
@@ -248,9 +206,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val taskStore = TaskStore(application)
     private val todayActionStore = TodayActionStore(application)
     private val historyStore = HistoryStore(application)
-    private val wallpaperStore = WallpaperStore(application)
     private val calendarRepository = CalendarRepository(application)
-    private val usageRepository = UsageRepository(application)
     private val appLauncher = AppLauncher(application)
 
     private val _screen = MutableStateFlow(if (settingsStore.read().onboardingSeen) Screen.HOME else Screen.ONBOARDING)
@@ -291,6 +247,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      */
     private val _pageEditing = MutableStateFlow(false)
     private val _pagerTargetPage = MutableStateFlow<Int?>(null)
+    /** True while the "add a page" type picker is up. */
+    private val _addingPage = MutableStateFlow(false)
 
     /**
      * Set by Home's search pill: the drawer should put the cursor in the field and raise
@@ -299,7 +257,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
      */
     private val _autoFocusSearch = MutableStateFlow(false)
 
-    // ---- Today / calendar / wallpaper (local, ephemeral UI state is here) ------------
+    // ---- Today / calendar (local, ephemeral UI state is here) ------------------------
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     private val _calendars = MutableStateFlow<List<DeviceCalendar>>(emptyList())
     private val _calendarEvents = MutableStateFlow<List<CalendarEvent>>(emptyList())
@@ -307,8 +265,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _calendarLoading = MutableStateFlow(false)
     private val _calendarError = MutableStateFlow<String?>(null)
     private val _lastCalendarRefresh = MutableStateFlow(0L)
-    private val _wallpaperApplying = MutableStateFlow(false)
-    private val _wallpaperMessage = MutableStateFlow<String?>(null)
     // Highlight editor drafts live here (not in the composable) so rotation and a
     // transient interruption keep the user's text.
     private val _editingHighlightId = MutableStateFlow<String?>(null)
@@ -332,25 +288,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _editingTodayAction = MutableStateFlow(false)
     private val _todayActionDraft = MutableStateFlow("")
     private val _todayActionError = MutableStateFlow<String?>(null)
-    // Usage summary: explicit loads only, never background polling. Gated on
-    // screenTimeEnabled; when off, no query ever runs and the lists stay empty.
-    private val _usageAccess = MutableStateFlow(false)
-    private val _usageEntries = MutableStateFlow<List<AppUsage>>(emptyList())
-    private val _usageLoading = MutableStateFlow(false)
 
-    // History / bridge / backup state. Local files only; nothing here touches a network.
+    // History / backup state. Local files only; nothing here touches a network.
     private val _historyLoading = MutableStateFlow(false)
     private val _historyMessage = MutableStateFlow<String?>(null)
     private val _confirmClearHistory = MutableStateFlow(false)
-    private val _bridgePreview = MutableStateFlow<BridgePreviewUi?>(null)
     private val _backupPreview = MutableStateFlow<BackupPreviewUi?>(null)
-    private val _zendoMessage = MutableStateFlow<String?>(null)
+    private val _dataMessage = MutableStateFlow<String?>(null)
 
     /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
     private var settingsReturn: Screen = Screen.HOME
-
-    /** Where Back returns from Setup / Permissions (usually HOME or SETTINGS). */
-    private var setupReturn: Screen = Screen.HOME
 
     /** Drawer scroll position, retained across re-entry; see AppListScreen. */
     var drawerIndex: Int = 0
@@ -424,6 +371,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             )
         }
 
+    /**
+     * The Today page's own state: local stores, the calendar provider, and the two
+     * editors' drafts. Grouped so the outer `combine` stays within its typed arity.
+     */
     private data class TodayBundle(
         val highlights: List<Highlight>,
         val tasks: List<TaskItem>,
@@ -439,10 +390,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val calError: String?,
         val lastRefresh: Long,
         val date: LocalDate,
-        val wallpaperId: String?,
-        val wallpaperTarget: WallpaperTarget,
-        val applying: Boolean,
-        val message: String?,
         val editingId: String?,
         val draftTitle: String,
         val draftNote: String,
@@ -459,9 +406,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         val taskError: String?,
         val showDiscardT: Boolean,
         val confirmDelT: String?,
-        val usageAccess: Boolean,
-        val usageEntries: List<AppUsage>,
-        val usageLoading: Boolean,
     )
 
     private val today: Flow<TodayBundle> = combine(
@@ -479,10 +423,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _calendarError,
         _lastCalendarRefresh,
         _selectedDate,
-        wallpaperStore.selectedId,
-        wallpaperStore.target,
-        _wallpaperApplying,
-        _wallpaperMessage,
         _editingHighlightId,
         _highlightTitle,
         _highlightNote,
@@ -499,9 +439,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _taskError,
         _showDiscardTask,
         _confirmDeleteTask,
-        _usageAccess,
-        _usageEntries,
-        _usageLoading,
     ) { args: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         TodayBundle(
@@ -519,44 +456,36 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             calError = args[11] as String?,
             lastRefresh = args[12] as Long,
             date = args[13] as LocalDate,
-            wallpaperId = args[14] as String?,
-            wallpaperTarget = args[15] as WallpaperTarget,
-            applying = args[16] as Boolean,
-            message = args[17] as String?,
-            editingId = args[18] as String?,
-            draftTitle = args[19] as String,
-            draftNote = args[20] as String,
-            draftPin = args[21] as Boolean,
-            draftError = args[22] as String?,
-            showDiscardH = args[23] as Boolean,
-            confirmDelH = args[24] as String?,
-            showAllH = args[25] as Boolean,
-            showAllT = args[26] as Boolean,
-            editingTask = args[27] as String?,
-            taskTitle = args[28] as String,
-            taskDue = args[29] as Long?,
-            taskNotes = args[30] as String,
-            taskError = args[31] as String?,
-            showDiscardT = args[32] as Boolean,
-            confirmDelT = args[33] as String?,
-            usageAccess = args[34] as Boolean,
-            usageEntries = args[35] as List<AppUsage>,
-            usageLoading = args[36] as Boolean,
+            editingId = args[14] as String?,
+            draftTitle = args[15] as String,
+            draftNote = args[16] as String,
+            draftPin = args[17] as Boolean,
+            draftError = args[18] as String?,
+            showDiscardH = args[19] as Boolean,
+            confirmDelH = args[20] as String?,
+            showAllH = args[21] as Boolean,
+            showAllT = args[22] as Boolean,
+            editingTask = args[23] as String?,
+            taskTitle = args[24] as String,
+            taskDue = args[25] as Long?,
+            taskNotes = args[26] as String,
+            taskError = args[27] as String?,
+            showDiscardT = args[28] as Boolean,
+            confirmDelT = args[29] as String?,
         )
     }
 
     /**
-     * History and file-transfer state, kept apart from [TodayBundle] so neither
-     * `combine` outgrows its arity. All local; none of it is network state.
+     * History and backup state, kept apart from [TodayBundle] so neither `combine`
+     * outgrows its arity. All local; none of it is network state.
      */
     private data class Extras(
         val historyDays: List<DayRecord>,
         val historyLoading: Boolean,
         val historyMessage: String?,
         val confirmClearHistory: Boolean,
-        val bridgePreview: BridgePreviewUi?,
         val backupPreview: BackupPreviewUi?,
-        val zendoMessage: String?,
+        val dataMessage: String?,
     )
 
     private val extras: Flow<Extras> = combine(
@@ -564,9 +493,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _historyLoading,
         _historyMessage,
         _confirmClearHistory,
-        _bridgePreview,
         _backupPreview,
-        _zendoMessage,
+        _dataMessage,
     ) { args: Array<Any?> ->
         @Suppress("UNCHECKED_CAST")
         Extras(
@@ -574,15 +502,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             historyLoading = args[1] as Boolean,
             historyMessage = args[2] as String?,
             confirmClearHistory = args[3] as Boolean,
-            bridgePreview = args[4] as BridgePreviewUi?,
-            backupPreview = args[5] as BackupPreviewUi?,
-            zendoMessage = args[6] as String?,
+            backupPreview = args[4] as BackupPreviewUi?,
+            dataMessage = args[5] as String?,
         )
     }
 
     val state: StateFlow<UiState> =
-        combine(base, _pendingPause, today, extras, wallpaperStore.appliedId) {
-                base, pendingPause, t, x, appliedWallpaperId ->
+        combine(base, _pendingPause, today, extras, _addingPage) {
+                base, pendingPause, t, x, addingPage ->
             base.copy(
                 pendingPause = pendingPause,
                 highlights = t.highlights,
@@ -599,15 +526,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 calendarError = t.calError,
                 lastCalendarRefresh = t.lastRefresh,
                 selectedDateEpochDay = t.date.toEpochDay(),
-                // A stored id from an older build resolves to the default design
-                // instead of reading as "nothing chosen".
-                wallpaperSelectedId = t.wallpaperId
-                    ?.takeIf { WallpaperTemplates.byId(it) != null }
-                    ?: WallpaperTemplates.DEFAULT_ID,
-                wallpaperAppliedId = appliedWallpaperId,
-                wallpaperTarget = t.wallpaperTarget,
-                wallpaperApplying = t.applying,
-                wallpaperMessage = t.message,
                 editingHighlightId = t.editingId,
                 highlightTitle = t.draftTitle,
                 highlightNote = t.draftNote,
@@ -624,16 +542,13 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 taskEditorError = t.taskError,
                 showDiscardTask = t.showDiscardT,
                 confirmDeleteTaskId = t.confirmDelT,
-                usageAccess = t.usageAccess,
-                usageEntries = t.usageEntries,
-                usageLoading = t.usageLoading,
                 historyDays = x.historyDays,
                 historyLoading = x.historyLoading,
                 historyMessage = x.historyMessage,
                 confirmClearHistory = x.confirmClearHistory,
-                bridgePreview = x.bridgePreview,
                 backupPreview = x.backupPreview,
-                zendoMessage = x.zendoMessage,
+                dataMessage = x.dataMessage,
+                addingPage = addingPage,
             )
         }.stateIn(
             viewModelScope,
@@ -646,7 +561,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 isLoading = _isLoading.value,
             ),
         )
-
     init {
         // Keep today's history record in step with the live stores. Every write goes
         // through upsert(), which ignores identical content, so this costs one
@@ -770,10 +684,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun consumeAutoFocusSearch() { _autoFocusSearch.value = false }
 
     fun openSettings(from: Screen = if (_screen.value == Screen.APPS) Screen.APPS else Screen.HOME) {
-        // WALLPAPERS and CALENDAR are leaves of HOME; returning goes to HOME.
+        // CALENDAR is a leaf of HOME; returning goes to HOME.
         settingsReturn = when (from) {
             Screen.APPS -> Screen.APPS
-            Screen.SETUP, Screen.PERMISSIONS -> from
             else -> Screen.HOME
         }
         _screen.value = Screen.SETTINGS
@@ -784,8 +697,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _screen.value = settingsReturn
         settingsReturn = Screen.HOME
     }
-
-    fun openWallpapers() { _screen.value = Screen.WALLPAPERS }
 
     fun openCalendar() {
         _screen.value = Screen.CALENDAR
@@ -830,7 +741,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun enterPageEdit() { _pageEditing.value = true }
 
     /** Leaves page editing. Also the first thing Back does while editing. */
-    fun leavePageEdit() { _pageEditing.value = false }
+    fun leavePageEdit() {
+        _addingPage.value = false
+        _pageEditing.value = false
+    }
+
+    /** Opens the page-type picker, the only route to a second page. */
+    fun openAddPage() {
+        if (settingsStore.settings.value.home.pages.size >= HomeLayout.MAX_PAGES) return
+        _addingPage.value = true
+    }
+
+    fun closeAddPage() { _addingPage.value = false }
 
     /**
      * Back's whole decision for the launcher, in the order the user experiences it:
@@ -867,10 +789,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             cancelClearHistory()
             return true
         }
-        if (_bridgePreview.value != null) {
-            cancelBridgeImport()
-            return true
-        }
         if (_backupPreview.value != null) {
             cancelBackupRestore()
             return true
@@ -888,16 +806,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 goHome()
                 return true
             }
-            Screen.WALLPAPERS, Screen.CALENDAR, Screen.HISTORY -> {
+            Screen.CALENDAR, Screen.HISTORY -> {
                 goHome()
-                return true
-            }
-            Screen.SETUP -> {
-                backFromSetup()
-                return true
-            }
-            Screen.PERMISSIONS -> {
-                backFromPermissions()
                 return true
             }
             Screen.HIGHLIGHT_EDITOR -> {
@@ -909,6 +819,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 return true
             }
             Screen.HOME -> Unit
+        }
+        // The add-page picker is a layer over edit mode.
+        if (_addingPage.value) {
+            _addingPage.value = false
+            return true
         }
         // List dialogs live on Home: they are layers above the page.
         if (_showAllHighlights.value) {
@@ -929,9 +844,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     // ---- Home: pages ----------------------------------------------------------------
 
-    /** Adds a page after the active one and moves to it. Null at the page limit. */
-    fun addPage(): String? {
-        val id = settingsStore.addPage() ?: return null
+    /**
+     * Adds a page of [type] after the active one and moves to it. Null at the page limit.
+     *
+     * The type is chosen by the user from the add-page picker; nothing else creates a
+     * page. A fresh install has exactly one � the apps page � so every other page in the
+     * launcher was asked for by name.
+     */
+    fun addPage(type: PageType = PageType.APPS): String? {
+        val id = settingsStore.addPage(type) ?: return null
+        _addingPage.value = false
         _pagerTargetPage.value = settingsStore.settings.value.home.pages.indexOfFirst { it.id == id }
         return id
     }
@@ -961,48 +883,20 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun movePageItem(pageId: String, from: Int, to: Int) = settingsStore.movePageItem(pageId, from, to)
 
-    fun moveFavourite(key: String, delta: Int) = settingsStore.moveFavourite(key, delta)
+    // ---- Note page ----------------------------------------------------------------
 
-    // ---- Focus page ---------------------------------------------------------------
-
-    /** Stores the Focus page's note. Written on every keystroke; there is no save step. */
+    /** Stores the note page's line. Written on every keystroke; there is no save step. */
     fun setFocusNote(note: String) { focusNoteStore.write(note) }
 
-    /** Leaves onboarding for the setup checklist. Seen is set when setup finishes. */
+    /**
+     * Leaves onboarding for Home. There is no setup wizard any more: every step it listed
+     * either duplicated a Settings row or pointed at a feature this build no longer has,
+     * and a first-run flow that asks for four permissions before the user has opened a
+     * single app is the opposite of calm.
+     */
     fun dismissOnboarding() {
-        _screen.value = Screen.SETUP
-    }
-
-    /** Finishes first-run setup for good. Every step is optional and repeatable later. */
-    fun finishSetup() {
         settingsStore.update { it.copy(onboardingSeen = true) }
         _screen.value = Screen.HOME
-    }
-
-    fun openSetup(from: Screen = Screen.HOME) {
-        setupReturn = from
-        _screen.value = Screen.SETUP
-    }
-
-    fun backFromSetup() {
-        // First-run Back is a Skip: the session continues on Home and nothing is lost,
-        // and onboarding will not show again.
-        if (!settingsStore.settings.value.onboardingSeen) {
-            finishSetup()
-            return
-        }
-        _screen.value = setupReturn
-        setupReturn = Screen.HOME
-    }
-
-    fun openPermissions(from: Screen = Screen.HOME) {
-        setupReturn = from
-        _screen.value = Screen.PERMISSIONS
-    }
-
-    fun backFromPermissions() {
-        _screen.value = setupReturn
-        setupReturn = Screen.HOME
     }
 
     /** Re-opens onboarding from Settings without clearing the seen flag. */
@@ -1118,55 +1012,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             )
 
     fun setTheme(theme: ThemeMode) = settingsStore.update { it.copy(theme = theme) }
-
-    fun setLayout(layout: LayoutMode) = settingsStore.update { it.copy(layout = layout) }
-
-    fun setTodayEnabled(enabled: Boolean) = settingsStore.update { it.copy(todayEnabled = enabled) }
-
-    fun setClock24h(enabled: Boolean) = settingsStore.update { it.copy(clock24h = enabled) }
-
-    /**
-     * How launcher-page icons are drawn. The legacy boolean is kept in step for a
-     * downgrade: any style other than NATIVE desaturates, NATIVE does not.
-     */
-    fun setIconStyle(style: IconStyle) = settingsStore.update {
-        it.copy(iconStyle = style, monochromeIcons = style != IconStyle.NATIVE)
-    }
-
-    /** Legacy boolean form of [setIconStyle], kept for older callers. */
-    fun setMonochromeIcons(enabled: Boolean) =
-        setIconStyle(if (enabled) IconStyle.MONOCHROME else IconStyle.NATIVE)
-
-    /** The wash colour for monochrome icons; the store sanitizes on write. */
-    fun setIconTint(tint: String) = settingsStore.update { it.copy(iconTint = tint) }
-
-    /** When on, the monochrome wash follows the selected wallpaper's accent. */
-    fun setIconTintMatchWallpaper(enabled: Boolean) =
-        settingsStore.update { it.copy(iconTintMatchWallpaper = enabled) }
-
-    /** Draw the selected wallpaper behind the Home pages, below the legibility scrim. */
-    fun setHomeBackdrop(enabled: Boolean) = settingsStore.update { it.copy(homeBackdrop = enabled) }
-
-    /** Pinned apps allowed on one page. 5 or 6; the store clamps anything else. */
-    fun setPinLimit(limit: Int) = settingsStore.update {
-        it.copy(pinLimit = limit.coerceIn(SettingsStore.MIN_PIN_LIMIT, SettingsStore.MAX_PIN_LIMIT))
-    }
-
-    /**
-     * Screen time is opt-in: turning it on changes nothing until the system grants
-     * Usage Access, and this flag is what every usage read is gated on. Turning it
-     * off stops the queries and drops whatever was loaded.
-     */
-    fun setScreenTimeEnabled(enabled: Boolean) {
-        settingsStore.update { it.copy(screenTimeEnabled = enabled) }
-        if (!enabled) {
-            _usageAccess.value = false
-            _usageEntries.value = emptyList()
-        }
-    }
-
-    /** Hides the numbers while access stays. Independent of [setScreenTimeEnabled]. */
-    fun setScreenTimeHidden(hidden: Boolean) = settingsStore.update { it.copy(screenTimeHidden = hidden) }
 
     fun setPauseEnabled(enabled: Boolean) = settingsStore.update { it.copy(pauseEnabled = enabled) }
 
@@ -1591,95 +1436,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun eventDetailsUri(eventId: Long): android.net.Uri =
         calendarRepository.eventUri(eventId)
 
-    // ---- Wallpaper ------------------------------------------------------------------
-
-    fun selectWallpaper(id: String) {
-        wallpaperStore.select(id)
-        _wallpaperMessage.value = null
-    }
-
-    fun setWallpaperTarget(target: WallpaperTarget) = wallpaperStore.setTarget(target)
-
-    fun clearWallpaperMessage() { _wallpaperMessage.value = null }
-
-    fun applyWallpaper() {
-        // A second tap while the first is still running must not start a duplicate
-        // operation: the UI already swaps the button for status text, and this is the
-        // second line of defence for the frame in between.
-        if (_wallpaperApplying.value) return
-        // An unknown stored id (a template from an older build) applies the default
-        // design rather than stopping at a message about a choice the user cannot see.
-        val template = WallpaperTemplates.byId(wallpaperStore.selectedId.value)
-            ?: WallpaperTemplates.default()
-        val target = wallpaperStore.target.value
-        _wallpaperApplying.value = true
-        _wallpaperMessage.value = null
-        viewModelScope.launch(Dispatchers.IO) {
-            val result = WallpaperApplier.apply(getApplication(), template, target)
-            when (result) {
-                is WallpaperApplyResult.Applied -> {
-                    wallpaperStore.recordResult(true)
-                    wallpaperStore.recordApplied(template.id)
-                    _wallpaperMessage.value = "Applied to ${target.name.lowercase()}."
-                }
-                is WallpaperApplyResult.Partial -> {
-                    wallpaperStore.recordResult(true)
-                    wallpaperStore.recordApplied(template.id)
-                    _wallpaperMessage.value = result.message
-                }
-                is WallpaperApplyResult.Failed -> {
-                    wallpaperStore.recordResult(false)
-                    _wallpaperMessage.value = result.message
-                }
-            }
-            _wallpaperApplying.value = false
-        }
-    }
-
-    // ---- Gestures -------------------------------------------------------------------
-
-    fun setSwipeUpEnabled(enabled: Boolean) = settingsStore.update { it.copy(swipeUpEnabled = enabled) }
-
-    fun setPagingEnabled(enabled: Boolean) = settingsStore.update { it.copy(pagingEnabled = enabled) }
+    // ---- Motion ---------------------------------------------------------------------
 
     fun setReduceMotion(enabled: Boolean) = settingsStore.update { it.copy(reduceMotion = enabled) }
-
-    // ---- Optional screen time (special access, numbers only, opt-in) -----------------
-
-    /**
-     * Re-reads special-access state. Read-only; granting happens in system Settings.
-     * Gated on [LauncherSettings.screenTimeEnabled]: while screen time is off, no
-     * access is ever reported and nothing is loaded.
-     */
-    fun refreshUsageAccess() {
-        val enabled = settingsStore.settings.value.screenTimeEnabled
-        val has = enabled && usageRepository.hasAccess()
-        _usageAccess.value = has
-        if (!has) _usageEntries.value = emptyList()
-    }
-
-    /**
-     * Loads today's summary on an explicit tap. No polling, no background work:
-     * each load is one bounded provider query for the current day, and only while
-     * screen time is on.
-     */
-    fun loadUsage() {
-        if (!settingsStore.settings.value.screenTimeEnabled || !usageRepository.hasAccess()) {
-            _usageAccess.value = false
-            _usageEntries.value = emptyList()
-            return
-        }
-        _usageAccess.value = true
-        _usageLoading.value = true
-        viewModelScope.launch(Dispatchers.IO) {
-            _usageEntries.value = try {
-                usageRepository.todaySummary()
-            } catch (_: Exception) {
-                emptyList()
-            }
-            _usageLoading.value = false
-        }
-    }
 
     // ---- History (local day records) -------------------------------------------------
 
@@ -1714,114 +1473,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         _historyMessage.value = "History cleared. Nothing else was touched."
     }
 
-    // ---- Zendo bridge & backup (manual files only) -----------------------------------
-
-    /**
-     * Parses a picked snapshot file and holds the planned import for confirmation.
-     * A file that is not a snapshot, is newer than this app, or is dated in the
-     * future is refused here with a sentence, and nothing is written.
-     */
-    fun beginSnapshotImport(uri: Uri) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val today = LocalDate.now()
-            when (val parsed = BridgeJson.parseSnapshot(readTextFile(uri), today)) {
-                is BridgeParse.Rejected -> _zendoMessage.value = parsed.message
-                is BridgeParse.Ok -> {
-                    _bridgePreview.value = BridgePreviewUi(
-                        fileName = fileNameOf(uri),
-                        snapshot = parsed.snapshot,
-                        plan = planFor(parsed.snapshot, ImportMode.MERGE, today),
-                    )
-                    _zendoMessage.value = null
-                }
-            }
-        }
-    }
-
-    /** Toggles merge/replace in the preview; the plan is recomputed from the same file. */
-    fun setBridgeImportMode(mode: ImportMode) {
-        val preview = _bridgePreview.value ?: return
-        _bridgePreview.value = preview.copy(
-            plan = planFor(preview.snapshot, mode, LocalDate.now()),
-        )
-    }
-
-    private fun planFor(snapshot: BridgeSnapshot, mode: ImportMode, today: LocalDate): BridgePlan =
-        BridgePlanner.plan(
-            snapshot = snapshot,
-            today = today,
-            mode = mode,
-            currentActionTitle = todayActionStore.title.value,
-            currentActionOrigin = todayActionStore.origin.value,
-            currentHighlights = highlightStore.highlights.value,
-            currentTasks = taskStore.tasks.value,
-            currentDay = historyStore.recordFor(snapshot.localDate),
-        )
-
-    fun cancelBridgeImport() { _bridgePreview.value = null }
-
-    /**
-     * Applies exactly the lists the preview counted. A snapshot for today lands in
-     * the live stores (and is therefore captured into today's history as the day
-     * goes on); a snapshot for a past date writes only that day's record.
-     */
-    fun confirmBridgeImport() {
-        val preview = _bridgePreview.value ?: return
-        val plan = preview.plan
-        if (plan.isToday) {
-            plan.actionTitle?.let { title ->
-                todayActionStore.replace(
-                    title = title,
-                    done = false,
-                    origin = Origins.ZENDO_PWA,
-                    sourceId = preview.snapshot.action?.id,
-                )
-            }
-            plan.highlights?.let { highlightStore.replaceAll(it) }
-            plan.tasks?.let { taskStore.replaceAll(it) }
-        }
-        plan.dayRecord?.let { historyStore.upsert(it) }
-        settingsStore.update {
-            it.copy(
-                zendoLastImportAt = System.currentTimeMillis(),
-                zendoLastImportExportedAt = preview.snapshot.exportedAt,
-                zendoLastImportDate = preview.snapshot.localDate.toString(),
-            )
-        }
-        _bridgePreview.value = null
-        _zendoMessage.value = importResultMessage(plan)
-    }
-
-    /** One plain sentence about what an import did — from the same plan that applied. */
-    private fun importResultMessage(plan: BridgePlan): String {
-        val s = plan.summary
-        if (!s.hasAnyChange) return "Already up to date — nothing needed to change."
-        val parts = ArrayList<String>()
-        if (s.addedTasks > 0) parts += "${s.addedTasks} task${if (s.addedTasks == 1) "" else "s"} added"
-        if (s.updatedTasks > 0) parts += "${s.updatedTasks} updated"
-        if (s.removedImportedTasks > 0) parts += "${s.removedImportedTasks} replaced"
-        if (s.actionSet) parts += "action set"
-        if (s.highlightAdded) parts += "highlight added"
-        if (s.highlightUpdated) parts += "highlight updated"
-        return "Imported: " + parts.joinToString(", ") + "."
-    }
-
-    fun clearZendoMessage() { _zendoMessage.value = null }
+    // ---- Backup (manual files only) --------------------------------------------------
 
     /** Parses a picked backup file; the restore itself waits for confirmation. */
     fun beginBackupImport(uri: Uri) {
         viewModelScope.launch(Dispatchers.IO) {
             when (val parsed = BridgeJson.parseBackup(readTextFile(uri))) {
-                is BackupParse.Rejected -> _zendoMessage.value = parsed.message
+                is BackupParse.Rejected -> _dataMessage.value = parsed.message
                 is BackupParse.Ok -> {
                     _backupPreview.value = BackupPreviewUi(fileNameOf(uri), parsed.contents)
-                    _zendoMessage.value = null
+                    _dataMessage.value = null
                 }
             }
         }
     }
 
     fun cancelBackupRestore() { _backupPreview.value = null }
+
+    /** Takes down the one-sentence note about the last backup action. */
+    fun clearDataMessage() { _dataMessage.value = null }
 
     /**
      * Replaces the live action, highlights and tasks with the backup's; day records
@@ -1836,12 +1506,8 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         taskStore.replaceAll(c.tasks)
         historyStore.upsertAll(c.days)
         settingsStore.update { it.restoredFromBackup(c.prefs) }
-        if (!c.prefs.screenTimeEnabled) {
-            _usageAccess.value = false
-            _usageEntries.value = emptyList()
-        }
         _backupPreview.value = null
-        _zendoMessage.value = "Backup restored."
+        _dataMessage.value = "Backup restored."
     }
 
     /**
@@ -1864,15 +1530,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 days = historyStore.days.value,
                 prefs = BackupPrefs(
                     theme = s.theme,
-                    layout = s.layout,
-                    clock24h = s.clock24h,
                     reduceMotion = s.reduceMotion,
-                    swipeUpEnabled = s.swipeUpEnabled,
-                    pagingEnabled = s.pagingEnabled,
-                    monochromeIcons = s.monochromeIcons,
-                    pinLimit = s.pinLimit,
-                    screenTimeEnabled = s.screenTimeEnabled,
-                    screenTimeHidden = s.screenTimeHidden,
                     pauseEnabled = s.pauseEnabled,
                     pauseMessage = s.pauseMessage,
                     windowEnabled = s.windowEnabled,
@@ -1881,7 +1539,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 ),
             )
             val raw = BridgeJson.encodeBackup(contents, BuildConfig.VERSION_NAME, System.currentTimeMillis())
-            _historyMessage.value = if (writeTextFile(uri, raw)) {
+            _dataMessage.value = if (writeTextFile(uri, raw)) {
                 "Backup saved."
             } else {
                 "Couldn't write the backup file."
@@ -1913,31 +1571,18 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     private fun fileNameOf(uri: Uri): String =
         uri.lastPathSegment?.substringAfterLast('/')?.takeIf { it.isNotBlank() } ?: "file"
-
-    suspend fun bitmapFor(target: LaunchTarget, sizePx: Int): Bitmap? =
-        withContext(Dispatchers.IO) { appRepository.bitmapFor(target, sizePx) }
 }
 
 /**
  * The backup's portable prefs mapped onto the live settings, extracted so the mapping
- * is testable without a file. The backup predates [IconStyle], so its boolean is the
- * only icon style it carries: monochrome on restores [IconStyle.MONOCHROME], off
- * restores [IconStyle.NATIVE] — the same reading [SettingsStore] gives the legacy key,
- * and the boolean is written back in step so a downgrade still finds it. Everything
- * the backup does not carry (the tint, the backdrop) is left as it is.
+ * is testable without a file. The backup format predates this build's slimmer settings,
+ * so its older fields (layout, icon style, pin limit, screen time) are simply ignored:
+ * a restore brings back the data and the settings that still exist, and never
+ * resurrects a control that was removed.
  */
 internal fun LauncherSettings.restoredFromBackup(prefs: BackupPrefs): LauncherSettings = copy(
     theme = prefs.theme,
-    layout = prefs.layout,
-    clock24h = prefs.clock24h,
     reduceMotion = prefs.reduceMotion,
-    swipeUpEnabled = prefs.swipeUpEnabled,
-    pagingEnabled = prefs.pagingEnabled,
-    monochromeIcons = prefs.monochromeIcons,
-    iconStyle = if (prefs.monochromeIcons) IconStyle.MONOCHROME else IconStyle.NATIVE,
-    pinLimit = prefs.pinLimit,
-    screenTimeEnabled = prefs.screenTimeEnabled,
-    screenTimeHidden = prefs.screenTimeHidden,
     pauseEnabled = prefs.pauseEnabled,
     pauseMessage = prefs.pauseMessage,
     windowEnabled = prefs.windowEnabled,

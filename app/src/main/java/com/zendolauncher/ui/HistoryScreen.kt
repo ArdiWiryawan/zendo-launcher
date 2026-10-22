@@ -140,6 +140,6 @@ private fun HistoryDay(day: DayRecord) {
     }
     if (Origins.isImported(day.origin) || day.tasks.any { Origins.isImported(it.origin) }) {
         Spacer(Modifier.height(LauncherSpace.xs))
-        SecondaryText("Includes a record that came from Zendo.")
+        SecondaryText("Includes a record from an earlier import.")
     }
 }

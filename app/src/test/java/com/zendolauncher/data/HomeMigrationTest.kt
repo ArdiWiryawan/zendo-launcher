@@ -61,25 +61,25 @@ class HomeMigrationTest {
     }
 
     @Test
-    fun `a fresh install gets the default three pages`() {
+    fun `a fresh install gets one apps page and nothing else`() {
         val home = store().read().home
         assertEquals(HomeLayout.DEFAULT, home)
-        assertEquals(3, home.pages.size)
+        assertEquals(1, home.pages.size)
+        assertEquals(PageType.APPS, home.pages.single().type)
     }
 
     @Test
-    fun `legacy favourites land on the launch page`() {
+    fun `legacy favourites land on the apps page`() {
         writeLegacy(listOf("com.example.notes/.MainActivity", "com.example.docs/Shortcut"))
         val home = store().read().home
-        val launch = home.page("p_launch")!!
-        assertEquals(PageType.APPS, launch.type)
+        val apps = home.page("p_apps")!!
+        assertEquals(PageType.APPS, apps.type)
         assertEquals(
             listOf("com.example.notes/.MainActivity", "com.example.docs/Shortcut"),
-            launch.config.itemKeys,
+            apps.config.itemKeys,
         )
-        // The other pages are the default, untouched.
-        assertEquals(PageType.TODAY, home.page("p_today")?.type)
-        assertEquals(PageType.PLAN, home.page("p_plan")?.type)
+        // Nothing is invented around it: the migrated layout is still one page.
+        assertEquals(1, home.pages.size)
     }
 
     /**
@@ -126,21 +126,21 @@ class HomeMigrationTest {
         writeLegacy(listOf("old.key"))
         store().read()
         // Simulate the write that any settings change performs.
-        store().update { it.copy(clock24h = false) }
+        store().update { it.copy(reduceMotion = true) }
         assertNotNull(prefs.getString(KEY_HOME_PAGES, null))
 
         val home = store().read().home
-        assertEquals(listOf("old.key"), home.page("p_launch")!!.config.itemKeys)
+        assertEquals(listOf("old.key"), home.page("p_apps")!!.config.itemKeys)
         // A later edit by the user now sticks, because the legacy list is not consulted.
         store().toggleFavourite("old.key")
-        assertEquals(emptyList<String>(), store().read().home.page("p_launch")!!.config.itemKeys)
+        assertEquals(emptyList<String>(), store().read().home.page("p_apps")!!.config.itemKeys)
     }
 
     @Test
     fun `a write persists the pages blob, the active id and the version`() {
-        store().update { it.copy(clock24h = true) }
+        store().update { it.copy(reduceMotion = false) }
         assertEquals(SettingsStore.HOME_PAGES_VERSION, prefs.getInt(KEY_HOME_PAGES_VERSION, -1))
-        assertEquals("p_today", prefs.getString(KEY_HOME_ACTIVE_PAGE, null))
+        assertEquals("p_apps", prefs.getString(KEY_HOME_ACTIVE_PAGE, null))
         val blob = prefs.getString(KEY_HOME_PAGES, null)
         assertNotNull(blob)
         assertEquals(HomeLayout.DEFAULT.pages, HomeLayoutCodec.decode(blob)!!.pages)
@@ -178,11 +178,14 @@ class HomeMigrationTest {
     @Test
     fun `a removed page stays removed across reads and writes`() {
         val store = store()
-        store.removePage("p_plan")
+        // Add a page, then delete it: the deletion has to outlive every later read.
+        val added = store.addPage(PageType.PLAN)!!
+        assertTrue(store.read().home.pages.any { it.type == PageType.PLAN })
+        store.removePage(added)
         assertTrue(store.read().home.pages.none { it.type == PageType.PLAN })
 
         // Unrelated settings write, then a fresh store -- what a relaunch does.
-        store.update { it.copy(clock24h = false) }
+        store.update { it.copy(reduceMotion = true) }
         assertTrue(store().read().home.pages.none { it.type == PageType.PLAN })
 
         // And again after the launcher has been away and come back.
@@ -194,39 +197,42 @@ class HomeMigrationTest {
     @Test
     fun `pinning from the drawer lands on the active apps page`() {
         val store = store()
-        store.setActivePage("p_launch")
+        store.setActivePage("p_apps")
         store.toggleFavourite("com.example.notes/.Main")
-        assertEquals(listOf("com.example.notes/.Main"), store.read().home.page("p_launch")?.config?.itemKeys)
-        assertEquals("p_launch", store.read().home.activePageId)
+        assertEquals(listOf("com.example.notes/.Main"), store.read().home.page("p_apps")?.config?.itemKeys)
+        assertEquals("p_apps", store.read().home.activePageId)
     }
 
     /**
-     * A pin made while the Today page is showing still has to be visible: it lands on the
-     * first apps page and the active page follows it, rather than appearing to do nothing.
+     * A pin made while a page that shows no apps is active still has to be visible: it
+     * lands on the first apps page and the active page follows it, rather than appearing
+     * to do nothing.
      */
     @Test
     fun `pinning while a page that shows no apps is active moves to the apps page`() {
         val store = store()
-        store.setActivePage("p_today")
+        val today = store.addPage(PageType.TODAY)!!
+        store.setActivePage(today)
         store.toggleFavourite("com.example.notes/.Main")
         val home = store.read().home
-        assertEquals(listOf("com.example.notes/.Main"), home.page("p_launch")?.config?.itemKeys)
-        assertEquals("p_launch", home.activePageId)
+        assertEquals(listOf("com.example.notes/.Main"), home.page("p_apps")?.config?.itemKeys)
+        assertEquals("p_apps", home.activePageId)
+        store.removePage(today)
     }
 
     @Test
     fun `pinning twice unpins, on whichever page holds the key`() {
         val store = store()
-        store.setActivePage("p_launch")
+        store.setActivePage("p_apps")
         store.toggleFavourite("k")
         store.toggleFavourite("k")
-        assertEquals(emptyList<String>(), store.read().home.page("p_launch")?.config?.itemKeys)
+        assertEquals(emptyList<String>(), store.read().home.page("p_apps")?.config?.itemKeys)
     }
 
     @Test
     fun `hiding a pinned app drops it from every page`() {
         val store = store()
-        store.setActivePage("p_launch")
+        store.setActivePage("p_apps")
         store.toggleFavourite("k")
         store.toggleHidden("k")
         val home = store.read().home
@@ -237,7 +243,8 @@ class HomeMigrationTest {
     @Test
     fun `a pin with no apps page anywhere creates one rather than being swallowed`() {
         val store = store()
-        store.removePage("p_launch")
+        // Re-type the only page so no apps page is left, then pin.
+        store.setPageType("p_apps", PageType.NOTES)
         store.toggleFavourite("k")
         val home = store.read().home
         assertTrue(home.pages.any { it.type == PageType.APPS })
@@ -255,8 +262,10 @@ class HomeMigrationTest {
 
     @Test
     fun `the active page is restored from its own key`() {
-        store().setActivePage("p_plan")
-        assertEquals("p_plan", store().read().home.activePageId)
+        val store = store()
+        val added = store.addPage(PageType.PLAN)!!
+        store.setActivePage(added)
+        assertEquals(added, store().read().home.activePageId)
     }
 
     /**

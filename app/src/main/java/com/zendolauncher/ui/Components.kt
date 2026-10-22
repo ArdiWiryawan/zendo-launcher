@@ -1,9 +1,8 @@
 package com.zendolauncher.ui
 
-import android.graphics.Bitmap
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,29 +25,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.graphics.ColorFilter
-import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.window.Dialog
-import com.zendolauncher.data.IconStyle
-import com.zendolauncher.data.LayoutMode
-import com.zendolauncher.data.SettingsStore
+import com.zendolauncher.core.PageType
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
@@ -116,7 +106,7 @@ fun QuietAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
  * the dot is the only visual cue and it is invisible to a screen reader.
  *
  * The hide item names the unpin it also performs. Hiding a pinned app drops it from
- * Essentials in the same tap, and a menu that said only "Hide app" would let the user
+ * Home in the same tap, and a menu that said only "Hide app" would let the user
  * lose an ordered entry without being told.
  *
  * `showPinAction` is what makes pinning reachable without knowing the long press, so the
@@ -127,13 +117,15 @@ fun QuietAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
  * drag-to-reorder. Both cannot own the same gesture, and reordering is the one the Home
  * page needs; a row there still reaches pin and hide through the drawer, and the pin
  * action it already shows.
+ *
+ * Text only. Nothing here reserves space for an icon: the launcher stopped drawing app
+ * artwork, so a row is a label, a state dot and, in the drawer, one text action.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppRow(
     viewModel: LauncherViewModel,
     target: LaunchTarget,
-    layout: LayoutMode,
     isFavourite: Boolean,
     onClick: () -> Unit,
     onToggleFavourite: () -> Unit,
@@ -142,6 +134,7 @@ fun AppRow(
     showPinAction: Boolean = false,
     menuAlignment: Alignment.Horizontal = Alignment.End,
     longPressMenu: Boolean = true,
+    minHeightDp: Int = LauncherSpace.touchTarget.value.toInt(),
 ) {
     val palette = LauncherColors.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -155,22 +148,18 @@ fun AppRow(
                     onClick = onClick,
                     onLongClick = if (longPressMenu) ({ menuOpen = true }) else null,
                     onLongClickLabel = if (longPressMenu) {
-                        if (isFavourite) "Remove from Essentials" else "Add to Essentials"
+                        if (isFavourite) "Remove from Home" else "Add to Home"
                     } else {
                         null
                     },
                     role = Role.Button,
                 )
                 .semantics {
-                    stateDescription = if (isFavourite) "In Essentials" else "Not in Essentials"
+                    stateDescription = if (isFavourite) "On Home" else "Not on Home"
                 }
-                .defaultMinSize(minHeight = LauncherSpace.touchTarget)
+                .defaultMinSize(minHeight = minHeightDp.dp)
                 .padding(vertical = LauncherSpace.sm),
         ) {
-            if (layout == LayoutMode.ICON_TEXT) {
-                AppIcon(viewModel, target, sizeDp = 28)
-                Spacer(Modifier.width(14.dp))
-            }
             Text(
                 text = target.label,
                 style = LauncherType.appLabel,
@@ -213,7 +202,7 @@ fun AppRow(
                 DropdownMenuItem(
                     text = {
                         Text(
-                            if (isFavourite) "Remove from Essentials" else "Add to Essentials",
+                            if (isFavourite) "Remove from Home" else "Add to Home",
                             style = LauncherType.body,
                         )
                     },
@@ -234,109 +223,6 @@ fun AppRow(
     }
 }
 
-/**
- * Icon appearance by default (monochrome-first design). Composition locals instead of
- * parameters through every row, so Home, the drawer and Settings always agree. The
- * controls live in Settings → Appearance; when the style is NATIVE the original icon
- * colours show, and the tint is what a MONOCHROME icon is washed toward.
- *
- * [LocalIconTint] is the *resolved* tint: the Activity decides whether it is the stored
- * swatch or the wallpaper's accent, so no composable needs to know about wallpapers.
- */
-val LocalIconStyle = staticCompositionLocalOf { IconStyle.MONOCHROME }
-val LocalIconTint = staticCompositionLocalOf { SettingsStore.DEFAULT_ICON_TINT }
-
-/**
- * Duotone: value-only desaturation first — luminance survives, hue does not — then each
- * channel is washed toward the tint: `out.c = L * (tintC - 0.08) + 0.08`. The 0.08 floor
- * keeps deep shadows off pure black, which is what makes a cream tint read as warm paper
- * rather than as a contrast clamp. Matrices are cached per tint: one per colour, built
- * once, reused by every row that draws with it.
- */
-internal fun duotoneMatrix(tintHex: String): ColorMatrix = duotoneCache.getOrPut(tintHex) {
-    val tint = parseTint(tintHex)
-    // The tint curve first (this = M), then value-only desaturation applied before it
-    // (this = M × S), so a pixel lands as M(S(pixel)): luminance in, tint out.
-    ColorMatrix(
-        floatArrayOf(
-            tint.red - FLOOR, 0f, 0f, 0f, FLOOR * 255f,
-            0f, tint.green - FLOOR, 0f, 0f, FLOOR * 255f,
-            0f, 0f, tint.blue - FLOOR, 0f, FLOOR * 255f,
-            0f, 0f, 0f, 1f, 0f,
-        ),
-    ).apply {
-        timesAssign(ColorMatrix().apply { setToSaturation(0f) })
-    }
-}
-
-/**
- * One matrix per tint, cached for the process. Assumption: entries are only ever written
- * from the main thread — composition is the sole caller — so the map never races.
- */
-private val duotoneCache = mutableMapOf<String, ColorMatrix>()
-
-/** Shadow floor of the duotone curve, 0..1. Multiplied by 255 for the matrix offset. */
-private const val FLOOR = 0.08f
-
-/**
- * `#RRGGBB` to a colour, without `Color.parseColor`'s exception: a tint that reached
- * here past [sanitizeIconTint] would be a stored corruption, and an icon — or a swatch
- * on the Appearance page — is not worth crashing over. Anything unreadable falls back
- * to the cream default.
- */
-internal fun parseTint(tintHex: String): Color {
-    val hex = tintHex.trim().removePrefix("#")
-    if (hex.length != 6) return FallbackTint
-    var value = 0
-    for (c in hex) {
-        val digit = when (c) {
-            in '0'..'9' -> c - '0'
-            in 'a'..'f' -> c - 'a' + 10
-            in 'A'..'F' -> c - 'A' + 10
-            else -> return FallbackTint
-        }
-        value = value shl 4 or digit
-    }
-    return Color(0xFF000000.toInt() or value)
-}
-
-/**
- * The cream the product calls its tint default, as a [Color]. Must mirror
- * [SettingsStore.DEFAULT_ICON_TINT] — the one value every fallback path agrees on.
- */
-private val FallbackTint = Color(0xFFEDE6D8)
-
-/**
- * Icons are loaded off the main thread and only when a layout asks for them. The slot is
- * emitted even while the bitmap is null, so a resolving icon cannot shift the label.
- *
- * Internal because the Today dock draws the same icon without a row around it.
- */
-@Composable
-internal fun AppIcon(viewModel: LauncherViewModel, target: LaunchTarget, sizeDp: Int) {
-    val px = with(LocalDensity.current) { sizeDp.dp.roundToPx() }
-    val bitmap by produceState<Bitmap?>(initialValue = null, target.key) {
-        value = viewModel.bitmapFor(target, px)
-    }
-    val style = LocalIconStyle.current
-    val tint = LocalIconTint.current
-    // Allocated once per (style, tint), not once per recomposition: the filter is what
-    // the Image holds on to, and a dock redraws on every settle of the pager.
-    val filter = remember(style, tint) {
-        if (style == IconStyle.NATIVE) null else ColorFilter.colorMatrix(duotoneMatrix(tint))
-    }
-    Box(Modifier.size(sizeDp.dp)) {
-        bitmap?.let {
-            Image(
-                bitmap = it.asImageBitmap(),
-                contentDescription = null,
-                contentScale = ContentScale.Fit,
-                colorFilter = filter,
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-    }
-}
 
 /**
  * A quiet boolean. The whole row is the target and the state is legible without colour:
@@ -547,3 +433,57 @@ fun UndoNote(text: String, actionLabel: String, onAction: () -> Unit, modifier: 
         QuietAction(text = actionLabel, onClick = onAction)
     }
 }
+
+/**
+ * The page-type picker: the only way a second Home page comes into being.
+ *
+ * A fresh install has exactly one page — the apps you pinned — so every other page is a
+ * deliberate act. The four types are offered as words rather than as a menu of icons,
+ * and the one type with no implementation (Widget) is not offered at all.
+ */
+@Composable
+fun AddPageDialog(onPick: (PageType) -> Unit, onDismiss: () -> Unit) {
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .background(LauncherColors.current.background)
+                .padding(LauncherSpace.lg),
+        ) {
+            Text(
+                text = "Add a page",
+                style = LauncherType.body,
+                color = LauncherColors.current.primary,
+            )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            SecondaryText("A page holds one thing. Apps is the list you already have.")
+            Spacer(Modifier.height(LauncherSpace.md))
+            ADD_PAGE_CHOICES.forEach { (type, label, note) ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable(role = Role.Button) { onPick(type) }
+                        .defaultMinSize(minHeight = LauncherSpace.touchTarget),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(label, style = LauncherType.body, color = LauncherColors.current.primary)
+                        SecondaryText(note)
+                    }
+                }
+            }
+            Spacer(Modifier.height(LauncherSpace.sm))
+            Row(horizontalArrangement = Arrangement.End, modifier = Modifier.fillMaxWidth()) {
+                QuietAction("Cancel", onClick = onDismiss)
+            }
+        }
+    }
+}
+
+/** Page types this build can actually render, in the order they are offered. */
+private val ADD_PAGE_CHOICES = listOf(
+    Triple(PageType.APPS, "Apps", "Another list of pinned apps."),
+    Triple(PageType.TODAY, "Today", "Clock, today's action, highlights and tasks."),
+    Triple(PageType.PLAN, "Plan", "Your calendar agenda, day by day."),
+    Triple(PageType.NOTES, "Note", "One line for what this session is for."),
+)

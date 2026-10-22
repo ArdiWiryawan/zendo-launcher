@@ -1,5 +1,7 @@
 # Zendo integration audit
 
+> **Historical.** This document describes a feature that was removed in 0.7.0. The launcher no longer draws app artwork, ships a wallpaper gallery, reads usage statistics, or imports Zendo snapshots. Kept for the record and for anyone reading an older build.
+
 > **0.5.0 status — supersedes the "Today block" plan below.** The launcher ships
 > no live Zendo source: `platform/ZendoSource.kt`, `model/ZendoToday.kt` and
 > `core/TodaySelector.kt` were deleted. Integration is now a **manual, one-way

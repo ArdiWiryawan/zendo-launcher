@@ -1,4 +1,4 @@
-# Zendo Launcher
+﻿# Zendo Launcher
 
 A standalone, monochrome Android home screen. It replaces your launcher with a clock, a
 date, and a short list of apps you actually use. Nothing else.
@@ -38,59 +38,50 @@ All apps   Settings
 - **Refresh and a count in the drawer.** The bottom row carries **Settings** and
   **Refresh**, which rescans installed apps and shortcuts, and the list is headed by a
   count: "N apps" while the query is empty, **Results** once one is typed.
-- **Essentials** — pin apps to the home screen, reorder them, unpin them. In the app list
+- **Essentials** â€” pin apps to the home screen, reorder them, unpin them. In the app list
   every row carries a visible **Pin** action, so the feature does not depend on knowing the
   long press; holding a row still opens the same menu as a shortcut.
+- **One page to start.** A fresh install is one page holding the apps you pinned, anchored
+  to the lower half of the screen so the list sits under your thumb. Today, Plan and Note
+  pages are added on purpose from **Edit pages â†’ Add page**.
 - **Hide apps** you would rather not see, without uninstalling anything. The hidden list
   names apps by their real label, not by package name, and hiding offers an **Undo** that
   stays on screen for a few seconds.
-- **Today, local and persistent.** A completable headline action, a highlight
-  that stays until archived, and tasks that keep their state — plus one small
+- **Today, local and persistent** (as an optional page). A completable headline action, a
+  highlight that stays until archived, and tasks that keep their state â€” plus one small
   line into local history.
-- **Plan page.** The chosen day's full agenda from the device calendar, with
+- **Plan page** (optional). The chosen day's full agenda from the device calendar, with
   previous/next date navigation, an in-progress marker, and honest states for
   permission, no calendars, none chosen, sync-off, empty and error.
-- **Local history.** One record per day — the action, the highlight and the
-  tasks as they stood — kept on this device, newest first. No charts, no
-  streaks. Export writes a full local backup; clear asks first and touches only
+- **Local history.** One record per day â€” the action, the highlight and the
+  tasks as they stood â€” kept on this device, newest first. No charts, no
+  streaks. A backup writes the whole local state; clear asks first and touches only
   the past.
-- **Manual Zendo bridge.** Zendo publishes no planning API (see
-  [docs/zendo-integration.md](docs/zendo-integration.md)), so there is no live
-  connection: the Zendo app exports a snapshot file, you pick it with the system
-  file picker, and a preview shows exactly what would change. One-way, by hand,
-  no account, no tokens.
-- **Wallpaper gallery.** Three quiet grayscale designs (Quiet Stone,
-  "Kembali ke yang penting.", "Less, but better" with the ZENDO wordmark),
-  9:20 with the top kept clear for the lock clock, applied through
-  `WallpaperManager` with a system-picker fallback. The lock background is set
-  where the device honors it; the lock itself stays with Android.
 - **Calendar agenda.** Monday-first week strip, selectable dates, explicit
-  per-calendar selection — nothing is read until you choose — and a
+  per-calendar selection â€” nothing is read until you choose â€” and a
   best-effort system-calendar intent. Read-only and offline.
-- **Light and dark**, both monochrome. Text-first by default, optional icon-plus-text.
-  The window background and the status and navigation bar icons follow the theme you
-  chose, not the system's night setting.
-- **Everything is local.** No account, no network use. Calendar permission is
-  requested only when you open a calendar feature; usage statistics is an
-  optional, numbers-only summary behind special access; wallpaper uses the normal
-  `SET_WALLPAPER` permission for direct apply (the picker fallback needs none).
+- **Text only, light or dark.** No app artwork anywhere: a row is a label, a state dot and
+  one text action. Two themes, both monochrome, and the window, status bar and navigation
+  bar icons follow the theme you chose rather than the system's night setting.
+- **Everything is local.** No account, no network permission, no telemetry. Calendar
+  permission is requested only when you open a calendar feature, and is read-only.
 
 ## Download the APK
 
-The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing to install.
+The APK is built by GitHub Actions â€” no Android Studio, no local SDK, nothing to install.
 
-**Latest debug build:** [Releases → all Zendo Launcher builds](https://github.com/ArdiWiryawan/zendo-launcher/releases)
-— open the newest `debug-*` release and download `ZendoLauncher-debug.apk` directly, no
+**Latest debug build:** [Releases â†’ all Zendo Launcher builds](https://github.com/ArdiWiryawan/zendo-launcher/releases)
+â€” open the newest `debug-*` release and download `ZendoLauncher-debug.apk` directly, no
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.5.0` (versionCode 13). See the releases list
+The newest build is currently `debug-0.7.0` (versionCode 16). See the releases list
 for its sha256.
 
 To build a fresh one yourself:
 
 1. Open the repository's **Actions** tab.
-2. Pick **Build APK** → **Run workflow** → variant `debug` → **Run workflow**.
+2. Pick **Build APK** â†’ **Run workflow** â†’ variant `debug` â†’ **Run workflow**.
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
@@ -112,8 +103,8 @@ To build locally instead:
 3. Android will warn that the file comes from an unknown source. Allow installation from
    that source (usually your browser or file manager) when prompted.
 4. Install the app.
-5. Press Home. Android asks which app should open the home screen — choose **Launcher** —
-   or go to **Settings → Apps → Default apps → Home app** and select it.
+5. Press Home. Android asks which app should open the home screen â€” choose **Launcher** â€”
+   or go to **Settings â†’ Apps â†’ Default apps â†’ Home app** and select it.
 
 Setting a default Home app is a per-device choice. This launcher does not, and cannot,
 replace your existing home screen setup automatically.
@@ -121,13 +112,12 @@ replace your existing home screen setup automatically.
 ## First run
 
 The first time it opens, the launcher shows a one-page explanation instead of the home
-screen. It says what the launcher replaces, how to choose your essentials from the app
-list, that Android owns the Home app setting, how to get your previous Home screen back,
-and that Zendo is optional.
+screen. It says what the launcher replaces, how to add apps to Home, that other pages
+exist only when you add them, and how to get your previous Home screen back.
 
-The same page is reachable afterwards from **Settings → About → Reopen onboarding**.
+The same page is reachable afterwards from **Settings â†’ About â†’ Reopen onboarding**.
 
-To get your previous Home screen back, open **Settings → Apps → Default apps → Home app**
+To get your previous Home screen back, open **Settings â†’ Apps â†’ Default apps â†’ Home app**
 and choose the other launcher. Android owns that setting: this launcher never changes it
 on its own, and it can always be changed back.
 
@@ -143,37 +133,32 @@ on its own, and it can always be changed back.
   supported API to read those, and this launcher deliberately does not use accessibility
   scraping or package-name guessing to fake it. Manually adding a web shortcut is the
   honest future fix.
-- **Shortcut labels only.** A pinned shortcut is shown with its label; the launcher does
-  not ask for the shortcut icon permission it would need to draw it in the icon layout.
+- **Shortcut labels only.** A pinned shortcut is shown with its label; the launcher never
+  reads app or shortcut icons at all, so no icon permission is needed anywhere.
 - **No widget hosting, no app-blocking.** The calendar is an in-launcher agenda, not
   hosted third-party widgets. Nothing here claims to block apps system-wide.
   Anything like that would need a real, verifiable mechanism and a transparent permission
   request, so it is not in this version.
-- **Zendo stays a file, not a connection.** Zendo exposes no planning API, and this
-  launcher makes no network calls, so integration is a snapshot you export from Zendo
-  and import by hand, with a preview before anything changes. See
-  [docs/zendo-integration.md](docs/zendo-integration.md).
+- **The Zendo snapshot import is gone.** Records imported by an older build still show in
+  History; nothing new can be imported. A local backup file remains the only way data
+  moves between installs.
 
 ## Privacy
 
-- The launcher does not declare the `INTERNET` permission. Calendar access
-  (`READ_CALENDAR`) is requested only when you open a calendar feature, is
-  read-only against the on-device provider, and never uploads anything.
-  Usage statistics (`PACKAGE_USAGE_STATS`) is optional and off by default:
-  the summary is numbers-only, granted in system Settings, revocable there.
-  Wallpaper apply uses `SET_WALLPAPER` (normal, auto-granted); the system-picker
-  fallback needs no permission.
+- The launcher does not declare the `INTERNET` permission, and no longer declares
+  `SET_WALLPAPER` or `PACKAGE_USAGE_STATS`: the bundled wallpaper gallery and the
+  screen-time summary were removed. Calendar access (`READ_CALENDAR`) is requested only
+  when you open a calendar feature, is read-only against the on-device provider, and never
+  uploads anything.
 - Your app list is discovered through the system's `LauncherApps` service, which is how
   Android intends launchers to work. `QUERY_ALL_PACKAGES` is not used; a narrow `<queries>`
   entry for `MAIN`/`LAUNCHER` activities is.
-- Pinned apps, hidden apps, theme, layout, clock format, highlights, tasks,
-  history records, wallpaper choice and the explicit calendar selection are
-  stored in local `SharedPreferences` on the device. They are never uploaded,
-  Android's automatic backup is off, and the only way data leaves is the
-  launcher's own export, which writes a file you have chosen.
-- Zendo snapshots and launcher backups are plain local files. Import previews
-  what would change before writing; export writes only to the location you
-  pick in the system file picker.
+- Pinned apps, hidden apps, the Home layout, theme, highlights, tasks, history records and
+  the explicit calendar selection are stored in local `SharedPreferences` on the device.
+  They are never uploaded, Android's automatic backup is off, and the only way data leaves
+  is a backup file you choose to write.
+- A backup is a plain local file. The restore previews what would change before writing;
+  the save writes only to the location you pick in the system file picker.
 - Nothing is sent anywhere. There is no analytics, no account and no remote config.
 
 ## Documentation
@@ -183,13 +168,11 @@ on its own, and it can always be changed back.
 | [docs/opensource-review.md](docs/opensource-review.md) | Licence audit of the launcher projects reviewed before writing any code |
 | [docs/design-reference-audit.md](docs/design-reference-audit.md) | Visual references inspected, and the design decisions taken from them |
 | [docs/design-system.md](docs/design-system.md) | The design system as built: palette, type scale, spacing, surface treatment, icons, interaction states |
-| [docs/zendo-integration.md](docs/zendo-integration.md) | Verified Zendo data contract, and what a real integration would need |
 | [docs/ui-ux-audit.md](docs/ui-ux-audit.md) | Source-level audit of the shipped UI: the problems found, and what could not be verified |
 | [docs/ui-ux-implementation.md](docs/ui-ux-implementation.md) | What the redesign changed, which finding each change closes, and the before-and-after |
 | [docs/ui-ux-verification.md](docs/ui-ux-verification.md) | What was mechanically verified, the regression checklist, and what remains open |
 | [docs/ui-ux-review/](docs/ui-ux-review/README.md) | Before-and-after screenshots of the redesign, and what they do and do not show |
 | [docs/build-and-release.md](docs/build-and-release.md) | Building, downloading artifacts, signing, troubleshooting |
-| [docs/wallpaper-and-lock-screen.md](docs/wallpaper-and-lock-screen.md) | Wallpaper templates, preview/apply flow, lock-screen capabilities and limits |
 | [docs/today-dashboard-and-calendar.md](docs/today-dashboard-and-calendar.md) | Highlights/tasks models, calendar source, agenda layouts, permissions |
 | [docs/interaction-behavior.md](docs/interaction-behavior.md) | Back, swipe/scroll ownership, paging, drawer, device differences |
 | [docs/implementation-report.md](docs/implementation-report.md) | Files changed, test results, known problems |
@@ -197,12 +180,11 @@ on its own, and it can always be changed back.
 | [docs/android-system-capability-matrix.md](docs/android-system-capability-matrix.md) | Direct/Auth/Indirect/Dependent/Denied per phone surface |
 | [docs/calendar-permission-root-cause.md](docs/calendar-permission-root-cause.md) | Repeat-prompt root cause, lifecycle contract, tests |
 | [docs/back-navigation-audit.md](docs/back-navigation-audit.md) | Every Back path, animation evidence, state preservation |
-| [docs/wallpaper-capability-audit.md](docs/wallpaper-capability-audit.md) | Per-target support, probes, version/OEM table |
 | [docs/digital-wellbeing-roadmap.md](docs/digital-wellbeing-roadmap.md) | Shipped controls, approach comparison, next priorities |
 
 ## Licence
 
-The launcher is original work. No code was copied from any existing launcher — the four
+The launcher is original work. No code was copied from any existing launcher â€” the four
 maintained candidates reviewed are GPL-3.0, and the fifth carries no licence at all, so all
 five were used as reference only. See [docs/opensource-review.md](docs/opensource-review.md).
 

@@ -12,88 +12,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.window.Dialog
-import com.zendolauncher.core.ImportMode
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
-
-/**
- * The snapshot import preview: what the file says, what applying would change, and the
- * one choice that matters (merge or replace-imported). Same calm dialog shape as the
- * pause dialog; nothing is written until Apply.
- */
-@Composable
-fun BridgeImportDialog(
-    preview: BridgePreviewUi,
-    onMode: (ImportMode) -> Unit,
-    onApply: () -> Unit,
-    onCancel: () -> Unit,
-) {
-    val summary = preview.plan.summary
-    Dialog(onDismissRequest = onCancel) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(LauncherColors.current.background)
-                .padding(LauncherSpace.lg),
-        ) {
-            Text(
-                text = "Import from Zendo",
-                style = LauncherType.body,
-                color = LauncherColors.current.primary,
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(preview.fileName)
-            SecondaryText("Snapshot for ${preview.snapshot.localDate} · exported ${preview.snapshot.exportedAt}")
-            Spacer(Modifier.height(LauncherSpace.md))
-            ChoiceRow(
-                label = "How to apply",
-                options = listOf(
-                    ImportMode.MERGE to "Merge",
-                    ImportMode.REPLACE_IMPORTED to "Replace imported",
-                ),
-                selected = preview.mode,
-                onSelect = onMode,
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                if (preview.mode == ImportMode.MERGE) {
-                    "Fills blanks and refreshes what Zendo sent before. Your own text is never overwritten."
-                } else {
-                    "Removes what Zendo sent before for this date, then applies the file. Your own text stays."
-                },
-            )
-            Spacer(Modifier.height(LauncherSpace.md))
-            if (!summary.hasAnyChange) {
-                SecondaryText("Already applied — this file would change nothing.")
-            } else {
-                SecondaryText(
-                    if (preview.plan.isToday) {
-                        "Today's action, highlight and tasks will be updated."
-                    } else {
-                        "Only the record for ${preview.plan.targetDate} is written; today is untouched."
-                    },
-                )
-                Spacer(Modifier.height(LauncherSpace.xs))
-                if (summary.addedTasks > 0) SecondaryText("Tasks added: ${summary.addedTasks}")
-                if (summary.updatedTasks > 0) SecondaryText("Tasks updated: ${summary.updatedTasks}")
-                if (summary.removedImportedTasks > 0) {
-                    SecondaryText("Earlier Zendo tasks replaced: ${summary.removedImportedTasks}")
-                }
-                if (summary.actionSet) SecondaryText("Today's action set from the file.")
-                if (summary.highlightAdded) SecondaryText("Highlight added from the file.")
-                if (summary.highlightUpdated) SecondaryText("Highlight refreshed from the file.")
-            }
-            Spacer(Modifier.height(LauncherSpace.md))
-            Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
-                if (summary.hasAnyChange) {
-                    QuietAction("Apply", onClick = onApply)
-                }
-                QuietAction("Close", onClick = onCancel)
-            }
-        }
-    }
-}
 
 /**
  * Restore preview. The sentence that matters most: day records the file does not

@@ -1,10 +1,5 @@
 package com.zendolauncher.data
 
-import com.zendolauncher.core.BridgeAction
-import com.zendolauncher.core.BridgeHighlight
-import com.zendolauncher.core.BridgeParse
-import com.zendolauncher.core.BridgeSnapshot
-import com.zendolauncher.core.BridgeTask
 import com.zendolauncher.core.DayRecord
 import com.zendolauncher.core.Highlight
 import com.zendolauncher.core.Origins
@@ -12,26 +7,20 @@ import com.zendolauncher.core.TaskItem
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
-import java.time.LocalDate
-import java.time.format.DateTimeParseException
 
 /**
  * Settings worth carrying in a backup: preferences about how the launcher
  * behaves, never identifiers. Package names, calendar ids, account names and
  * anything typed by other apps stay out — a backup that leaked those would be
  * exactly the kind of file this project exists to avoid.
+ *
+ * The removed appearance keys (layout, icon style, pin limit, screen time) are no longer
+ * written. A backup from an older build still parses: unknown keys are ignored, and a
+ * restore simply leaves the controls that no longer exist out of the result.
  */
 data class BackupPrefs(
-    val theme: ThemeMode = ThemeMode.SYSTEM,
-    val layout: LayoutMode = LayoutMode.TEXT,
-    val clock24h: Boolean = true,
+    val theme: ThemeMode = ThemeMode.DARK,
     val reduceMotion: Boolean = false,
-    val swipeUpEnabled: Boolean = true,
-    val pagingEnabled: Boolean = true,
-    val monochromeIcons: Boolean = true,
-    val pinLimit: Int = SettingsStore.DEFAULT_PIN_LIMIT,
-    val screenTimeEnabled: Boolean = false,
-    val screenTimeHidden: Boolean = false,
     val pauseEnabled: Boolean = false,
     val pauseMessage: String = SettingsStore.DEFAULT_PAUSE_MESSAGE,
     val windowEnabled: Boolean = false,
@@ -59,10 +48,8 @@ sealed interface BackupParse {
 }
 
 /**
- * Strict, dependency-free JSON for the two files the launcher reads:
- *
- *  - the Zendo bridge snapshot (written by the PWA, imported here), and
- *  - the launcher's own backup (written and re-read here).
+ * Strict, dependency-free JSON for the one file the launcher reads and writes: its own
+ * backup.
  *
  * Everything is validated by type and length before any of it is trusted; an
  * unknown or newer schema version is rejected with a sentence a person can act
@@ -70,98 +57,18 @@ sealed interface BackupParse {
  */
 object BridgeJson {
 
-    const val BRIDGE_FORMAT = "zendo-launcher-bridge"
     const val BACKUP_FORMAT = "zendo-launcher-backup"
     const val SCHEMA_VERSION = 1
 
-    /** Refuses to even parse a file larger than this — a snapshot is kilobytes. */
+    /** Refuses to even parse a file larger than this — a backup is kilobytes. */
     const val MAX_RAW_CHARS = 2_000_000
 
     private const val MAX_ID = 128
     private const val MAX_TEXT = 500
     private const val MAX_STAMP = 64
     private const val MAX_MESSAGE = 500
-    private const val MAX_TASKS = 500
 
     private class Reject(message: String) : Exception(message)
-
-    // ---- Zendo bridge snapshot ----------------------------------------------------
-
-    fun parseSnapshot(raw: String?, today: LocalDate): BridgeParse {
-        if (raw.isNullOrBlank()) return BridgeParse.Rejected("The file is empty.")
-        if (raw.length > MAX_RAW_CHARS) {
-            return BridgeParse.Rejected("The file is too large to be a Zendo snapshot.")
-        }
-        return try {
-            BridgeParse.Ok(readSnapshot(root(raw), today))
-        } catch (r: Reject) {
-            BridgeParse.Rejected(r.message ?: "The snapshot could not be read.")
-        } catch (_: Exception) {
-            BridgeParse.Rejected("This is not a valid Zendo snapshot file.")
-        }
-    }
-
-    private fun readSnapshot(root: JSONObject, today: LocalDate): BridgeSnapshot {
-        if (requiredText(root, "format", MAX_STAMP) != BRIDGE_FORMAT) {
-            throw Reject("This file is not a Zendo launcher snapshot.")
-        }
-        val version = requiredNumber(root, "schemaVersion").toInt()
-        if (version < 1) throw Reject("The snapshot has an invalid schema version.")
-        if (version > SCHEMA_VERSION) {
-            throw Reject(
-                "This snapshot was exported by a newer Zendo (format v$version). " +
-                    "Update the launcher to import it.",
-            )
-        }
-        val source = requiredText(root, "source", MAX_STAMP)
-        val exportedAt = requiredText(root, "exportedAt", MAX_STAMP)
-        val date = requiredDate(root, "localDate")
-        if (date.isAfter(today)) {
-            throw Reject("The snapshot is dated $date, which is in the future. Import it on that day instead.")
-        }
-        val action = objectOrNull(root, "todayAction")?.let { o ->
-            BridgeAction(
-                id = optionalText(o, "id", MAX_ID),
-                title = requiredText(o, "title", MAX_TEXT),
-            )
-        }
-        val highlight = objectOrNull(root, "highlight")?.let { o ->
-            BridgeHighlight(
-                id = optionalText(o, "id", MAX_ID),
-                text = requiredText(o, "text", MAX_TEXT),
-            )
-        }
-        val tasks = ArrayList<BridgeTask>()
-        val seenIds = HashSet<String>()
-        arrayOrNull(root, "tasks")?.let { array ->
-            if (array.length() > MAX_TASKS) {
-                throw Reject("The snapshot lists more than $MAX_TASKS tasks.")
-            }
-            for (i in 0 until array.length()) {
-                val o = array.optJSONObject(i) ?: throw Reject("Task ${i + 1} is not an object.")
-                val id = requiredText(o, "id", MAX_ID)
-                // The same stable id twice is the same task, not two.
-                if (!seenIds.add(id)) continue
-                tasks += BridgeTask(
-                    id = id,
-                    title = requiredText(o, "title", MAX_TEXT),
-                    done = optionalBool(o, "isCompleted", false),
-                    dueDate = optionalDate(o, "dueDate"),
-                    sortOrder = optionalNumber(o, "sortOrder")?.toInt() ?: i,
-                    updatedAt = optionalText(o, "updatedAt", MAX_STAMP),
-                )
-            }
-        }
-        return BridgeSnapshot(
-            source = source,
-            exportedAt = exportedAt,
-            localDate = date,
-            timeZone = optionalText(root, "timeZone", MAX_STAMP),
-            action = action,
-            highlight = highlight,
-            tasks = tasks,
-        )
-    }
 
     // ---- Launcher backup ----------------------------------------------------------
 
@@ -173,15 +80,7 @@ object BridgeJson {
         contents.actionSourceId?.let { action.put("sourceId", it) }
         val settings = JSONObject()
             .put("theme", contents.prefs.theme.name)
-            .put("layout", contents.prefs.layout.name)
-            .put("clock24h", contents.prefs.clock24h)
             .put("reduceMotion", contents.prefs.reduceMotion)
-            .put("swipeUpEnabled", contents.prefs.swipeUpEnabled)
-            .put("pagingEnabled", contents.prefs.pagingEnabled)
-            .put("monochromeIcons", contents.prefs.monochromeIcons)
-            .put("pinLimit", contents.prefs.pinLimit)
-            .put("screenTimeEnabled", contents.prefs.screenTimeEnabled)
-            .put("screenTimeHidden", contents.prefs.screenTimeHidden)
             .put("pauseEnabled", contents.prefs.pauseEnabled)
             .put("pauseMessage", contents.prefs.pauseMessage)
             .put("windowEnabled", contents.prefs.windowEnabled)
@@ -248,17 +147,8 @@ object BridgeJson {
     }
 
     private fun readPrefs(o: JSONObject): BackupPrefs = BackupPrefs(
-        theme = enumOr(o, "theme", ThemeMode.SYSTEM),
-        layout = enumOr(o, "layout", LayoutMode.TEXT),
-        clock24h = optionalBool(o, "clock24h", true),
+        theme = enumOr(o, "theme", ThemeMode.DARK),
         reduceMotion = optionalBool(o, "reduceMotion", false),
-        swipeUpEnabled = optionalBool(o, "swipeUpEnabled", true),
-        pagingEnabled = optionalBool(o, "pagingEnabled", true),
-        monochromeIcons = optionalBool(o, "monochromeIcons", true),
-        pinLimit = (optionalNumber(o, "pinLimit")?.toInt() ?: SettingsStore.DEFAULT_PIN_LIMIT)
-            .coerceIn(SettingsStore.MIN_PIN_LIMIT, SettingsStore.MAX_PIN_LIMIT),
-        screenTimeEnabled = optionalBool(o, "screenTimeEnabled", false),
-        screenTimeHidden = optionalBool(o, "screenTimeHidden", false),
         pauseEnabled = optionalBool(o, "pauseEnabled", false),
         pauseMessage = optionalText(o, "pauseMessage", MAX_MESSAGE)
             ?: SettingsStore.DEFAULT_PAUSE_MESSAGE,
@@ -317,22 +207,6 @@ object BridgeJson {
         val raw = value(obj, key) ?: return fallback
         if (raw !is Boolean) throw Reject("\"$key\" is not true or false.")
         return raw
-    }
-
-    private fun requiredDate(obj: JSONObject, key: String): LocalDate {
-        val raw = requiredText(obj, key, MAX_STAMP)
-        return parseDate(raw) ?: throw Reject("\"$key\" is not a date (expected YYYY-MM-DD).")
-    }
-
-    private fun optionalDate(obj: JSONObject, key: String): LocalDate? {
-        val raw = optionalText(obj, key, MAX_STAMP) ?: return null
-        return parseDate(raw) ?: throw Reject("\"$key\" is not a date (expected YYYY-MM-DD).")
-    }
-
-    private fun parseDate(raw: String): LocalDate? = try {
-        LocalDate.parse(raw)
-    } catch (_: DateTimeParseException) {
-        null
     }
 
     private fun objectOrNull(obj: JSONObject, key: String): JSONObject? {

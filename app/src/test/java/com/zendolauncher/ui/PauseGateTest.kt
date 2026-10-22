@@ -3,7 +3,9 @@ package com.zendolauncher.ui
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -126,13 +128,19 @@ class PauseGateTest {
         assertNull(vm.state.value.pendingPause)
     }
 
+    /**
+     * The system-settings shortcut section is gone. Android's own pages were one row each
+     * for something the user already reaches from the notification shade or their own
+     * settings app, and they made Settings read like a directory of links.
+     */
     @Test
-    fun settings_rendersHonestSystemSettingsShortcuts() {
+    fun settings_noLongerForwardsToSystemSettingsPages() {
         vm.openSettings()
         rule.waitForIdle()
-        rule.onNodeWithText("Internet & Wi-Fi").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Display & lock screen").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Sound & notifications").performScrollTo().assertIsDisplayed()
+        rule.onAllNodesWithText("Internet & Wi-Fi").assertCountEquals(0)
+        rule.onAllNodesWithText("Display & lock screen").assertCountEquals(0)
+        rule.onAllNodesWithText("Sound & notifications").assertCountEquals(0)
+        rule.onAllNodesWithText("Wallpaper (system picker)").assertCountEquals(0)
     }
 
     @Test
@@ -163,28 +171,20 @@ class PauseGateTest {
         assertEquals("note", vm.state.value.query)
     }
 
+    /**
+     * The one system page Settings still opens: Android owns the Home-app choice, so this
+     * is a route to it rather than a duplicate of it.
+     */
     @Test
-    fun systemSettings_dispatchesDisplayIntent() {
+    fun systemSettings_dispatchesHomeAppIntent() {
         vm.openSettings()
         rule.waitForIdle()
-        rule.onNodeWithText("Display & lock screen").performScrollTo().performClick()
+        rule.onNodeWithText("Open Home app settings").performScrollTo().performClick()
         rule.waitForIdle()
 
         val started = shadowOf(rule.activity).nextStartedActivity
         assertNotNull(started)
-        assertEquals(Settings.ACTION_DISPLAY_SETTINGS, started.action)
-    }
-
-    @Test
-    fun wallpaperRow_resolvesSystemWallpaperPicker() {
-        vm.openSettings()
-        rule.waitForIdle()
-        rule.onNodeWithText("Wallpaper (system picker)").performScrollTo().performClick()
-        rule.waitForIdle()
-
-        val started = shadowOf(rule.activity).nextStartedActivity
-        assertNotNull(started)
-        assertEquals(Intent.ACTION_SET_WALLPAPER, started.action)
+        assertEquals(Settings.ACTION_HOME_SETTINGS, started.action)
     }
 }
 

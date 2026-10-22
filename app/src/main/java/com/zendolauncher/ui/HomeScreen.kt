@@ -41,14 +41,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -65,16 +60,11 @@ import androidx.compose.ui.zIndex
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.HomePage
 import com.zendolauncher.core.PageType
-import com.zendolauncher.core.WallpaperTemplates
-import com.zendolauncher.model.LaunchTarget
-import com.zendolauncher.platform.WallpaperApplier
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
 import com.zendolauncher.ui.theme.clockSizeSp
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -82,8 +72,10 @@ import java.util.Locale
 
 /**
  * The launcher's most important surface, and its job is to let the user act and leave.
- * It is now one to five pages sharing one gesture, so the clock is still the only large
- * element, empty space is still left empty, and nothing is added to fill a page.
+ *
+ * A fresh install is one page holding the apps that were pinned. Everything else is added
+ * on purpose from Edit pages, so the first screen is never a dashboard the user did not
+ * ask for. Empty space is left empty; nothing is added to fill a page.
  *
  * Every page renders something true. A page whose content type has no backing
  * implementation says so in words: it never invents data, and it never offers a control
@@ -123,41 +115,10 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
         }
     }
 
-    // The text-free wallpaper variant, or null when Home paints its own flat background.
-    val backdrop = homeBackdrop(state)
-    // Legibility scrim: the field fades into the page colour toward the bottom, where the
-    // clock's page content and the chrome compete with the wallpaper's own contrast.
-    val scrim = remember(palette) {
-        Brush.verticalGradient(
-            0f to Color.Transparent,
-            0.55f to palette.background.copy(alpha = 0.55f),
-            1f to palette.background.copy(alpha = 0.92f),
-        )
-    }
-    // One more pass of black in the dark theme, deepening the bottom edge on the
-    // darkest templates without changing the light theme's warmer fade.
-    val darkDeepening = remember {
-        Brush.verticalGradient(0f to Color.Transparent, 1f to Color.Black.copy(alpha = 0.12f))
-    }
-
-    // Wallpaper behind, content in front. Drawn with the same renderer the system
-    // wallpaper uses, so the two can never drift; a bitmap at the window's own size, so
-    // no scaling smears the field. When off, the flat background is painted instead.
-    val wallpaperLayer: Modifier =
-        if (backdrop == null) {
-            Modifier.background(palette.background)
-        } else {
-            Modifier.drawBehind {
-                drawImage(backdrop)
-                drawRect(brush = scrim)
-                if (palette.isDark) drawRect(brush = darkDeepening)
-            }
-        }
-
     Column(
         Modifier
             .fillMaxSize()
-            .then(wallpaperLayer)
+            .background(palette.background)
             .systemBarsPadding(),
     ) {
         if (state.pageEditing) {
@@ -174,7 +135,9 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                userScrollEnabled = pages.size > 1 && state.settings.pagingEnabled,
+                // One page cannot be swiped anywhere, so the pager only claims the
+                // gesture once there is somewhere to go.
+                userScrollEnabled = pages.size > 1,
             ) { index ->
                 val page = pages.getOrNull(index) ?: return@HorizontalPager
                 // Keyed on the page id so a page's own remembered state — the focus note's
@@ -218,77 +181,34 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
                 // Absent at the limit rather than present-and-inert: a control that cannot
                 // do anything is worse than one that is not there.
                 if (pages.size < HomeLayout.MAX_PAGES) {
-                    QuietAction("Add page", onClick = { viewModel.addPage() })
+                    QuietAction("Add page", onClick = { viewModel.openAddPage() })
                 }
             }
         } else {
-            // The dock and the search pill belong to the Today page alone: they are its
-            // pinned row and its one affordance into the drawer, and another page — the
-            // Plan & Focus page first of all — carries its own content and does not
-            // inherit them. The gate is the settled page, not the current one: a
-            // half-swipe must not flash the dock onto the page being left or entered.
-            // The bottom chrome itself stays on every page.
-            if (pages.getOrNull(pagerState.settledPage)?.type == PageType.TODAY) {
-                // The dock: the Today page's own pinned order, icon-only, capped at five.
-                // Rendered only when that page actually configures items — an empty dock
-                // would be a gap nobody asked for. No long press here: the pin/hide menu
-                // would need its own copy of AppRow's popup, and a second menu for the same
-                // two actions is how two surfaces start to disagree about the same list.
-                val dock = todayDockTargets(state)
-                if (dock.isNotEmpty()) {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = LauncherSpace.gutter),
-                        // Five 48dp targets and four sm gaps are exactly 272dp — the content
-                        // width of the shortest supported screen (320dp minus the gutters). A
-                        // wider gap needed 320dp of content and squeezed the fifth target to
-                        // zero width on every phone, an invisible icon in a row that promised
-                        // five.
-                        horizontalArrangement = Arrangement.spacedBy(LauncherSpace.sm),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        dock.forEach { target ->
-                            Box(
-                                contentAlignment = Alignment.Center,
-                                modifier = Modifier
-                                    .size(LauncherSpace.touchTarget)
-                                    .clickable(role = Role.Button) { viewModel.launch(target) }
-                                    .semantics { contentDescription = target.label },
-                            ) {
-                                AppIcon(viewModel, target, sizeDp = DOCK_ICON_DP)
-                            }
-                        }
-                    }
-                    Spacer(Modifier.height(LauncherSpace.md))
-                }
-
-                // Search pill: text only, because the drawer's own field is the icon and a
-                // magnifier glyph would be the one pictorial element in the launcher. The
-                // whole pill is the target; the hairline is the same separator the page uses.
-                val pillShape = RoundedCornerShape(999.dp)
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = LauncherSpace.gutter)
-                        .height(LauncherSpace.touchTarget)
-                        .clip(pillShape)
-                        .border(LauncherSpace.hairline, palette.separator, pillShape)
-                        .clickable(role = Role.Button) { viewModel.openApps(autoFocusSearch = true) },
-                ) {
-                    Text("Search apps", style = LauncherType.action, color = palette.secondary)
-                }
-                // 8dp above the bottom chrome, close enough to read as its lid.
-                Spacer(Modifier.height(LauncherSpace.sm))
+            // The search pill sits directly above the bottom chrome on every page: it is
+            // the one way into the drawer that does not need a reach to the top of the
+            // screen, and the drawer is where apps are pinned from.
+            val pillShape = RoundedCornerShape(999.dp)
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = LauncherSpace.gutter)
+                    .height(LauncherSpace.touchTarget)
+                    .clip(pillShape)
+                    .border(LauncherSpace.hairline, palette.separator, pillShape)
+                    .clickable(role = Role.Button) { viewModel.openApps(autoFocusSearch = true) },
+            ) {
+                Text("Search apps", style = LauncherType.action, color = palette.secondary)
             }
+            Spacer(Modifier.height(LauncherSpace.sm))
             // Swipe-up chrome: the bottom bar owns the vertical swipe so scrollable
             // page content keeps its gesture. Taps still reach the actions; a deliberate
             // upward drag opens the drawer instead.
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .swipeUpToOpen(state.settings.swipeUpEnabled) { viewModel.openApps() }
+                    .swipeUpToOpen { viewModel.openApps() }
                     .padding(horizontal = LauncherSpace.gutter, vertical = LauncherSpace.md),
                 horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
                 verticalAlignment = Alignment.CenterVertically,
@@ -303,15 +223,21 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
     // Persistent Today overlays: highlight editor + full lists. Dialogs, so Back
     // closes them via viewModel.back() before anything else on Home.
     HighlightOverlays(viewModel, state)
+
+    if (state.addingPage) {
+        AddPageDialog(
+            onPick = { type -> viewModel.addPage(type) },
+            onDismiss = { viewModel.closeAddPage() },
+        )
+    }
 }
 
 /**
  * Vertical swipe detector for chrome rows. Only fires on a deliberate upward drag
  * past the touch slop + threshold; taps pass through to the row's actions.
  */
-private fun Modifier.swipeUpToOpen(enabled: Boolean, onSwipeUp: () -> Unit): Modifier {
-    if (!enabled) return this
-    return this.pointerInput(onSwipeUp) {
+private fun Modifier.swipeUpToOpen(onSwipeUp: () -> Unit): Modifier =
+    this.pointerInput(onSwipeUp) {
         var accumulated = 0f
         detectVerticalDragGestures(
             onDragStart = { accumulated = 0f },
@@ -329,7 +255,6 @@ private fun Modifier.swipeUpToOpen(enabled: Boolean, onSwipeUp: () -> Unit): Mod
             onDragCancel = { accumulated = 0f },
         )
     }
-}
 
 /** One page's content. Each type is its own composable, so a page's job is legible. */
 @Composable
@@ -373,7 +298,7 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
         // The status-bar inset is already consumed above, so this is the clock's breathing
         // room on top of it. The size is not a guess: see topGap above.
         Spacer(Modifier.height(topGap))
-        Clock(state.settings.clock24h, widthDp)
+        Clock(widthDp)
         Spacer(Modifier.height(LauncherSpace.xs))
         Text(
             text = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", currentLocale())),
@@ -383,15 +308,10 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
         Spacer(Modifier.height(LauncherSpace.xs))
         Text(text = "Today.", style = LauncherType.title, color = palette.primary)
 
-        if (state.settings.todayEnabled) {
-            Spacer(Modifier.height(LauncherSpace.md))
-            Hairline()
-            Spacer(Modifier.height(LauncherSpace.md))
-            TodayDashboard(viewModel, state)
-        } else {
-            Spacer(Modifier.height(LauncherSpace.md))
-            EmptyNote("Today is hidden. Turn on Show today in Settings to see your action, highlights and tasks.")
-        }
+        Spacer(Modifier.height(LauncherSpace.md))
+        Hairline()
+        Spacer(Modifier.height(LauncherSpace.md))
+        TodayDashboard(viewModel, state)
 
         Spacer(Modifier.height(LauncherSpace.xl))
     }
@@ -400,10 +320,12 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
 // ---- Launch ------------------------------------------------------------------------
 
 /**
- * The one page that holds an ordered app list. Reordering is a long press and then a drag,
- * which is why these rows do not open the pin/hide menu on a long press: one gesture cannot
- * both lift a row and open a popup. Unpin stays reachable on the row itself and the menu is
- * untouched everywhere else — see [AppRow].
+ * The apps page: the ordered list this page holds, text only, anchored to the lower half
+ * of the screen so the entries sit under the thumb instead of against the status bar.
+ *
+ * Reordering is a long press and then a drag, which is why these rows do not open the
+ * pin/hide menu on a long press: one gesture cannot both lift a row and open a popup.
+ * Unpin stays reachable on the row itself and the menu is untouched in the drawer.
  *
  * A row dragged past its neighbour is written to the store immediately rather than on drop,
  * so the order on screen is always the order that is stored.
@@ -422,75 +344,83 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
     var draggingKey by remember { mutableStateOf<String?>(null) }
     var accumulated by remember { mutableFloatStateOf(0f) }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = LauncherSpace.gutter),
-    ) {
-        Spacer(Modifier.height(LauncherSpace.xl))
-        SectionHeading(page.config.heading ?: "Apps")
-        Spacer(Modifier.height(LauncherSpace.sm))
-
-        if (targets.isEmpty()) {
-            EmptyNote("No pinned apps here yet. Open All apps and pin the ones you want.")
-            QuietAction("Open All apps", onClick = { viewModel.openApps() })
-        } else {
-            targets.forEach { target ->
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .zIndex(if (draggingKey == target.key) 1f else 0f)
-                        .onSizeChanged { if (rowHeightPx == 0f) rowHeightPx = it.height.toFloat() }
-                        .pointerInput(page.id, targets.size) {
-                            detectDragGesturesAfterLongPress(
-                                onDragStart = {
-                                    draggingKey = target.key
-                                    accumulated = 0f
-                                },
-                                onDragEnd = {
-                                    draggingKey = null
-                                    accumulated = 0f
-                                },
-                                onDragCancel = {
-                                    draggingKey = null
-                                    accumulated = 0f
-                                },
-                                onDrag = { change, dragAmount ->
-                                    change.consume()
-                                    val step = rowHeightPx
-                                    if (step <= 0f) return@detectDragGesturesAfterLongPress
-                                    accumulated += dragAmount.y
-                                    // One slot per row height travelled. The index is looked
-                                    // up by key each time, because the row's position has
-                                    // moved by then.
-                                    while (accumulated >= step) {
-                                        viewModel.moveItemBy(page.id, target.key, 1)
-                                        accumulated -= step
-                                    }
-                                    while (accumulated <= -step) {
-                                        viewModel.moveItemBy(page.id, target.key, -1)
-                                        accumulated += step
-                                    }
-                                },
-                            )
-                        },
-                ) {
-                    AppRow(
-                        viewModel = viewModel,
-                        target = target,
-                        layout = state.settings.layout,
-                        isFavourite = true,
-                        onClick = { viewModel.launch(target) },
-                        onToggleFavourite = { viewModel.toggleFavourite(target.key) },
-                        onToggleHidden = { viewModel.toggleHidden(target.key) },
-                        longPressMenu = false,
-                        showPinAction = true,
-                    )
+    // Anchored to the bottom of the page's box, not its top: on a phone held in one hand
+    // the top third of the screen is out of reach, and a launcher whose only job is to
+    // open five apps should put those five where the thumb already is. The empty space
+    // above is deliberate — it is what makes the list readable at a glance.
+    Box(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = LauncherSpace.gutter),
+        ) {
+            if (targets.isEmpty()) {
+                EmptyNote("No apps on this page yet.")
+                Spacer(Modifier.height(LauncherSpace.xs))
+                QuietAction("Open All apps", onClick = { viewModel.openApps() })
+            } else {
+                targets.forEachIndexed { index, target ->
+                    if (index > 0) Hairline()
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .zIndex(if (draggingKey == target.key) 1f else 0f)
+                            .onSizeChanged { if (rowHeightPx == 0f) rowHeightPx = it.height.toFloat() }
+                            .pointerInput(page.id, targets.size) {
+                                detectDragGesturesAfterLongPress(
+                                    onDragStart = {
+                                        draggingKey = target.key
+                                        accumulated = 0f
+                                    },
+                                    onDragEnd = {
+                                        draggingKey = null
+                                        accumulated = 0f
+                                    },
+                                    onDragCancel = {
+                                        draggingKey = null
+                                        accumulated = 0f
+                                    },
+                                    onDrag = { change, dragAmount ->
+                                        change.consume()
+                                        val step = rowHeightPx
+                                        if (step <= 0f) return@detectDragGesturesAfterLongPress
+                                        accumulated += dragAmount.y
+                                        // One slot per row height travelled. The index is looked
+                                        // up by key each time, because the row's position has
+                                        // moved by then.
+                                        while (accumulated >= step) {
+                                            viewModel.moveItemBy(page.id, target.key, 1)
+                                            accumulated -= step
+                                        }
+                                        while (accumulated <= -step) {
+                                            viewModel.moveItemBy(page.id, target.key, -1)
+                                            accumulated += step
+                                        }
+                                    },
+                                )
+                            },
+                    ) {
+                        AppRow(
+                            viewModel = viewModel,
+                            target = target,
+                            isFavourite = true,
+                            onClick = { viewModel.launch(target) },
+                            onToggleFavourite = { viewModel.toggleFavourite(target.key) },
+                            onToggleHidden = { viewModel.toggleHidden(target.key) },
+                            longPressMenu = false,
+                            showPinAction = true,
+                            // Taller than the platform minimum: these rows are the page's
+                            // whole content, and 64dp is the size that makes a five-app
+                            // list feel like a set of destinations rather than a form.
+                            minHeightDp = 64,
+                        )
+                    }
                 }
             }
+            Spacer(Modifier.height(LauncherSpace.md))
         }
-        Spacer(Modifier.height(LauncherSpace.xl))
     }
 }
 
@@ -498,8 +428,7 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
 
 /**
  * The note page: one persistent quick note, plus a route to the wellbeing controls, which
- * live in Settings. The focus timer belonged to the Zendo app, so nothing here runs a
- * session or a clock.
+ * live in Settings.
  */
 @Composable
 private fun NotePage(viewModel: LauncherViewModel, state: UiState) {
@@ -696,63 +625,11 @@ private fun PageManagerRow(page: HomePage, index: Int, pageCount: Int, viewModel
 
 // ---- Chrome ------------------------------------------------------------------------
 
-/** The dock icon itself; the 48dp target around it is the touch surface. */
-private const val DOCK_ICON_DP = 40
-
-/** The dock shows at most this many targets: one calm row on the shortest supported width. */
-private const val DOCK_MAX_ITEMS = 5
-
-/**
- * The Today page's configured items, resolved against the visible apps, capped at
- * [DOCK_MAX_ITEMS] and kept in the page's own order. Resolution drops hidden or
- * uninstalled keys rather than backfilling from further down the list: the dock is the
- * page's order, not a quota to fill.
- */
-private fun todayDockTargets(state: UiState): List<LaunchTarget> {
-    val keys = state.settings.home.pages
-        .firstOrNull { it.type == PageType.TODAY }
-        ?.config?.itemKeys
-        .orEmpty()
-    if (keys.isEmpty()) return emptyList()
-    val byKey = state.visibleApps.associateBy { it.key }
-    return keys.take(DOCK_MAX_ITEMS).mapNotNull { byKey[it] }
-}
-
-/**
- * The wallpaper's field, text-free, for Home's own backdrop, or null when the backdrop
- * is off or no template is known. Rendered at the window's own pixel size and keyed on
- * template and size through [produceState], so a settled screen renders once — off the
- * main thread, because a whole-window bitmap is not composition work. With the text off
- * the render is a single flat fill (see [WallpaperApplier.render]), so it costs one
- * bitmap, not a re-layout. A render failure is treated exactly like no wallpaper — Home
- * paints its flat background and says nothing, because the user asked for a picture,
- * not an error.
- */
-@Composable
-private fun homeBackdrop(state: UiState): ImageBitmap? {
-    if (!state.settings.homeBackdrop) return null
-    val template = state.wallpaperSelectedId?.let { WallpaperTemplates.byId(it) } ?: return null
-    val size = LocalWindowInfo.current.containerSize
-    val backdrop by produceState<ImageBitmap?>(
-        initialValue = null,
-        template.id,
-        size.width,
-        size.height,
-    ) {
-        value = withContext(Dispatchers.Default) {
-            runCatching {
-                WallpaperApplier.render(template, size.width, size.height, includeText = false)
-                    .asImageBitmap()
-            }.getOrNull()
-        }
-    }
-    return backdrop
-}
-
 /**
  * The page indicator: one dot per page, the current one larger and brighter, each named for
  * a reader. Dots are the thinnest thing that can say "there are more pages this way" without
- * taking a line of text from the page itself.
+ * taking a line of text from the page itself. Not composed at all on a single-page Home,
+ * where there is nothing to indicate.
  */
 @Composable
 private fun PageIndicator(pages: List<HomePage>, pagerState: PagerState, onGoTo: (Int) -> Unit) {
@@ -792,9 +669,13 @@ private fun PageIndicator(pages: List<HomePage>, pagerState: PagerState, onGoTo:
  * The size is fitted to the screen instead of fixed, because at a raised system font
  * scale a 60.sp clock is wider than the text column and clips. [widthDp] is the window's
  * measured width, which is what the text column actually has to fit into.
+ *
+ * 24-hour only. The format used to be a setting; it was one more row for a value that
+ * never changes after the first week, and a clock that reads the same way everywhere is
+ * easier to scan than one that matches a preference.
  */
 @Composable
-private fun Clock(use24Hour: Boolean, widthDp: Float) {
+private fun Clock(widthDp: Float) {
     val now by produceState(initialValue = LocalTime.now()) {
         while (true) {
             val current = LocalTime.now()
@@ -810,20 +691,12 @@ private fun Clock(use24Hour: Boolean, widthDp: Float) {
         fontSize = clockSizeSp(widthDp.toInt(), configuration.fontScale).sp,
     )
     val palette = LauncherColors.current
-    val pattern = if (use24Hour) "HH:mm" else "h:mm"
-    val text = now.format(DateTimeFormatter.ofPattern(pattern, locale))
-    Row(verticalAlignment = Alignment.Bottom) {
-        Text(text = text, style = clockStyle, color = palette.primary, maxLines = 1)
-        if (!use24Hour) {
-            Text(
-                text = now.format(DateTimeFormatter.ofPattern("a", locale)),
-                style = LauncherType.secondary,
-                color = palette.secondary,
-                // Lifts the smaller suffix onto the clock's baseline.
-                modifier = Modifier.padding(start = LauncherSpace.sm, bottom = LauncherSpace.md),
-            )
-        }
-    }
+    Text(
+        text = now.format(DateTimeFormatter.ofPattern("HH:mm", locale)),
+        style = clockStyle,
+        color = palette.primary,
+        maxLines = 1,
+    )
 }
 
 /**

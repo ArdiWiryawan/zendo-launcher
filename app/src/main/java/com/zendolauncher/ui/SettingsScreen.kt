@@ -1,74 +1,58 @@
 package com.zendolauncher.ui
 
-import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.unit.dp
 import com.zendolauncher.BuildConfig
-import com.zendolauncher.core.UsageFormat
-import com.zendolauncher.data.IconStyle
 import com.zendolauncher.data.LauncherSettings
-import com.zendolauncher.data.LayoutMode
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
-import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 
 /**
- * Settings is a page of text, not a dashboard: sections are grouped by what the user is
- * trying to change — Apps, Calendar, Zendo, History, Screen Time, Wallpaper, Appearance —
- * each control is one row, and nothing is wrapped in a card. Rows that sap attention are
- * absent rather than inert: an off feature tells you how to turn it on, not show controls
- * that do nothing.
+ * Settings is a short page of text, not a dashboard: five sections, each one a
+ * question the user actually asks — what it looks like, what it opens, what it keeps,
+ * what it pauses, what it is.
+ *
+ * Everything that used to live here and did not earn its row is gone: pin limits and
+ * pinned-app order (the drawer and the page itself own those), 24-hour clock, icon style,
+ * tint, match-wallpaper, layout mode, the wallpaper gallery, screen-time summaries, the
+ * Zendo snapshot import, gesture toggles, and the system-settings shortcuts that only
+ * forwarded to Android's own pages. Each was a setting for something a person either
+ * never changes or changes where they already are.
  */
 @Composable
 fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
@@ -80,18 +64,13 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
     // longer resolves is an uninstalled app and falls back to its package name.
     val labels = remember(state.allApps) { state.allApps.associate { it.key to it.label } }
 
-    // Read-only re-check: granting or revoking usage access in Settings while away
-    // updates this screen on return. It never requests anything.
-    LaunchedEffect(Unit) { viewModel.refreshUsageAccess() }
-
-    // The two file pickers this screen owns. Both read a file the user chose, once:
-    // nothing here is a connection, a login or a background sync.
-    val snapshotLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument(),
-    ) { uri -> uri?.let { viewModel.beginSnapshotImport(it) } }
+    // The one file picker this screen owns: it reads a backup the user chose, once.
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri -> uri?.let { viewModel.beginBackupImport(it) } }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri -> uri?.let { viewModel.exportBackupTo(it) } }
 
     Column(
         Modifier
@@ -119,7 +98,6 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             ChoiceRow(
                 label = "Theme",
                 options = listOf(
-                    ThemeMode.SYSTEM to "System",
                     ThemeMode.LIGHT to "Light",
                     ThemeMode.DARK to "Dark",
                 ),
@@ -127,130 +105,27 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 onSelect = { viewModel.setTheme(it) },
             )
             Spacer(Modifier.height(LauncherSpace.md))
-            ChoiceRow(
-                label = "Layout",
-                options = listOf(
-                    LayoutMode.TEXT to "Text",
-                    LayoutMode.ICON_TEXT to "Icon + text",
-                ),
-                selected = state.settings.layout,
-                onSelect = { viewModel.setLayout(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.md))
             ToggleRow(
-                label = "24-hour clock",
-                checked = state.settings.clock24h,
-                onCheckedChange = { viewModel.setClock24h(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.md))
-            ChoiceRow(
-                label = "App icons",
-                options = listOf(
-                    IconStyle.MONOCHROME to "Monochrome",
-                    IconStyle.TINTED to "Tinted",
-                    IconStyle.NATIVE to "Original",
-                ),
-                selected = state.settings.iconStyle,
-                onSelect = { viewModel.setIconStyle(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "Monochrome washes every icon toward one colour, so app artwork never " +
-                    "fights the page. Tinted follows the wallpaper's accent. Original " +
-                    "shows each app's own icon; nothing is changed in other apps either way.",
-            )
-            if (state.settings.iconStyle != IconStyle.NATIVE) {
-                Spacer(Modifier.height(LauncherSpace.md))
-                TintSwatchRow(
-                    selected = state.settings.iconTint,
-                    onSelect = { viewModel.setIconTint(it) },
-                )
-                Spacer(Modifier.height(LauncherSpace.md))
-                ToggleRow(
-                    label = "Match wallpaper",
-                    checked = state.settings.iconTintMatchWallpaper,
-                    onCheckedChange = { viewModel.setIconTintMatchWallpaper(it) },
-                )
-                Spacer(Modifier.height(LauncherSpace.xs))
-                // The accent follows the design the last apply actually sent to the
-                // system, not the gallery highlight — a tap in Wallpapers must not move
-                // it before anything is applied to the device.
-                SecondaryText(
-                    if (state.settings.iconStyle == IconStyle.TINTED) {
-                        "Tinted follows the design last applied from Wallpapers either way; " +
-                            "the colour above is what Monochrome washes toward."
-                    } else {
-                        "When on, the wash follows the design last applied from Wallpapers — " +
-                            "the default design when none has been."
-                    },
-                )
-            }
-            Spacer(Modifier.height(LauncherSpace.md))
-            ToggleRow(
-                label = "Reduce launcher transitions",
+                label = "Reduce transitions",
                 checked = state.settings.reduceMotion,
                 onCheckedChange = { viewModel.setReduceMotion(it) },
             )
             Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText("Programmatic page jumps stop animating. Swipes still follow your finger.")
-            Spacer(Modifier.height(LauncherSpace.md))
-            QuietAction("Display & grayscale") {
-                openSystemSettings(context, Settings.ACTION_DISPLAY_SETTINGS)
-            }
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "Android's own grayscale and colour-correction controls live under " +
-                    "Display. Turning them on lets the whole device match this page.",
-            )
+            SecondaryText("Page jumps stop animating. Swipes still follow your finger.")
 
             // ---- Apps ----------------------------------------------------------------
 
             Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("Apps")
             Spacer(Modifier.height(LauncherSpace.sm))
-            ToggleRow(
-                label = "Show today",
-                checked = state.settings.todayEnabled,
-                onCheckedChange = { viewModel.setTodayEnabled(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
             SecondaryText(
-                "Today shows your action, your highlight and your tasks. Highlights stay " +
-                    "until you archive them; tasks keep their state.",
+                "Open All apps to add an app to Home, reorder the list, or hide one. " +
+                    "The list is the page — there is nothing to arrange here.",
             )
-            Spacer(Modifier.height(LauncherSpace.md))
-            ChoiceRow(
-                label = "Pinned apps per page",
-                options = listOf(
-                    SettingsStore.MIN_PIN_LIMIT to SettingsStore.MIN_PIN_LIMIT.toString(),
-                    SettingsStore.MAX_PIN_LIMIT to SettingsStore.MAX_PIN_LIMIT.toString(),
-                ),
-                selected = state.settings.pinLimit,
-                onSelect = { viewModel.setPinLimit(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "The cap for one page. When a page is full, pinning more says to remove " +
-                    "a pin first instead of quietly doing nothing.",
-            )
-            Spacer(Modifier.height(LauncherSpace.md))
-            if (state.favourites.isEmpty()) {
-                EmptyNote("No pinned apps.")
-            } else {
-                state.favourites.forEachIndexed { index, target ->
-                    if (index > 0) Hairline()
-                    PinnedOrderRow(
-                        label = target.label,
-                        onMoveUp = { viewModel.moveFavourite(target.key, -1) },
-                        onMoveDown = { viewModel.moveFavourite(target.key, 1) },
-                        onUnpin = { viewModel.toggleFavourite(target.key) },
-                    )
-                }
-            }
-            Spacer(Modifier.height(LauncherSpace.md))
-            if (state.settings.hidden.isEmpty()) {
-                EmptyNote("No hidden apps.")
-            } else {
+            Spacer(Modifier.height(LauncherSpace.sm))
+            QuietAction("Open All apps", onClick = { viewModel.openApps() })
+            if (state.settings.hidden.isNotEmpty()) {
+                Spacer(Modifier.height(LauncherSpace.md))
                 SecondaryText("Hidden apps")
                 state.settings.hidden.sorted().forEachIndexed { index, key ->
                     if (index > 0) Hairline()
@@ -268,22 +143,6 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                     }
                 }
             }
-            Spacer(Modifier.height(LauncherSpace.md))
-            ToggleRow(
-                label = "Horizontal swipe pages Home",
-                checked = state.settings.pagingEnabled,
-                onCheckedChange = { viewModel.setPagingEnabled(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText("A deliberate sideways swipe moves to the next Home page. Off keeps pages tappable via dots.")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            ToggleRow(
-                label = "Swipe up on bottom bar opens drawer",
-                checked = state.settings.swipeUpEnabled,
-                onCheckedChange = { viewModel.setSwipeUpEnabled(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText("Scrollable content keeps its gesture; only the bottom bar owns the swipe. Buttons always work.")
 
             // ---- Calendar ------------------------------------------------------------
 
@@ -301,218 +160,39 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                         "from your device provider only."
                 },
             )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            if (!state.calendarPermission) {
+                CalendarAccessAction(viewModel, state.settings.calendarAsked)
+            }
             QuietAction("Open calendar") { viewModel.openCalendar() }
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "Calendars are chosen on the Calendar screen, one by one. Nothing is " +
-                    "auto-enabled, and nothing is ever written back.",
-            )
 
-            // ---- Zendo ---------------------------------------------------------------
+            // ---- Data ----------------------------------------------------------------
 
             Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Zendo")
+            SectionHeading("Data")
             Spacer(Modifier.height(LauncherSpace.sm))
             SecondaryText(
-                "Zendo and this launcher share no account and no network. You carry a " +
-                    "snapshot file over by hand: the Zendo app exports it, you pick it " +
-                    "here, and the preview shows exactly what would change.",
+                "Everything stays on this device. A backup is one file you choose, holding " +
+                    "your action, highlights, tasks and day records — no package names, no " +
+                    "calendar ids, no accounts.",
             )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "One-way, manual, and the file stays yours. There is no two-way sync " +
-                    "and no background connection.",
-            )
-            QuietAction("Import a Zendo snapshot") {
-                snapshotLauncher.launch(
-                    arrayOf("application/json", "application/octet-stream", "text/plain"),
-                )
-            }
-            Spacer(Modifier.height(LauncherSpace.xs))
-            if (state.settings.zendoLastImportAt > 0L) {
-                SecondaryText(
-                    "Last import: " +
-                        Instant.ofEpochMilli(state.settings.zendoLastImportAt)
-                            .atZone(ZoneId.systemDefault())
-                            .format(DateTimeFormatter.ofPattern("d MMM, HH:mm")) +
-                        state.settings.zendoLastImportDate?.let { " · snapshot for $it" }.orEmpty(),
-                )
-            } else {
-                SecondaryText("No snapshot imported yet.")
-            }
-            state.zendoMessage?.let { message ->
-                Spacer(Modifier.height(LauncherSpace.xs))
-                SecondaryText(message)
-                QuietAction("Dismiss", onClick = { viewModel.clearZendoMessage() })
-            }
-
-            // ---- History -------------------------------------------------------------
-
-            Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("History")
             Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText(
-                "One local record per day: the action, the highlight and the tasks as they " +
-                    "stood. Today keeps changing; older days never do.",
-            )
-            QuietAction("Open history") { viewModel.openHistory() }
+            QuietAction("Save a backup") { exportLauncher.launch("zendo-launcher-backup.json") }
             QuietAction("Restore from backup") {
                 backupLauncher.launch(arrayOf("application/json", "application/octet-stream", "text/plain"))
             }
+            QuietAction("Open history") { viewModel.openHistory() }
             QuietAction("Clear history") { viewModel.requestClearHistory() }
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "A backup holds everything local — action, highlights, tasks, day records " +
-                    "and behaviour settings. No package names, no calendar ids, no accounts.",
-            )
-
-            // ---- Screen Time ---------------------------------------------------------
-
-            Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Screen Time")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            ToggleRow(
-                label = "Screen time summary",
-                checked = state.settings.screenTimeEnabled,
-                onCheckedChange = { on ->
-                    viewModel.setScreenTimeEnabled(on)
-                    // Granting happens in system Settings; the toggle is the only
-                    // moment this screen sends the user there unprompted, and it
-                    // never asks twice on its own.
-                    if (on && !state.usageAccess) {
-                        openSystemSettings(context, Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                    }
-                },
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "Off by default and hidden from Home either way. When on, it shows today's " +
-                    "foreground minutes per app — numbers read on this device, never " +
-                    "uploaded, never blocking anything. Turn it off and the queries stop.",
-            )
-            if (state.settings.screenTimeEnabled) {
-                Spacer(Modifier.height(LauncherSpace.sm))
-                if (!state.usageAccess) {
-                    SecondaryText(
-                        "Access is not granted yet. Android grants Screen Time access in " +
-                            "system Settings, under Special app access → Usage access.",
-                    )
-                    QuietAction("Open screen time settings") {
-                        openSystemSettings(context, Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                    }
-                    QuietAction("Check access") { viewModel.refreshUsageAccess() }
-                } else {
-                    ToggleRow(
-                        label = "Hide summary",
-                        checked = state.settings.screenTimeHidden,
-                        onCheckedChange = { viewModel.setScreenTimeHidden(it) },
-                    )
-                    Spacer(Modifier.height(LauncherSpace.xs))
-                    SecondaryText(
-                        if (state.settings.screenTimeHidden) {
-                            "Summary hidden. Access stays until you revoke it in system Settings."
-                        } else {
-                            "Today's foreground minutes per app. Refreshed only when you ask."
-                        },
-                    )
-                    if (!state.settings.screenTimeHidden) {
-                        val pkgLabels = remember(state.allApps) {
-                            state.allApps.associate { it.packageName to it.label }
-                        }
-                        Spacer(Modifier.height(LauncherSpace.sm))
-                        if (state.usageLoading) {
-                            SecondaryText("Loading…")
-                        } else {
-                            val entries = state.usageEntries.take(8)
-                            if (entries.isEmpty()) {
-                                EmptyNote("No usage recorded today. Tap Refresh after using some apps.")
-                            } else {
-                                entries.forEachIndexed { index, entry ->
-                                    if (index > 0) Hairline()
-                                    Row(
-                                        Modifier.fillMaxWidth(),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                    ) {
-                                        Text(
-                                            pkgLabels[entry.packageName] ?: entry.packageName,
-                                            style = LauncherType.body,
-                                            color = palette.primary,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                        SecondaryText(UsageFormat.minutes(entry.minutes))
-                                    }
-                                }
-                            }
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
-                            QuietAction("Refresh", onClick = { viewModel.loadUsage() })
-                            QuietAction("Check access") { viewModel.refreshUsageAccess() }
-                        }
-                    }
-                }
+            state.dataMessage?.let { message ->
+                Spacer(Modifier.height(LauncherSpace.xs))
+                SecondaryText(message)
+                QuietAction("Dismiss", onClick = { viewModel.clearDataMessage() })
             }
 
-            // ---- Wallpaper -----------------------------------------------------------
+            // ---- Pause ---------------------------------------------------------------
 
             Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Wallpaper")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText(
-                "Three quiet grayscale templates, made for this screen. Preview first — " +
-                    "nothing is applied until the system reports success.",
-            )
-            QuietAction("Open wallpaper gallery") { viewModel.openWallpapers() }
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "Lock and Home targets appear only where the device supports them. " +
-                    "This sets a background; it never draws over your lock screen.",
-            )
-            Spacer(Modifier.height(LauncherSpace.md))
-            ToggleRow(
-                label = "Wallpaper on home",
-                checked = state.settings.homeBackdrop,
-                onCheckedChange = { viewModel.setHomeBackdrop(it) },
-            )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                "Draws the selected design behind the Home pages, below a scrim that " +
-                    "keeps the clock readable. The drawer and Settings stay flat.",
-            )
-
-            // ---- Setup, permissions and system ---------------------------------------
-
-            Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Setup & permissions")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText("First-run checklist and one place for every capability.")
-            QuietAction("Review setup") { viewModel.openSetup(Screen.SETTINGS) }
-            QuietAction("Permission center") { viewModel.openPermissions(Screen.SETTINGS) }
-
-            Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Home app")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText(
-                if (state.isDefaultHome) {
-                    "This launcher is your default Home app."
-                } else {
-                    "This launcher is not the default Home app yet."
-                },
-            )
-            QuietAction("Open Home app settings") {
-                openSystemSettings(context, Settings.ACTION_HOME_SETTINGS)
-            }
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                if (state.shortcutAccess) {
-                    "Pinned shortcuts from other apps are readable, so installed web apps appear in your app list."
-                } else {
-                    "Pinned shortcuts are only readable while this launcher is the default Home app. " +
-                        "Set it as default to see web apps that browsers expose as shortcuts."
-                },
-            )
-
-            Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Intentional Pause")
+            SectionHeading("Pause")
             Spacer(Modifier.height(LauncherSpace.sm))
             ToggleRow(
                 label = "Pause before opening",
@@ -540,46 +220,27 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                     )
                 }
             }
-
             Spacer(Modifier.height(LauncherSpace.md))
             AccessWindowSection(viewModel, state.settings)
 
-            Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("System settings")
-            Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText(
-                "Connectivity, display, and notification controls belong to Android. " +
-                    "These open the system pages directly rather than duplicating toggles.",
-            )
-            QuietAction("Internet & Wi-Fi") {
-                val primary = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    Settings.Panel.ACTION_INTERNET_CONNECTIVITY
-                } else {
-                    Settings.ACTION_WIFI_SETTINGS
-                }
-                openSystemSettings(context, primary, Settings.ACTION_WIFI_SETTINGS)
-            }
-            QuietAction("Display & lock screen") {
-                openSystemSettings(context, Settings.ACTION_DISPLAY_SETTINGS)
-            }
-            QuietAction("Sound & notifications") {
-                openSystemSettings(context, Settings.ACTION_SOUND_SETTINGS)
-            }
-            QuietAction("Wallpaper (system picker)") {
-                openSystemSettings(context, Intent.ACTION_SET_WALLPAPER)
-            }
+            // ---- Home app ------------------------------------------------------------
 
             Spacer(Modifier.height(LauncherSpace.xl))
-            SectionHeading("Privacy")
+            SectionHeading("Home app")
             Spacer(Modifier.height(LauncherSpace.sm))
             SecondaryText(
-                "Everything stays on this device. Your app list, pinned apps, hidden apps, theme, " +
-                    "highlights, tasks, history and wallpaper choice are stored locally and are never uploaded. " +
-                    "The launcher does not use the internet. App discovery uses the system's LauncherApps service. " +
-                    "Calendar is read-only from your device provider, only after you allow it, and only for the calendars you choose. " +
-                    "Screen time is off by default; when on it reads numbers on this device only. " +
-                    "Wallpaper apply uses the system's WallpaperManager for the bundled grayscale templates.",
+                if (state.isDefaultHome) {
+                    "This launcher is your default Home app."
+                } else {
+                    "This launcher is not the default Home app yet."
+                },
             )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            QuietAction("Open Home app settings") {
+                openSystemSettings(context, Settings.ACTION_HOME_SETTINGS)
+            }
+
+            // ---- About ---------------------------------------------------------------
 
             Spacer(Modifier.height(LauncherSpace.xl))
             SectionHeading("About")
@@ -597,57 +258,10 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
 }
 
 /**
- * One pinned app with its two kinds of action kept apart. Up and Down sit together as the
- * reorder pair; Unpin is destructive and not reversible from this row, so it takes a
- * deliberate step away from them and the trailing edge of the row. The label keeps
- * `weight(1f)`, so a long app name wraps instead of pushing the actions off-screen.
- *
- * Each action names the app it acts on, because three identical words repeated down the
- * list are otherwise indistinguishable to a screen reader.
- */
-@Composable
-private fun PinnedOrderRow(
-    label: String,
-    onMoveUp: () -> Unit,
-    onMoveDown: () -> Unit,
-    onUnpin: () -> Unit,
-) {
-    Row(
-        Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            style = LauncherType.body,
-            color = LauncherColors.current.primary,
-            modifier = Modifier.weight(1f),
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.md)) {
-            QuietAction(
-                text = "Up",
-                onClick = onMoveUp,
-                modifier = Modifier.semantics { contentDescription = "Move $label up" },
-            )
-            QuietAction(
-                text = "Down",
-                onClick = onMoveDown,
-                modifier = Modifier.semantics { contentDescription = "Move $label down" },
-            )
-        }
-        Spacer(Modifier.width(LauncherSpace.xl))
-        QuietAction(
-            text = "Unpin",
-            onClick = onUnpin,
-            modifier = Modifier.semantics { contentDescription = "Unpin $label" },
-        )
-    }
-}
-
-/**
  * The access window as one compact block: the switch, the two ends, and the sentence
  * that keeps the feature honest.
  *
- * It sits inside Intentional Pause rather than getting its own heading, because it has
+ * It sits inside Pause rather than getting its own heading, because it has
  * no effect on its own — it narrows a gate the section above already turns on. A window
  * with the pause off is a setting that does nothing, so the copy opens with that
  * condition instead of letting the user discover it by tapping an app.
@@ -694,9 +308,7 @@ private fun AccessWindowSection(viewModel: LauncherViewModel, settings: Launcher
     SecondaryText(
         "The time is read once, when you tap an app here. Nothing runs in the background " +
             "and nothing is scheduled, so a window that has passed does not close an app " +
-            "that is already open — and this gates launches from Zendo Launcher only. It " +
-            "does not block apps system-wide, and opening the same app from another " +
-            "launcher or from a notification is untouched.",
+            "that is already open — and this gates launches from Zendo Launcher only.",
     )
 }
 
@@ -741,105 +353,10 @@ private fun PauseMessageField(viewModel: LauncherViewModel, current: String) {
     }
 }
 
-/**
- * The wash colours offered for monochrome icons, in the order they are drawn: the
- * product cream first, then the warmer accents, then the quiet cool ones. Fixed list,
- * never user-typed: a free text colour would be the one control in Settings that can be
- * wrong, and these six are enough to tune the page without turning Settings into a theme
- * editor. Selected swatch state is carried by a ring and a marker line, never by the
- * colour difference itself.
- */
-private val ICON_TINTS = listOf(
-    "#EDE6D8" to "Cream",
-    "#C9A96A" to "Gold",
-    "#8FD9A5" to "Mint",
-    "#9FB4C7" to "Fog",
-    "#D8B4A6" to "Blush",
-    "#8A8A88" to "Slate",
-)
-
-/**
- * The tint swatches. Each is a 24dp dot centred on a 48dp-wide, 48dp-tall target — the
- * minimum touch target, width included, not just height. Six targets and five
- * [LauncherSpace.xs] gaps are 308dp, so the row fits the 360dp reference screen's content
- * in one line; on narrower screens the flow wraps the overflow instead of squeezing a
- * target below its touch size. The selected dot gains a hairline ring and a marker line
- * beneath it, so selection survives colour blindness and low vision. The stored value is
- * the `#RRGGBB` string itself; the name is only for the accessibility label.
- */
-@Composable
-private fun TintSwatchRow(selected: String, onSelect: (String) -> Unit) {
-    val palette = LauncherColors.current
-    Column {
-        Text("Icon colour", style = LauncherType.body, color = palette.primary)
-        Spacer(Modifier.height(LauncherSpace.sm))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
-            verticalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
-            maxItemsInEachRow = ICON_TINTS.size,
-        ) {
-            ICON_TINTS.forEach { (hex, name) ->
-                val isSelected = selected.equals(hex, ignoreCase = true)
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier
-                        .selectable(
-                            selected = isSelected,
-                            role = Role.RadioButton,
-                            onClick = { onSelect(hex) },
-                        )
-                        .semantics { contentDescription = name }
-                        .defaultMinSize(
-                            minWidth = LauncherSpace.touchTarget,
-                            minHeight = LauncherSpace.touchTarget,
-                        ),
-                ) {
-                    Spacer(Modifier.weight(1f))
-                    Box(
-                        Modifier
-                            .size(24.dp)
-                            .background(parseTint(hex), CircleShape)
-                            .border(
-                                BorderStroke(
-                                    LauncherSpace.hairline,
-                                    if (isSelected) palette.primary else Color.Transparent,
-                                ),
-                                CircleShape,
-                            ),
-                    )
-                    Spacer(Modifier.height(LauncherSpace.xs))
-                    Box(
-                        Modifier
-                            .width(20.dp)
-                            .height(LauncherSpace.hairline)
-                            .background(if (isSelected) palette.primary else Color.Transparent),
-                    )
-                    Spacer(Modifier.weight(1f))
-                }
-            }
-        }
-    }
-}
-
-/**
- * Opens a system Settings page from inside the launcher. The primary action is tried
- * first; when the device has no activity for it, the fallback page is tried, and a
- * failure of both is stated instead of leaving a tap that did nothing.
- */
-private fun openSystemSettings(context: Context, primary: String, fallback: String? = null) {
-    try {
-        context.startActivity(Intent(primary).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-    } catch (_: ActivityNotFoundException) {
-        val recovered = fallback?.let {
-            try {
-                context.startActivity(Intent(it).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                true
-            } catch (_: ActivityNotFoundException) {
-                false
-            }
-        } ?: false
-        if (!recovered) {
-            Toast.makeText(context, "This device has no page for that setting.", Toast.LENGTH_SHORT).show()
-        }
+private fun openSystemSettings(context: Context, action: String) {
+    runCatching {
+        context.startActivity(
+            Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 }

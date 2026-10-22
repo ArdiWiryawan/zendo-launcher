@@ -1,5 +1,7 @@
 # Wallpaper Capability Audit
 
+> **Historical.** This document describes a feature that was removed in 0.7.0. The launcher no longer draws app artwork, ships a wallpaper gallery, reads usage statistics, or imports Zendo snapshots. Kept for the record and for anyone reading an older build.
+
 Scope: versionName 0.3.2, minSdk 26 / targetSdk 36. Companion to
 `docs/lock-screen-root-cause.md` (which owns the defect analysis); this file
 owns the capability table.
