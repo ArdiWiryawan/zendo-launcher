@@ -125,9 +125,10 @@ class LauncherUiTest {
         assertEquals(1, home.pages.size)
         assertEquals(PageType.APPS, home.pages.single().type)
 
-        // One page means nothing to indicate and nothing to swipe to.
-        rule.onAllNodesWithText("Apps").assertCountEquals(0)
-        rule.onNodeWithText("No apps on this page yet.").assertIsDisplayed()
+        // One page means nothing to indicate and nothing to swipe to. The page's own name
+        // is a heading, not a dot: it appears once, at the top of the list.
+        rule.onAllNodesWithText("Apps").assertCountEquals(1)
+        rule.onNodeWithText("No apps on this page yet. Open All apps and pin the ones you want.").assertIsDisplayed()
         rule.onNodeWithText("Search apps").assertIsDisplayed()
     }
 

@@ -320,8 +320,8 @@ private fun TodayPage(viewModel: LauncherViewModel, state: UiState) {
 // ---- Launch ------------------------------------------------------------------------
 
 /**
- * The apps page: the ordered list this page holds, text only, anchored to the lower half
- * of the screen so the entries sit under the thumb instead of against the status bar.
+ * The apps page: the ordered list this page holds, text only, starting at the top of the
+ * page like every other screen.
  *
  * Reordering is a long press and then a drag, which is why these rows do not open the
  * pin/hide menu on a long press: one gesture cannot both lift a row and open a popup.
@@ -344,79 +344,74 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
     var draggingKey by remember { mutableStateOf<String?>(null) }
     var accumulated by remember { mutableFloatStateOf(0f) }
 
-    // Anchored to the bottom of the page's box, not its top: on a phone held in one hand
-    // the top third of the screen is out of reach, and a launcher whose only job is to
-    // open five apps should put those five where the thumb already is. The empty space
-    // above is deliberate — it is what makes the list readable at a glance.
-    Box(Modifier.fillMaxSize()) {
-        Column(
-            Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = LauncherSpace.gutter),
-        ) {
-            if (targets.isEmpty()) {
-                EmptyNote("No apps on this page yet.")
-                Spacer(Modifier.height(LauncherSpace.xs))
-                QuietAction("Open All apps", onClick = { viewModel.openApps() })
-            } else {
-                targets.forEachIndexed { index, target ->
-                    if (index > 0) Hairline()
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .zIndex(if (draggingKey == target.key) 1f else 0f)
-                            .onSizeChanged { if (rowHeightPx == 0f) rowHeightPx = it.height.toFloat() }
-                            .pointerInput(page.id, targets.size) {
-                                detectDragGesturesAfterLongPress(
-                                    onDragStart = {
-                                        draggingKey = target.key
-                                        accumulated = 0f
-                                    },
-                                    onDragEnd = {
-                                        draggingKey = null
-                                        accumulated = 0f
-                                    },
-                                    onDragCancel = {
-                                        draggingKey = null
-                                        accumulated = 0f
-                                    },
-                                    onDrag = { change, dragAmount ->
-                                        change.consume()
-                                        val step = rowHeightPx
-                                        if (step <= 0f) return@detectDragGesturesAfterLongPress
-                                        accumulated += dragAmount.y
-                                        // One slot per row height travelled. The index is looked
-                                        // up by key each time, because the row's position has
-                                        // moved by then.
-                                        while (accumulated >= step) {
-                                            viewModel.moveItemBy(page.id, target.key, 1)
-                                            accumulated -= step
-                                        }
-                                        while (accumulated <= -step) {
-                                            viewModel.moveItemBy(page.id, target.key, -1)
-                                            accumulated += step
-                                        }
-                                    },
-                                )
-                            },
-                    ) {
-                        AppRow(
-                            viewModel = viewModel,
-                            target = target,
-                            isFavourite = true,
-                            onClick = { viewModel.launch(target) },
-                            onToggleFavourite = { viewModel.toggleFavourite(target.key) },
-                            onToggleHidden = { viewModel.toggleHidden(target.key) },
-                            longPressMenu = false,
-                            showPinAction = true,
-                            // Taller than the platform minimum: these rows are the page's
-                            // whole content, and 64dp is the size that makes a five-app
-                            // list feel like a set of destinations rather than a form.
-                            minHeightDp = 64,
-                        )
-                    }
+    // Top-anchored, like every other page: the list starts directly under the status bar
+    // and grows downward. Anchoring it to the bottom pushed the first row into the middle
+    // of an otherwise empty page, which read as clipped rather than calm.
+    Column(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = LauncherSpace.gutter),
+    ) {
+        Spacer(Modifier.height(LauncherSpace.xl))
+        // The page's own name, as every page had before: one quiet label, then the list.
+        SectionHeading(page.config.heading ?: page.name)
+        Spacer(Modifier.height(LauncherSpace.sm))
+        if (targets.isEmpty()) {
+            EmptyNote("No apps on this page yet. Open All apps and pin the ones you want.")
+            QuietAction("Open All apps", onClick = { viewModel.openApps() })
+        } else {
+            targets.forEachIndexed { index, target ->
+                if (index > 0) Hairline()
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .zIndex(if (draggingKey == target.key) 1f else 0f)
+                        .onSizeChanged { if (rowHeightPx == 0f) rowHeightPx = it.height.toFloat() }
+                        .pointerInput(page.id, targets.size) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    draggingKey = target.key
+                                    accumulated = 0f
+                                },
+                                onDragEnd = {
+                                    draggingKey = null
+                                    accumulated = 0f
+                                },
+                                onDragCancel = {
+                                    draggingKey = null
+                                    accumulated = 0f
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val step = rowHeightPx
+                                    if (step <= 0f) return@detectDragGesturesAfterLongPress
+                                    accumulated += dragAmount.y
+                                    // One slot per row height travelled. The index is looked
+                                    // up by key each time, because the row's position has
+                                    // moved by then.
+                                    while (accumulated >= step) {
+                                        viewModel.moveItemBy(page.id, target.key, 1)
+                                        accumulated -= step
+                                    }
+                                    while (accumulated <= -step) {
+                                        viewModel.moveItemBy(page.id, target.key, -1)
+                                        accumulated += step
+                                    }
+                                },
+                            )
+                        },
+                ) {
+                    AppRow(
+                        viewModel = viewModel,
+                        target = target,
+                        isFavourite = true,
+                        onClick = { viewModel.launch(target) },
+                        onToggleFavourite = { viewModel.toggleFavourite(target.key) },
+                        onToggleHidden = { viewModel.toggleHidden(target.key) },
+                        longPressMenu = false,
+                        showPinAction = true,
+                    )
                 }
             }
             Spacer(Modifier.height(LauncherSpace.md))

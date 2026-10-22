@@ -1,4 +1,4 @@
-﻿# Zendo Launcher
+# Zendo Launcher
 
 A standalone, monochrome Android home screen. It replaces your launcher with a clock, a
 date, and a short list of apps you actually use. Nothing else.
@@ -38,27 +38,27 @@ All apps   Settings
 - **Refresh and a count in the drawer.** The bottom row carries **Settings** and
   **Refresh**, which rescans installed apps and shortcuts, and the list is headed by a
   count: "N apps" while the query is empty, **Results** once one is typed.
-- **Essentials** â€” pin apps to the home screen, reorder them, unpin them. In the app list
+- **Essentials** — pin apps to the home screen, reorder them, unpin them. In the app list
   every row carries a visible **Pin** action, so the feature does not depend on knowing the
   long press; holding a row still opens the same menu as a shortcut.
-- **One page to start.** A fresh install is one page holding the apps you pinned, anchored
-  to the lower half of the screen so the list sits under your thumb. Today, Plan and Note
-  pages are added on purpose from **Edit pages â†’ Add page**.
+- **One page to start.** A fresh install is one page holding the apps you pinned, starting
+  at the top of the page like every other screen. Today, Plan and Note
+  pages are added on purpose from **Edit pages → Add page**.
 - **Hide apps** you would rather not see, without uninstalling anything. The hidden list
   names apps by their real label, not by package name, and hiding offers an **Undo** that
   stays on screen for a few seconds.
 - **Today, local and persistent** (as an optional page). A completable headline action, a
-  highlight that stays until archived, and tasks that keep their state â€” plus one small
+  highlight that stays until archived, and tasks that keep their state — plus one small
   line into local history.
 - **Plan page** (optional). The chosen day's full agenda from the device calendar, with
   previous/next date navigation, an in-progress marker, and honest states for
   permission, no calendars, none chosen, sync-off, empty and error.
-- **Local history.** One record per day â€” the action, the highlight and the
-  tasks as they stood â€” kept on this device, newest first. No charts, no
+- **Local history.** One record per day — the action, the highlight and the
+  tasks as they stood — kept on this device, newest first. No charts, no
   streaks. A backup writes the whole local state; clear asks first and touches only
   the past.
 - **Calendar agenda.** Monday-first week strip, selectable dates, explicit
-  per-calendar selection â€” nothing is read until you choose â€” and a
+  per-calendar selection — nothing is read until you choose — and a
   best-effort system-calendar intent. Read-only and offline.
 - **Text only, light or dark.** No app artwork anywhere: a row is a label, a state dot and
   one text action. Two themes, both monochrome, and the window, status bar and navigation
@@ -68,20 +68,20 @@ All apps   Settings
 
 ## Download the APK
 
-The APK is built by GitHub Actions â€” no Android Studio, no local SDK, nothing to install.
+The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing to install.
 
-**Latest debug build:** [Releases â†’ all Zendo Launcher builds](https://github.com/ArdiWiryawan/zendo-launcher/releases)
-â€” open the newest `debug-*` release and download `ZendoLauncher-debug.apk` directly, no
+**Latest debug build:** [Releases → all Zendo Launcher builds](https://github.com/ArdiWiryawan/zendo-launcher/releases)
+— open the newest `debug-*` release and download `ZendoLauncher-debug.apk` directly, no
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.7.0` (versionCode 16). See the releases list
+The newest build is currently `debug-0.7.1` (versionCode 17). See the releases list
 for its sha256.
 
 To build a fresh one yourself:
 
 1. Open the repository's **Actions** tab.
-2. Pick **Build APK** â†’ **Run workflow** â†’ variant `debug` â†’ **Run workflow**.
+2. Pick **Build APK** → **Run workflow** → variant `debug` → **Run workflow**.
 3. When the run finishes, download the artifact `zendo-launcher-debug-<sha>` from the run
    page and unzip it to get `ZendoLauncher-debug.apk`.
 
@@ -103,8 +103,8 @@ To build locally instead:
 3. Android will warn that the file comes from an unknown source. Allow installation from
    that source (usually your browser or file manager) when prompted.
 4. Install the app.
-5. Press Home. Android asks which app should open the home screen â€” choose **Launcher** â€”
-   or go to **Settings â†’ Apps â†’ Default apps â†’ Home app** and select it.
+5. Press Home. Android asks which app should open the home screen — choose **Launcher** —
+   or go to **Settings → Apps → Default apps → Home app** and select it.
 
 Setting a default Home app is a per-device choice. This launcher does not, and cannot,
 replace your existing home screen setup automatically.
@@ -115,9 +115,9 @@ The first time it opens, the launcher shows a one-page explanation instead of th
 screen. It says what the launcher replaces, how to add apps to Home, that other pages
 exist only when you add them, and how to get your previous Home screen back.
 
-The same page is reachable afterwards from **Settings â†’ About â†’ Reopen onboarding**.
+The same page is reachable afterwards from **Settings → About → Reopen onboarding**.
 
-To get your previous Home screen back, open **Settings â†’ Apps â†’ Default apps â†’ Home app**
+To get your previous Home screen back, open **Settings → Apps → Default apps → Home app**
 and choose the other launcher. Android owns that setting: this launcher never changes it
 on its own, and it can always be changed back.
 
@@ -184,7 +184,7 @@ on its own, and it can always be changed back.
 
 ## Licence
 
-The launcher is original work. No code was copied from any existing launcher â€” the four
+The launcher is original work. No code was copied from any existing launcher — the four
 maintained candidates reviewed are GPL-3.0, and the fifth carries no licence at all, so all
 five were used as reference only. See [docs/opensource-review.md](docs/opensource-review.md).
 

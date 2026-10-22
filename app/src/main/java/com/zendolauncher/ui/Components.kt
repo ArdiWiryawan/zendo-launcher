@@ -134,7 +134,6 @@ fun AppRow(
     showPinAction: Boolean = false,
     menuAlignment: Alignment.Horizontal = Alignment.End,
     longPressMenu: Boolean = true,
-    minHeightDp: Int = LauncherSpace.touchTarget.value.toInt(),
 ) {
     val palette = LauncherColors.current
     var menuOpen by remember { mutableStateOf(false) }
@@ -157,7 +156,7 @@ fun AppRow(
                 .semantics {
                     stateDescription = if (isFavourite) "On Home" else "Not on Home"
                 }
-                .defaultMinSize(minHeight = minHeightDp.dp)
+                .defaultMinSize(minHeight = LauncherSpace.touchTarget)
                 .padding(vertical = LauncherSpace.sm),
         ) {
             Text(
