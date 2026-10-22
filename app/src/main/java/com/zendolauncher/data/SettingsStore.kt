@@ -5,10 +5,8 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.HomeLayoutCodec
-import com.zendolauncher.core.HomePage
 import com.zendolauncher.core.PageConfig
 import com.zendolauncher.core.PageType
-import com.zendolauncher.core.defaultName
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -171,40 +169,18 @@ class SettingsStore(context: Context) {
      * `sanitize` runs on every read and after every mutation rather than at one call site,
      * which is what makes the store the single source of truth: no composable and no view
      * model has to know how to clamp a page count or repair a duplicate id.
+     *
+     * A stored layout is returned as the user arranged it. In particular the read path
+     * never inserts a page: an earlier build re-added the Plan & Focus page whenever it
+     * was missing, which meant a deleted page came back the next time the launcher
+     * started. Fresh installs and the legacy migration still get that page, because
+     * [HomeLayout.DEFAULT] carries it and [migratedHome] builds on that default.
      */
     private fun readHome(): HomeLayout = HomeLayout.sanitize(
-        withPlanPage(
-            HomeLayoutCodec.decode(prefs.getString(KEY_HOME_PAGES, null))
-                ?.copy(activePageId = prefs.getString(KEY_HOME_ACTIVE_PAGE, null))
-                ?: migratedHome(),
-        ),
+        HomeLayoutCodec.decode(prefs.getString(KEY_HOME_PAGES, null))
+            ?.copy(activePageId = prefs.getString(KEY_HOME_ACTIVE_PAGE, null))
+            ?: migratedHome(),
     )
-
-    /**
-     * One-time, idempotent upgrade for layouts stored before the Plan & Focus
-     * page existed: inserts one after the first Today page when there is room.
-     * Renames, order, pins, and the active page are untouched; a layout that
-     * already has the page (or is full) is returned as-is.
-     */
-    private fun withPlanPage(layout: HomeLayout): HomeLayout {
-        if (layout.pages.any { it.type == PageType.PLAN }) return layout
-        if (layout.pages.size >= HomeLayout.MAX_PAGES) return layout
-        val at = (layout.pages.indexOfFirst { it.type == PageType.TODAY } + 1)
-            .coerceIn(0, layout.pages.size)
-        val page = HomePage(
-            "p_plan",
-            PageType.PLAN,
-            PageType.PLAN.defaultName(),
-        ).let { candidate ->
-            // Never collide with a stored id (e.g. a user page already named so).
-            if (layout.pages.any { it.id == candidate.id }) {
-                candidate.copy(id = HomeLayout.newId())
-            } else {
-                candidate
-            }
-        }
-        return layout.copy(pages = layout.pages.toMutableList().apply { add(at, page) })
-    }
 
     /**
      * The layout to use when nothing has been stored yet.

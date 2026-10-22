@@ -163,10 +163,30 @@ class HomeMigrationTest {
             remove(KEY_HOME_ACTIVE_PAGE)
         }
         val home = store().read().home
-        // Duplicate ids repaired, plus the one-time Plan & Focus upgrade.
-        assertEquals(3, home.pages.map { it.id }.distinct().size)
-        assertTrue(home.pages.any { it.type == PageType.PLAN })
+        // Duplicate ids repaired, and nothing added: a stored layout is the user's own.
+        assertEquals(2, home.pages.map { it.id }.distinct().size)
+        assertTrue(home.pages.none { it.type == PageType.PLAN })
         assertEquals(home.pages.first().id, home.activePageId)
+    }
+
+    /**
+     * The regression that made a deleted page come back: an old build re-inserted
+     * the Plan & Focus page on every read, so removing it only lasted until the
+     * launcher restarted (a new Back-to-Home cycle rebuilt the store). Deleting a
+     * page has to survive both a later read and any unrelated settings write.
+     */
+    @Test
+    fun `a removed page stays removed across reads and writes`() {
+        val store = store()
+        store.removePage("p_plan")
+        assertTrue(store.read().home.pages.none { it.type == PageType.PLAN })
+
+        // Unrelated settings write, then a fresh store -- what a relaunch does.
+        store.update { it.copy(clock24h = false) }
+        assertTrue(store().read().home.pages.none { it.type == PageType.PLAN })
+
+        // And again after the launcher has been away and come back.
+        assertTrue(store().read().home.pages.none { it.type == PageType.PLAN })
     }
 
     // ---- Pinning through the pages API ----------------------------------------------
@@ -240,12 +260,11 @@ class HomeMigrationTest {
     }
 
     /**
-     * Layouts stored before the Plan & Focus page existed gain exactly one,
-     * after Today, without touching order, pins, or the active page — and a
-     * second read changes nothing further.
+     * A stored layout is returned exactly as written: no page is inserted, and
+     * order, pins, and the active page survive a read untouched.
      */
     @Test
-    fun `a stored layout without a plan page gains one after today`() {
+    fun `a stored layout is read back exactly as it was written`() {
         prefs.edit {
             putString(
                 KEY_HOME_PAGES,
@@ -254,8 +273,8 @@ class HomeMigrationTest {
             putString(KEY_HOME_ACTIVE_PAGE, "p_launch")
         }
         val home = store().read().home
-        assertEquals(listOf("p_today", "p_plan", "p_launch"), home.pages.map { it.id })
-        assertEquals(PageType.PLAN, home.page("p_plan")?.type)
+        assertEquals(listOf("p_today", "p_launch"), home.pages.map { it.id })
+        assertTrue(home.pages.none { it.type == PageType.PLAN })
         assertEquals(listOf("k"), home.page("p_launch")!!.config.itemKeys)
         assertEquals("p_launch", home.activePageId)
         assertEquals(home, store().read().home)
