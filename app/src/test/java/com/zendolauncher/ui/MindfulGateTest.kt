@@ -91,7 +91,7 @@ class MindfulGateTest {
 
         rule.onNodeWithText("Notice the urge before opening.").performScrollTo().assertIsDisplayed()
         rule.onAllNodesWithText("Continue").assertCountEquals(0)
-        rule.onNodeWithText("Cancel").performClick()
+        rule.onNodeWithText("Take a break").performClick()
         rule.waitForIdle()
         assertNull(vm.state.value.pendingPause)
     }

@@ -2,12 +2,18 @@ package com.zendolauncher.ui
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,6 +22,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -28,27 +35,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.core.MindfulGate
+import com.zendolauncher.core.SocialAppDefaults
 import com.zendolauncher.data.HomeAlignment
-import com.zendolauncher.data.HomeMode
 import com.zendolauncher.data.LabelCase
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.platform.UsageRepository
 import com.zendolauncher.ui.theme.BackdropStyle
+import com.zendolauncher.ui.theme.HomeBackdrop
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
 import com.zendolauncher.ui.theme.ScrimStrength
 import com.zendolauncher.ui.theme.label
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
     val palette = LauncherColors.current
@@ -89,6 +102,13 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.md))
             SectionHeading("Appearance")
             Spacer(Modifier.height(LauncherSpace.sm))
+
+            WallpaperPreviewCard(
+                settings = state.settings,
+                customBitmap = state.customWallpaperBitmap,
+            )
+            Spacer(Modifier.height(LauncherSpace.md))
+
             ChoiceRow(
                 label = "Theme",
                 options = listOf(
@@ -100,37 +120,45 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             )
             Spacer(Modifier.height(LauncherSpace.md))
             ChoiceRow(
-                label = "Wallpaper",
+                label = "Atmosphere",
                 options = listOf(
                     BackdropStyle.MATTE to BackdropStyle.MATTE.label(),
                     BackdropStyle.WINDOW_SHADOW to BackdropStyle.WINDOW_SHADOW.label(),
                     BackdropStyle.WASHI_LINEN to BackdropStyle.WASHI_LINEN.label(),
                     BackdropStyle.MORNING_MIST to BackdropStyle.MORNING_MIST.label(),
-                    BackdropStyle.CUSTOM_PHOTO to BackdropStyle.CUSTOM_PHOTO.label(),
                 ),
                 selected = state.settings.backdropStyle,
-                onSelect = { style ->
-                    if (style == BackdropStyle.CUSTOM_PHOTO && state.customWallpaperBitmap == null) {
-                        photoPickerLauncher.launch(arrayOf("image/*"))
-                    } else {
-                        viewModel.setBackdropStyle(style)
-                    }
-                },
+                onSelect = { viewModel.setBackdropStyle(it) },
             )
             Spacer(Modifier.height(LauncherSpace.xs))
-            Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
+            SecondaryText(
+                "Layers subtly over matte or your custom photo. Watch the preview above to compare.",
+            )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
+                verticalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
+            ) {
                 QuietAction("Choose photo") { photoPickerLauncher.launch(arrayOf("image/*")) }
                 if (state.customWallpaperBitmap != null) {
                     QuietAction("Remove photo") { viewModel.clearWallpaperPhoto() }
                 }
             }
-            if (state.settings.backdropStyle == BackdropStyle.CUSTOM_PHOTO && state.customWallpaperBitmap != null) {
+            if (state.customWallpaperBitmap != null) {
                 Spacer(Modifier.height(LauncherSpace.sm))
                 ToggleRow(
-                    label = "Soft blur on photo",
-                    checked = state.settings.backdropBlur,
-                    onCheckedChange = { viewModel.setBackdropBlur(it) },
+                    label = "Use custom photo",
+                    checked = state.settings.useCustomPhoto,
+                    onCheckedChange = { viewModel.setUseCustomPhoto(it) },
                 )
+                if (state.settings.useCustomPhoto) {
+                    Spacer(Modifier.height(LauncherSpace.sm))
+                    ToggleRow(
+                        label = "Soft blur on photo",
+                        checked = state.settings.backdropBlur,
+                        onCheckedChange = { viewModel.setBackdropBlur(it) },
+                    )
+                }
             }
             Spacer(Modifier.height(LauncherSpace.md))
             ChoiceRow(
@@ -145,34 +173,14 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             )
             Spacer(Modifier.height(LauncherSpace.md))
             ChoiceRow(
-                label = "Home experience",
+                label = "Home alignment",
                 options = listOf(
-                    HomeMode.QUIET to "Quiet Home",
-                    HomeMode.CALM_CANVAS to "Calm Canvas",
+                    HomeAlignment.CENTER to "Center",
+                    HomeAlignment.LEFT to "Left",
                 ),
-                selected = state.settings.homeMode,
-                onSelect = { viewModel.setHomeMode(it) },
+                selected = state.settings.homeAlignment,
+                onSelect = { viewModel.setHomeAlignment(it) },
             )
-            Spacer(Modifier.height(LauncherSpace.xs))
-            SecondaryText(
-                if (state.settings.homeMode == HomeMode.QUIET) {
-                    "One serene page with clock, calendar glance, and your essential apps."
-                } else {
-                    "Multi-page layout with Home, Plan, Today, Usage, and Note."
-                },
-            )
-            if (state.settings.homeMode == HomeMode.QUIET) {
-                Spacer(Modifier.height(LauncherSpace.md))
-                ChoiceRow(
-                    label = "Home alignment",
-                    options = listOf(
-                        HomeAlignment.CENTER to "Center",
-                        HomeAlignment.LEFT to "Left",
-                    ),
-                    selected = state.settings.homeAlignment,
-                    onSelect = { viewModel.setHomeAlignment(it) },
-                )
-            }
             Spacer(Modifier.height(LauncherSpace.md))
             ChoiceRow(
                 label = "Home app labels",
@@ -213,15 +221,22 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 if (state.usageAccess) {
                     "Usage access is on. Today's duration shows quietly beside apps and inside the Mindful Gate."
                 } else {
-                    "Optional, offline only. Grant Usage Access to see screen time and open counts."
+                    "Optional, offline only. On Android 13+, if Usage Access shows \"Restricted setting\", " +
+                        "open App Info → top-right ⋮ menu → Allow restricted settings first."
                 },
             )
             Spacer(Modifier.height(LauncherSpace.sm))
-            Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
+                verticalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
+            ) {
                 QuietAction("Open screen usage") { viewModel.openUsage() }
                 if (!state.usageAccess) {
                     QuietAction("Grant usage access") {
                         runCatching { context.startActivity(UsageRepository(context).settingsIntent()) }
+                    }
+                    QuietAction("Open App Info") {
+                        openAppDetailsSettings(context)
                     }
                 }
             }
@@ -265,6 +280,9 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 if (!state.calendarPermission) {
                     "Google Calendar access is off. Zendo Launcher reads synced Google Calendar " +
                         "events via Android's local provider only — offline, read-only."
+                } else if (state.calendars.isEmpty()) {
+                    "Access is granted, but no synced Google Calendar was found yet. " +
+                        "Open Calendar to check account sync."
                 } else if (state.settings.shownCalendarIds.isEmpty()) {
                     "Access is granted, but no Google calendars are chosen yet."
                 } else {
@@ -273,12 +291,17 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
                 },
             )
             Spacer(Modifier.height(LauncherSpace.sm))
-            if (!state.calendarPermission) {
-                CalendarAccessAction(viewModel, state.settings.calendarAsked)
-            } else if (state.settings.shownCalendarIds.isEmpty() && state.calendars.any { it.isGoogle }) {
-                QuietAction("Use Google Calendars") { viewModel.selectGoogleCalendars() }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
+                verticalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
+            ) {
+                if (!state.calendarPermission) {
+                    CalendarAccessAction(viewModel, state.settings.calendarAsked)
+                } else if (state.settings.shownCalendarIds.isEmpty() && state.calendars.any { it.isGoogle }) {
+                    QuietAction("Use Google Calendars") { viewModel.selectGoogleCalendars() }
+                }
+                QuietAction("Open calendar") { viewModel.openCalendar() }
             }
-            QuietAction("Open calendar") { viewModel.openCalendar() }
 
             // ---- Data ----------------------------------------------------------------
 
@@ -314,9 +337,11 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             )
             Spacer(Modifier.height(LauncherSpace.xs))
             SecondaryText(
-                "When on, opening a checked app below pauses for a breath, asks your intention, " +
-                    "and mirrors today's usage. Gates launches from Zendo Launcher only.",
+                "Social media apps are selected automatically on first run. Opening a gated app " +
+                    "pauses for a breath, asks why you're opening it, and offers a break.",
             )
+            Spacer(Modifier.height(LauncherSpace.xs))
+            QuietAction("Select detected social apps") { viewModel.selectDetectedSocialApps() }
             Spacer(Modifier.height(LauncherSpace.md))
             ChoiceRow(
                 label = "Breath delay",
@@ -338,7 +363,14 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             if (state.allApps.isEmpty()) {
                 EmptyNote("No apps listed yet.")
             } else {
-                state.allApps.sortedBy { it.label.lowercase() }.forEachIndexed { index, target ->
+                val sortedApps = remember(state.allApps, state.settings.distract) {
+                    state.allApps.sortedWith(
+                        compareByDescending<com.zendolauncher.model.LaunchTarget> { it.key in state.settings.distract }
+                            .thenByDescending { SocialAppDefaults.isSocialPackage(it.packageName) }
+                            .thenBy { it.label.lowercase() },
+                    )
+                }
+                sortedApps.forEachIndexed { index, target ->
                     if (index > 0) Hairline()
                     ToggleRow(
                         label = target.label,
@@ -378,6 +410,69 @@ fun SettingsScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.sm))
             QuietAction("Reopen onboarding") { viewModel.showOnboarding() }
             Spacer(Modifier.height(LauncherSpace.xl))
+        }
+    }
+}
+
+/**
+ * Live preview inside Appearance Settings so users can immediately compare
+ * Theme + Custom photo + Atmosphere (Window shadow / Washi linen / Morning mist) + Scrim.
+ */
+@Composable
+private fun WallpaperPreviewCard(
+    settings: LauncherSettings,
+    customBitmap: Bitmap?,
+) {
+    val palette = LauncherColors.current
+    val centered = settings.homeAlignment == HomeAlignment.CENTER
+    val lowercase = settings.labelCase == LabelCase.LOWERCASE
+    val shape = RoundedCornerShape(16.dp)
+    val sampleApps = listOf("Instagram", "Calendar", "Notes").map {
+        if (lowercase) it.lowercase() else it
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(172.dp)
+            .clip(shape)
+            .border(LauncherSpace.hairline, palette.separator, shape),
+    ) {
+        HomeBackdrop(
+            style = settings.backdropStyle,
+            scrimStrength = settings.scrimStrength,
+            useCustomPhoto = settings.useCustomPhoto,
+            blurPhoto = settings.backdropBlur,
+            customBitmap = customBitmap,
+            modifier = Modifier.fillMaxSize(),
+        )
+        Column(
+            horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = LauncherSpace.lg, vertical = LauncherSpace.md),
+        ) {
+            Text(
+                text = "09:41",
+                style = LauncherType.clock.copy(fontSize = 28.sp),
+                color = palette.primary,
+            )
+            Text(
+                text = "10:00 · Deep work (in 19m)",
+                style = LauncherType.secondary,
+                color = palette.secondary,
+                textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+            )
+            Spacer(Modifier.height(LauncherSpace.sm))
+            sampleApps.forEach { app ->
+                Text(
+                    text = app,
+                    style = LauncherType.body,
+                    color = palette.primary,
+                    textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+                )
+            }
         }
     }
 }
@@ -457,4 +552,12 @@ private fun openSystemSettings(context: Context, action: String) {
             Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
+}
+
+private fun openAppDetailsSettings(context: Context) {
+    val intent = Intent(
+        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+        Uri.fromParts("package", context.packageName, null),
+    ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    runCatching { context.startActivity(intent) }
 }

@@ -19,13 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
  */
 enum class ThemeMode { LIGHT, DARK }
 
-/**
- * Two Home experiences:
- *  - QUIET: ultra-clean single screen (clock, calendar glance, clean app list, search).
- *  - CALM_CANVAS: structured multi-page pager (Home, Plan, Today, Usage, Note).
- */
-enum class HomeMode { QUIET, CALM_CANVAS }
-
 /** Horizontal alignment for Quiet Home content. */
 enum class HomeAlignment { CENTER, LEFT }
 
@@ -45,54 +38,58 @@ class SettingsStore(context: Context) {
     private val _settings = MutableStateFlow(read())
     val settings: StateFlow<LauncherSettings> = _settings.asStateFlow()
 
-    fun read(): LauncherSettings = LauncherSettings(
-        theme = prefs.getString(KEY_THEME, null)
-            ?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: ThemeMode.DARK,
-        favourites = prefs.getString(KEY_FAVOURITES, "").orEmpty().toKeyList(),
-        hidden = prefs.getString(KEY_HIDDEN, "").orEmpty().toKeyList().toSet(),
-        onboardingSeen = prefs.getBoolean(KEY_ONBOARDING_SEEN, false),
-        distract = prefs.getStringSet(KEY_DISTRACT, null)?.toSet() ?: emptySet(),
-        pauseEnabled = prefs.getBoolean(KEY_PAUSE, false),
-        pauseMessage = prefs.getString(KEY_PAUSE_MESSAGE, null)?.takeIf { it.isNotBlank() }
-            ?: DEFAULT_PAUSE_MESSAGE,
-        windowEnabled = prefs.getBoolean(KEY_WINDOW_ENABLED, false),
-        windowStartMinute = prefs.getInt(KEY_WINDOW_START, DEFAULT_WINDOW_START),
-        windowEndMinute = prefs.getInt(KEY_WINDOW_END, DEFAULT_WINDOW_END),
-        reduceMotion = prefs.getBoolean(KEY_REDUCE_MOTION, false),
-        shownCalendarIds = prefs.getStringSet(KEY_SHOWN_CALENDARS, null)?.mapNotNull { it.toLongOrNull() }?.toSet()
-            ?: emptySet(),
-        calendarAsked = prefs.getBoolean(KEY_CALENDAR_ASKED, false),
-        calendarGoogleOnly = prefs.getBoolean(KEY_CALENDAR_GOOGLE_ONLY, false),
-        // Calendar selection became explicit in 0.5.0: empty used to mean "all visible".
-        // An install with stored preferences but no schema key predates that change and
-        // must be migrated once (see LauncherViewModel.settleCalendarSelection); a fresh
-        // install starts explicit, because there is no earlier view to preserve.
-        calendarSelectionSchema = if (prefs.contains(KEY_CALENDAR_SCHEMA)) {
-            prefs.getBoolean(KEY_CALENDAR_SCHEMA, false)
+    fun read(): LauncherSettings {
+        val rawStyle = prefs.getString(KEY_BACKDROP_STYLE, null)
+        val migratedPhoto = rawStyle == "CUSTOM_PHOTO"
+        val style = rawStyle?.let { name -> BackdropStyle.entries.firstOrNull { it.name == name } }
+            ?: BackdropStyle.MATTE
+        val useCustomPhoto = if (prefs.contains(KEY_USE_CUSTOM_PHOTO)) {
+            prefs.getBoolean(KEY_USE_CUSTOM_PHOTO, false)
         } else {
-            prefs.all.keys.isEmpty()
-        },
-        // Migration runs here, on the read path, because this is the only place the store
-        // ever learns that no layout has been written yet. It is idempotent: once a layout
-        // is stored, the legacy keys are not consulted again. See migrateHome.
-        home = readHome(),
-        homeMode = prefs.getString(KEY_HOME_MODE, null)
-            ?.let { name -> HomeMode.entries.firstOrNull { it.name == name } } ?: HomeMode.QUIET,
-        homeAlignment = prefs.getString(KEY_HOME_ALIGNMENT, null)
-            ?.let { name -> HomeAlignment.entries.firstOrNull { it.name == name } } ?: HomeAlignment.CENTER,
-        labelCase = prefs.getString(KEY_LABEL_CASE, null)
-            ?.let { name -> LabelCase.entries.firstOrNull { it.name == name } } ?: LabelCase.LOWERCASE,
-        backdropStyle = prefs.getString(KEY_BACKDROP_STYLE, null)
-            ?.let { name -> BackdropStyle.entries.firstOrNull { it.name == name } } ?: BackdropStyle.MATTE,
-        scrimStrength = prefs.getString(KEY_SCRIM_STRENGTH, null)
-            ?.let { name -> ScrimStrength.entries.firstOrNull { it.name == name } } ?: ScrimStrength.BALANCED,
-        backdropBlur = prefs.getBoolean(KEY_BACKDROP_BLUR, false),
-        showCalendarGlance = prefs.getBoolean(KEY_SHOW_CALENDAR_GLANCE, true),
-        showUsageOnHome = prefs.getBoolean(KEY_SHOW_USAGE_ON_HOME, true),
-        pauseDelaySeconds = prefs.getInt(KEY_PAUSE_DELAY_SECONDS, MindfulGate.DEFAULT_DELAY_SECONDS)
-            .let { if (it in MindfulGate.DELAY_OPTIONS_SECONDS) it else MindfulGate.DEFAULT_DELAY_SECONDS },
-        gateTimeboxEnabled = prefs.getBoolean(KEY_GATE_TIMEBOX_ENABLED, true),
-    )
+            migratedPhoto
+        }
+        return LauncherSettings(
+            theme = prefs.getString(KEY_THEME, null)
+                ?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } } ?: ThemeMode.DARK,
+            favourites = prefs.getString(KEY_FAVOURITES, "").orEmpty().toKeyList(),
+            hidden = prefs.getString(KEY_HIDDEN, "").orEmpty().toKeyList().toSet(),
+            onboardingSeen = prefs.getBoolean(KEY_ONBOARDING_SEEN, false),
+            distract = prefs.getStringSet(KEY_DISTRACT, null)?.toSet() ?: emptySet(),
+            pauseEnabled = prefs.getBoolean(KEY_PAUSE, true),
+            pauseMessage = prefs.getString(KEY_PAUSE_MESSAGE, null)?.takeIf { it.isNotBlank() }
+                ?: DEFAULT_PAUSE_MESSAGE,
+            windowEnabled = prefs.getBoolean(KEY_WINDOW_ENABLED, false),
+            windowStartMinute = prefs.getInt(KEY_WINDOW_START, DEFAULT_WINDOW_START),
+            windowEndMinute = prefs.getInt(KEY_WINDOW_END, DEFAULT_WINDOW_END),
+            reduceMotion = prefs.getBoolean(KEY_REDUCE_MOTION, false),
+            shownCalendarIds = prefs.getStringSet(KEY_SHOWN_CALENDARS, null)?.mapNotNull { it.toLongOrNull() }?.toSet()
+                ?: emptySet(),
+            calendarAsked = prefs.getBoolean(KEY_CALENDAR_ASKED, false),
+            calendarGoogleOnly = prefs.getBoolean(KEY_CALENDAR_GOOGLE_ONLY, false),
+            calendarSelectionSchema = if (prefs.contains(KEY_CALENDAR_SCHEMA)) {
+                prefs.getBoolean(KEY_CALENDAR_SCHEMA, false)
+            } else {
+                prefs.all.keys.isEmpty()
+            },
+            home = readHome(),
+            homeAlignment = prefs.getString(KEY_HOME_ALIGNMENT, null)
+                ?.let { name -> HomeAlignment.entries.firstOrNull { it.name == name } } ?: HomeAlignment.CENTER,
+            labelCase = prefs.getString(KEY_LABEL_CASE, null)
+                ?.let { name -> LabelCase.entries.firstOrNull { it.name == name } } ?: LabelCase.LOWERCASE,
+            backdropStyle = style,
+            useCustomPhoto = useCustomPhoto,
+            scrimStrength = prefs.getString(KEY_SCRIM_STRENGTH, null)
+                ?.let { name -> ScrimStrength.entries.firstOrNull { it.name == name } } ?: ScrimStrength.BALANCED,
+            backdropBlur = prefs.getBoolean(KEY_BACKDROP_BLUR, false),
+            showCalendarGlance = prefs.getBoolean(KEY_SHOW_CALENDAR_GLANCE, true),
+            showUsageOnHome = prefs.getBoolean(KEY_SHOW_USAGE_ON_HOME, true),
+            pauseDelaySeconds = prefs.getInt(KEY_PAUSE_DELAY_SECONDS, MindfulGate.DEFAULT_DELAY_SECONDS)
+                .let { if (it in MindfulGate.DELAY_OPTIONS_SECONDS) it else MindfulGate.DEFAULT_DELAY_SECONDS },
+            gateTimeboxEnabled = prefs.getBoolean(KEY_GATE_TIMEBOX_ENABLED, true),
+            socialDefaultsSeeded = prefs.getBoolean(KEY_SOCIAL_DEFAULTS_SEEDED, false),
+            calendarAutoSelected = prefs.getBoolean(KEY_CALENDAR_AUTO_SELECTED, false),
+        )
+    }
 
     fun update(transform: (LauncherSettings) -> LauncherSettings) {
         val next = transform(_settings.value)
@@ -105,8 +102,6 @@ class SettingsStore(context: Context) {
             putBoolean(KEY_PAUSE, next.pauseEnabled)
             putString(KEY_PAUSE_MESSAGE, next.pauseMessage)
             putBoolean(KEY_WINDOW_ENABLED, next.windowEnabled)
-            // Stored raw. Normalising here would silently move a mistyped entry on the
-            // next unrelated settings write; the gate clamps on read instead.
             putInt(KEY_WINDOW_START, next.windowStartMinute)
             putInt(KEY_WINDOW_END, next.windowEndMinute)
             putBoolean(KEY_REDUCE_MOTION, next.reduceMotion)
@@ -117,16 +112,18 @@ class SettingsStore(context: Context) {
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
             putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
             putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
-            putString(KEY_HOME_MODE, next.homeMode.name)
             putString(KEY_HOME_ALIGNMENT, next.homeAlignment.name)
             putString(KEY_LABEL_CASE, next.labelCase.name)
             putString(KEY_BACKDROP_STYLE, next.backdropStyle.name)
+            putBoolean(KEY_USE_CUSTOM_PHOTO, next.useCustomPhoto)
             putString(KEY_SCRIM_STRENGTH, next.scrimStrength.name)
             putBoolean(KEY_BACKDROP_BLUR, next.backdropBlur)
             putBoolean(KEY_SHOW_CALENDAR_GLANCE, next.showCalendarGlance)
             putBoolean(KEY_SHOW_USAGE_ON_HOME, next.showUsageOnHome)
             putInt(KEY_PAUSE_DELAY_SECONDS, next.pauseDelaySeconds)
             putBoolean(KEY_GATE_TIMEBOX_ENABLED, next.gateTimeboxEnabled)
+            putBoolean(KEY_SOCIAL_DEFAULTS_SEEDED, next.socialDefaultsSeeded)
+            putBoolean(KEY_CALENDAR_AUTO_SELECTED, next.calendarAutoSelected)
         }
         _settings.value = next
     }
@@ -290,16 +287,18 @@ class SettingsStore(context: Context) {
         private const val KEY_CALENDAR_ASKED = "calendar_asked"
         private const val KEY_CALENDAR_GOOGLE_ONLY = "calendar_google_only"
         private const val KEY_CALENDAR_SCHEMA = "calendar_selection_schema"
-        private const val KEY_HOME_MODE = "home_mode"
         private const val KEY_HOME_ALIGNMENT = "home_alignment"
         private const val KEY_LABEL_CASE = "label_case"
         private const val KEY_BACKDROP_STYLE = "backdrop_style"
+        private const val KEY_USE_CUSTOM_PHOTO = "use_custom_photo"
         private const val KEY_SCRIM_STRENGTH = "scrim_strength"
         private const val KEY_BACKDROP_BLUR = "backdrop_blur"
         private const val KEY_SHOW_CALENDAR_GLANCE = "show_calendar_glance"
         private const val KEY_SHOW_USAGE_ON_HOME = "show_usage_on_home"
         private const val KEY_PAUSE_DELAY_SECONDS = "pause_delay_seconds"
         private const val KEY_GATE_TIMEBOX_ENABLED = "gate_timebox_enabled"
+        private const val KEY_SOCIAL_DEFAULTS_SEEDED = "social_defaults_seeded"
+        private const val KEY_CALENDAR_AUTO_SELECTED = "calendar_auto_selected"
 
         /** Advisory, written beside the blob so a future change can tell old from malformed. */
         const val HOME_PAGES_VERSION = 1
@@ -328,7 +327,7 @@ data class LauncherSettings(
     val hidden: Set<String> = emptySet(),
     val onboardingSeen: Boolean = false,
     val distract: Set<String> = emptySet(),
-    val pauseEnabled: Boolean = false,
+    val pauseEnabled: Boolean = true,
     /** Reminder line shown in the intentional-pause dialog. User-written. */
     val pauseMessage: String = SettingsStore.DEFAULT_PAUSE_MESSAGE,
     /**
@@ -371,14 +370,16 @@ data class LauncherSettings(
      * are first readable.
      */
     val calendarSelectionSchema: Boolean = false,
-    val homeMode: HomeMode = HomeMode.QUIET,
     val homeAlignment: HomeAlignment = HomeAlignment.CENTER,
     val labelCase: LabelCase = LabelCase.LOWERCASE,
     val backdropStyle: BackdropStyle = BackdropStyle.MATTE,
+    val useCustomPhoto: Boolean = false,
     val scrimStrength: ScrimStrength = ScrimStrength.BALANCED,
     val backdropBlur: Boolean = false,
     val showCalendarGlance: Boolean = true,
     val showUsageOnHome: Boolean = true,
     val pauseDelaySeconds: Int = MindfulGate.DEFAULT_DELAY_SECONDS,
     val gateTimeboxEnabled: Boolean = true,
+    val socialDefaultsSeeded: Boolean = false,
+    val calendarAutoSelected: Boolean = false,
 )

@@ -150,6 +150,14 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                         SecondaryText(
                             "Sign in to Google Calendar or turn on Calendar sync in Android Settings → Accounts → Google.",
                         )
+                        QuietAction("Account sync settings", onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(android.provider.Settings.ACTION_SYNC_SETTINGS)
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                )
+                            }
+                        })
                     }
                 } else {
                     events.forEach { event ->

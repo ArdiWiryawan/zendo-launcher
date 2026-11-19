@@ -62,9 +62,9 @@ fun OnboardingScreen(viewModel: LauncherViewModel, state: UiState) {
             )
             Spacer(Modifier.height(LauncherSpace.lg + LauncherSpace.xs))
 
-            Line("It replaces your Home screen with a calm space — just time, your next calendar glance, and the few apps you truly need.")
+            Line("It replaces your Home screen with a calm space — just time, your Google Calendar glance, and the few apps you truly need.")
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
-            Line("Open All apps to pin essentials, long-press any app to gate it with a Mindful Pause, or switch between Quiet Home and Calm Canvas in Settings.")
+            Line("Social media apps are automatically guarded by Mindful Gate (breath pause, intention prompt, and break option). Customize anytime in Settings.")
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
             ChoiceRow(
                 label = "Pick your surface",

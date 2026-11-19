@@ -104,6 +104,7 @@ fun MindfulGateOverlay(
             HomeBackdrop(
                 style = settings.backdropStyle,
                 scrimStrength = settings.scrimStrength,
+                useCustomPhoto = settings.useCustomPhoto,
                 blurPhoto = settings.backdropBlur,
                 customBitmap = customWallpaperBitmap,
                 modifier = Modifier.fillMaxSize(),
@@ -260,7 +261,7 @@ fun MindfulGateOverlay(
                     Spacer(Modifier.height(LauncherSpace.xl))
                 }
 
-                // Bottom actions: Cancel is always reachable; Continue unlocks after breath delay.
+                // Bottom actions: Take a break / Cancel is always reachable; Continue unlocks after breath delay.
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -274,6 +275,7 @@ fun MindfulGateOverlay(
                             onClick = { onConfirm(selectedTimebox, selectedIntention) },
                         )
                     }
+                    QuietAction("Take a break", onClick = onCancel)
                     QuietAction("Cancel", onClick = onCancel)
                 }
             }

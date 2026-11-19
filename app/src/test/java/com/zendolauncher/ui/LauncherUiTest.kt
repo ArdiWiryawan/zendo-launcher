@@ -23,8 +23,8 @@ import com.zendolauncher.BuildConfig
 import com.zendolauncher.LauncherActivity
 import com.zendolauncher.core.PageType
 import com.zendolauncher.data.HomeAlignment
-import com.zendolauncher.data.HomeMode
 import com.zendolauncher.data.LabelCase
+import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.BackdropStyle
@@ -74,10 +74,10 @@ class LauncherUiTest {
      */
     private fun resetSettings() {
         viewModel.setTheme(ThemeMode.DARK)
-        viewModel.setHomeMode(HomeMode.QUIET)
         viewModel.setHomeAlignment(HomeAlignment.CENTER)
         viewModel.setLabelCase(LabelCase.LOWERCASE)
         viewModel.setBackdropStyle(BackdropStyle.MATTE)
+        viewModel.setUseCustomPhoto(false)
         viewModel.setShowCalendarGlance(true)
         viewModel.setPauseEnabled(false)
         viewModel.setReduceMotion(false)
@@ -132,10 +132,9 @@ class LauncherUiTest {
     @Test
     fun home_defaultsToQuietHome_withClockCalendarGlanceAndNoPageDots() {
         val settings = viewModel.state.value.settings
-        assertEquals(HomeMode.QUIET, settings.homeMode)
         assertEquals(HomeAlignment.CENTER, settings.homeAlignment)
         assertEquals(LabelCase.LOWERCASE, settings.labelCase)
-        assertEquals(1, settings.home.pages.size)
+        assertTrue(LauncherSettings().pauseEnabled)
 
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
         rule.onAllNodes(textMatching(datePattern)).assertCountEquals(1)
@@ -200,27 +199,6 @@ class LauncherUiTest {
     }
 
     @Test
-    fun switchingToCalmCanvas_expandsStructuredPages_andPreservesPinnedApps() {
-        val key = FakeApps.install(rule.activity, "com.example.keep", "KeepApp")
-        viewModel.refreshApps()
-        awaitVisibleApps(1)
-        viewModel.toggleFavourite(key)
-        rule.waitForIdle()
-
-        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
-        rule.waitForIdle()
-
-        val pages = viewModel.state.value.settings.home.pages
-        assertEquals(5, pages.size)
-        assertEquals(
-            listOf(PageType.APPS, PageType.PLAN, PageType.TODAY, PageType.WIDGET, PageType.NOTES),
-            pages.map { it.type },
-        )
-        assertEquals(listOf(key), pages.first().config.itemKeys)
-        rule.onNodeWithText("Edit pages").assertIsDisplayed()
-    }
-
-    @Test
     fun searchPill_opensTheDrawer_andTheFocusAskIsConsumed() {
         rule.onNodeWithText("Search apps").assertIsDisplayed()
 
@@ -231,87 +209,30 @@ class LauncherUiTest {
         assertFalse(viewModel.state.value.autoFocusSearch)
     }
 
-    // ---- Adding a page ---------------------------------------------------------------
-
     @Test
-    fun editPages_addPage_offersTypes_andCreatesTheChosenOne() {
-        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
-        // Trim back to 1 page so this verifies Add Page from 1 -> 2 in Calm Canvas.
-        viewModel.state.value.settings.home.pages.drop(1).forEach { viewModel.removePage(it.id) }
+    fun settings_hasNoCalmCanvasSwitcher_andShowsAtmosphereAndPreview() {
+        viewModel.openSettings()
         rule.waitForIdle()
-
-        viewModel.enterPageEdit()
-        rule.waitForIdle()
-        rule.onNodeWithText("Add page").performClick()
-        rule.waitForIdle()
-
-        rule.onNodeWithText("Add a page").assertIsDisplayed()
-        rule.onNodeWithText("Today").performClick()
-        rule.waitForIdle()
-
-        val pages = viewModel.state.value.settings.home.pages
-        assertEquals(2, pages.size)
-        assertEquals(PageType.TODAY, pages.last().type)
-        assertFalse(viewModel.state.value.addingPage)
-
-        viewModel.leavePageEdit()
-        viewModel.removePage(pages.last().id)
-        rule.waitForIdle()
+        rule.onAllNodesWithText("Calm Canvas").assertCountEquals(0)
+        rule.onAllNodesWithText("Home experience").assertCountEquals(0)
+        rule.onNodeWithText("Atmosphere").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Window shadow").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Open screen usage").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Select detected social apps").performScrollTo().assertIsDisplayed()
     }
 
     @Test
-    fun addPage_back_closesThePickerWithoutAddingAPage() {
-        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
-        viewModel.state.value.settings.home.pages.drop(1).forEach { viewModel.removePage(it.id) }
+    fun usageScreen_withoutAccess_showsRestrictedSettingsAppInfoHelper() {
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    UsageScreen(viewModel, viewModel.state.value.copy(usageAccess = false))
+                }
+            }
+        }
         rule.waitForIdle()
-        val before = viewModel.state.value.settings.home.pages.size
-        viewModel.enterPageEdit()
-        viewModel.openAddPage()
-        rule.waitForIdle()
-        assertTrue(viewModel.state.value.addingPage)
-
-        assertTrue(viewModel.back())
-        rule.waitForIdle()
-        assertFalse(viewModel.state.value.addingPage)
-        assertEquals(before, viewModel.state.value.settings.home.pages.size)
-        viewModel.leavePageEdit()
-    }
-
-    /** The Today page renders clock, date and the local dashboard in Calm Canvas. */
-    @Test
-    fun todayPage_rendersClockAndDashboard_inCalmCanvas() {
-        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
-        rule.waitForIdle()
-        val todayIndex = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.TODAY }
-        assertTrue(todayIndex >= 0)
-        viewModel.goToPage(todayIndex)
-        rule.waitForIdle()
-
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
-        rule.onAllNodes(textMatching(datePattern)).assertCountEquals(1)
-        rule.onNodeWithText("Name the one thing that matters today.").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("No tasks yet. Add the first one below.").performScrollTo().assertIsDisplayed()
-    }
-
-    /**
-     * The Plan page renders the date navigation and the calendar's permission state.
-     * Robolectric has no calendar permission, so the page must say so instead of drawing
-     * an empty agenda.
-     */
-    @Test
-    fun planPage_rendersAgendaStates_andDateNavigation() {
-        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
-        rule.waitForIdle()
-        val planIndex = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.PLAN }
-        assertTrue(planIndex >= 0)
-        viewModel.goToPage(planIndex)
-        rule.waitForIdle()
-
-        rule.onNodeWithText("Plan").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Earlier").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Later").performScrollTo().assertIsDisplayed()
-        rule.onNodeWithText("Allow calendar access").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Grant usage access").assertIsDisplayed()
+        rule.onNodeWithText("Open App Info").assertIsDisplayed()
     }
 
     // ---- Settings --------------------------------------------------------------------
@@ -554,79 +475,10 @@ class LauncherUiTest {
 
     // ---- Back ------------------------------------------------------------------------
 
-    /**
-     * The Back contract for Home, in the order the user experiences it. Edit mode is the
-     * only layer Home has, and Back leaves it one stage at a time; the `false` return is
-     * what makes the last case true, because it means nothing of ours handled the press.
-     */
     @Test
-    fun back_leavesEditMode_andPlainHomeClaimsNothing() {
+    fun back_onPlainHome_claimsNothing() {
         assertFalse(viewModel.back())
         assertEquals(Screen.HOME, viewModel.state.value.screen)
-
-        viewModel.enterPageEdit()
-        rule.waitForIdle()
-        assertTrue(viewModel.state.value.pageEditing)
-
-        assertTrue(viewModel.back())
-        rule.waitForIdle()
-        assertFalse(viewModel.state.value.pageEditing)
-        assertEquals(Screen.HOME, viewModel.state.value.screen)
-
-        // Nothing open: Back must not be claimed. The activity is untouched too, so this is
-        // not a case of the view model answering for a handler that would have exited.
-        assertFalse(viewModel.back())
         assertFalse(rule.activity.isFinishing)
-    }
-
-    // ---- Edit mode -------------------------------------------------------------------
-
-    /**
-     * Renames and reorders are written to the store, so this test restores the layout
-     * afterwards: it lives in SharedPreferences, which Robolectric keeps for the whole JVM.
-     */
-    @Test
-    fun editMode_renamesAndReordersPages_andPutsThemBack() {
-        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
-        viewModel.state.value.settings.home.pages.drop(1).forEach { viewModel.removePage(it.id) }
-        rule.waitForIdle()
-
-        val startIds = viewModel.state.value.settings.home.pages.map { it.id }
-        val startNames = viewModel.state.value.settings.home.pages.associate { it.id to it.name }
-        val pageId = startIds.first()
-
-        viewModel.enterPageEdit()
-        rule.waitForIdle()
-        // The bar's controls are the only way out of editing, so the name is not enough:
-        // it has to be a control that is actually there.
-        rule.onNodeWithText("Done").assertIsDisplayed()
-
-        viewModel.renamePage(pageId, "Deep work")
-        rule.waitForIdle()
-        assertEquals("Deep work", viewModel.state.value.settings.home.page(pageId)?.name)
-        viewModel.renamePage(pageId, startNames.getValue(pageId))
-        rule.waitForIdle()
-
-        // One page cannot be reordered, so add a second one, move it, then remove it.
-        viewModel.addPage(PageType.NOTES)
-        rule.waitForIdle()
-        val added = viewModel.state.value.settings.home.pages.last().id
-        assertEquals(1, viewModel.state.value.settings.home.pages.indexOfFirst { it.id == added })
-
-        viewModel.movePage(added, -1)
-        rule.waitForIdle()
-        assertEquals(0, viewModel.state.value.settings.home.pages.indexOfFirst { it.id == added })
-
-        viewModel.removePage(added)
-        rule.waitForIdle()
-        assertEquals(startIds, viewModel.state.value.settings.home.pages.map { it.id })
-        assertEquals(
-            startNames,
-            viewModel.state.value.settings.home.pages.associate { it.id to it.name },
-        )
-
-        viewModel.leavePageEdit()
-        rule.waitForIdle()
-        assertFalse(viewModel.state.value.pageEditing)
     }
 }

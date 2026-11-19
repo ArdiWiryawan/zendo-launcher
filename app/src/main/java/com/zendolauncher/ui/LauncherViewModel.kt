@@ -14,6 +14,7 @@ import com.zendolauncher.core.Highlight
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.MindfulGate
 import com.zendolauncher.core.PageType
+import com.zendolauncher.core.SocialAppDefaults
 import com.zendolauncher.core.TaskItem
 import com.zendolauncher.core.primary
 import com.zendolauncher.data.BackupContents
@@ -24,7 +25,6 @@ import com.zendolauncher.data.FocusNoteStore
 import com.zendolauncher.data.HighlightStore
 import com.zendolauncher.data.HistoryStore
 import com.zendolauncher.data.HomeAlignment
-import com.zendolauncher.data.HomeMode
 import com.zendolauncher.data.LabelCase
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
@@ -711,10 +711,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             _dailyUsage.value = DailyUsageSnapshot.EMPTY
         }
         val settings = settingsStore.settings.value
-        if (calGranted && settings.showCalendarGlance && settings.shownCalendarIds.isNotEmpty() &&
-            CalendarCache.isStale(_lastCalendarRefresh.value, System.currentTimeMillis())
+        if (calGranted && (_calendars.value.isEmpty() ||
+                (settings.showCalendarGlance && CalendarCache.isStale(_lastCalendarRefresh.value, System.currentTimeMillis())))
         ) {
-            refreshCalendarEvents()
+            refreshCalendar()
         }
     }
 
@@ -736,9 +736,37 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             try {
                 appRepository.refresh()
                 shortcutRepository.refresh()
+                seedDefaultSocialAppsIfNeeded(appRepository.apps.value)
             } finally {
                 _isLoading.value = false
             }
+        }
+    }
+
+    private fun seedDefaultSocialAppsIfNeeded(installed: List<LaunchTarget>) {
+        if (installed.isEmpty()) return
+        val current = settingsStore.settings.value
+        if (current.socialDefaultsSeeded) return
+        val socialKeys = SocialAppDefaults.findSocialKeys(installed)
+        settingsStore.update { s ->
+            if (s.socialDefaultsSeeded) s
+            else s.copy(
+                distract = s.distract + socialKeys,
+                socialDefaultsSeeded = true,
+            )
+        }
+    }
+
+    /** Adds any currently installed social-media apps to Mindful Gate on demand. */
+    fun selectDetectedSocialApps() {
+        val socialKeys = SocialAppDefaults.findSocialKeys(state.value.allApps)
+        if (socialKeys.isEmpty()) return
+        settingsStore.update { current ->
+            current.copy(
+                pauseEnabled = true,
+                distract = current.distract + socialKeys,
+                socialDefaultsSeeded = true,
+            )
         }
     }
 
@@ -1113,11 +1141,6 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setTheme(theme: ThemeMode) = settingsStore.update { it.copy(theme = theme) }
 
-    fun setHomeMode(mode: HomeMode) = settingsStore.update { current ->
-        val nextHome = if (mode == HomeMode.CALM_CANVAS) current.home.ensureCalmCanvasPages() else current.home
-        current.copy(homeMode = mode, home = nextHome)
-    }
-
     fun setHomeAlignment(alignment: HomeAlignment) =
         settingsStore.update { it.copy(homeAlignment = alignment) }
 
@@ -1126,6 +1149,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
 
     fun setBackdropStyle(style: BackdropStyle) =
         settingsStore.update { it.copy(backdropStyle = style) }
+
+    fun setUseCustomPhoto(use: Boolean) =
+        settingsStore.update { it.copy(useCustomPhoto = use) }
 
     fun setScrimStrength(strength: ScrimStrength) =
         settingsStore.update { it.copy(scrimStrength = strength) }
@@ -1137,7 +1163,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(Dispatchers.IO) {
             val bitmap = wallpaperPhotoStore.saveFromUri(uri) ?: return@launch
             _customWallpaperBitmap.value = bitmap
-            settingsStore.update { it.copy(backdropStyle = BackdropStyle.CUSTOM_PHOTO) }
+            settingsStore.update { it.copy(useCustomPhoto = true) }
         }
     }
 
@@ -1145,13 +1171,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         viewModelScope.launch(Dispatchers.IO) {
             wallpaperPhotoStore.clear()
             _customWallpaperBitmap.value = null
-            settingsStore.update { current ->
-                if (current.backdropStyle == BackdropStyle.CUSTOM_PHOTO) {
-                    current.copy(backdropStyle = BackdropStyle.MATTE)
-                } else {
-                    current
-                }
-            }
+            settingsStore.update { it.copy(useCustomPhoto = false) }
         }
     }
 
@@ -1523,7 +1543,25 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             }
             _calendars.value = cals
             settleCalendarSelection(cals)
+            autoSelectGoogleCalendarsIfNeeded(cals)
             refreshCalendarEvents()
+        }
+    }
+
+    private fun autoSelectGoogleCalendarsIfNeeded(cals: List<DeviceCalendar>) {
+        if (cals.isEmpty()) return
+        val current = settingsStore.settings.value
+        if (current.calendarAutoSelected || current.shownCalendarIds.isNotEmpty()) return
+        val google = cals.filter { it.isGoogle }
+        val chosen = (if (google.isNotEmpty()) google else cals).map { it.id }.toSet()
+        settingsStore.update { s ->
+            if (s.calendarAutoSelected || s.shownCalendarIds.isNotEmpty()) s
+            else s.copy(
+                shownCalendarIds = chosen,
+                calendarGoogleOnly = google.isNotEmpty(),
+                calendarSelectionSchema = true,
+                calendarAutoSelected = true,
+            )
         }
     }
 
@@ -1700,10 +1738,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     windowEnabled = s.windowEnabled,
                     windowStartMinute = s.windowStartMinute,
                     windowEndMinute = s.windowEndMinute,
-                    homeMode = s.homeMode,
                     homeAlignment = s.homeAlignment,
                     labelCase = s.labelCase,
                     backdropStyle = s.backdropStyle,
+                    useCustomPhoto = s.useCustomPhoto,
                     scrimStrength = s.scrimStrength,
                     backdropBlur = s.backdropBlur,
                     showCalendarGlance = s.showCalendarGlance,
@@ -1762,10 +1800,10 @@ internal fun LauncherSettings.restoredFromBackup(prefs: BackupPrefs): LauncherSe
     windowEnabled = prefs.windowEnabled,
     windowStartMinute = prefs.windowStartMinute,
     windowEndMinute = prefs.windowEndMinute,
-    homeMode = prefs.homeMode,
     homeAlignment = prefs.homeAlignment,
     labelCase = prefs.labelCase,
     backdropStyle = prefs.backdropStyle,
+    useCustomPhoto = prefs.useCustomPhoto,
     scrimStrength = prefs.scrimStrength,
     backdropBlur = prefs.backdropBlur,
     showCalendarGlance = prefs.showCalendarGlance,

@@ -21,18 +21,14 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 
 /**
- * Curated calm Home backgrounds, plus the user's own photo behind a legibility scrim.
- *
- * Every bundled style is drawn procedurally so it scales cleanly to any aspect ratio,
- * adapts to both Soft Matte Charcoal and Warm Sage Paper, and keeps visual frequency
- * low behind text.
+ * Curated calm atmosphere effects. Can render on their own matte surface OR
+ * layer delicately on top of the user's custom photo + legibility scrim.
  */
 enum class BackdropStyle {
     MATTE,
     WINDOW_SHADOW,
     WASHI_LINEN,
     MORNING_MIST,
-    CUSTOM_PHOTO,
 }
 
 enum class ScrimStrength {
@@ -46,7 +42,6 @@ fun BackdropStyle.label(): String = when (this) {
     BackdropStyle.WINDOW_SHADOW -> "Window shadow"
     BackdropStyle.WASHI_LINEN -> "Washi linen"
     BackdropStyle.MORNING_MIST -> "Morning mist"
-    BackdropStyle.CUSTOM_PHOTO -> "Custom photo"
 }
 
 fun ScrimStrength.label(): String = when (this) {
@@ -56,25 +51,23 @@ fun ScrimStrength.label(): String = when (this) {
 }
 
 /**
- * Renders the Home backdrop and a theme-matched legibility scrim.
+ * Renders the Home backdrop: optional custom photo + legibility scrim + procedural
+ * atmosphere layer (Matte, Window shadow, Washi linen, or Morning mist).
  */
 @Composable
 fun HomeBackdrop(
     style: BackdropStyle,
     scrimStrength: ScrimStrength,
+    useCustomPhoto: Boolean,
     blurPhoto: Boolean,
     customBitmap: Bitmap?,
     modifier: Modifier = Modifier,
 ) {
     val palette = LauncherColors.current
-    val resolvedStyle = if (style == BackdropStyle.CUSTOM_PHOTO && customBitmap == null) {
-        BackdropStyle.MATTE
-    } else {
-        style
-    }
+    val hasPhoto = useCustomPhoto && customBitmap != null
 
     Box(modifier.background(palette.background)) {
-        if (resolvedStyle == BackdropStyle.CUSTOM_PHOTO && customBitmap != null) {
+        if (hasPhoto) {
             val imageBitmap = remember(customBitmap) { customBitmap.asImageBitmap() }
             val imageModifier = if (blurPhoto && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 Modifier.fillMaxSize().blur(18.dp)
@@ -87,10 +80,9 @@ fun HomeBackdrop(
                 contentScale = ContentScale.Crop,
                 modifier = imageModifier,
             )
-            // Adaptive scrim keeps centered/left text readable over any personal photo.
             val baseAlpha = when (scrimStrength) {
-                ScrimStrength.SUBTLE -> if (palette.isDark) 0.42f else 0.50f
-                ScrimStrength.BALANCED -> if (palette.isDark) 0.62f else 0.68f
+                ScrimStrength.SUBTLE -> if (palette.isDark) 0.40f else 0.48f
+                ScrimStrength.BALANCED -> if (palette.isDark) 0.60f else 0.66f
                 ScrimStrength.DEEP -> if (palette.isDark) 0.78f else 0.82f
             }
             val blurFallbackBoost = if (blurPhoto && Build.VERSION.SDK_INT < Build.VERSION_CODES.S) 0.10f else 0f
@@ -99,6 +91,16 @@ fun HomeBackdrop(
                     .fillMaxSize()
                     .background(palette.background.copy(alpha = (baseAlpha + blurFallbackBoost).coerceAtMost(0.90f))),
             )
+            if (style != BackdropStyle.MATTE) {
+                Canvas(Modifier.fillMaxSize()) {
+                    when (style) {
+                        BackdropStyle.WINDOW_SHADOW -> drawWindowShadowOverlay(palette, intensity = 0.85f)
+                        BackdropStyle.WASHI_LINEN -> drawWashiLinenOverlay(palette, intensity = 0.90f)
+                        BackdropStyle.MORNING_MIST -> drawMorningMistOverlay(palette, intensity = 0.65f)
+                        BackdropStyle.MATTE -> Unit
+                    }
+                }
+            }
         } else {
             val scrimAlpha = when (scrimStrength) {
                 ScrimStrength.SUBTLE -> 0.0f
@@ -106,12 +108,20 @@ fun HomeBackdrop(
                 ScrimStrength.DEEP -> 0.34f
             }
             Canvas(Modifier.fillMaxSize()) {
-                when (resolvedStyle) {
+                when (style) {
                     BackdropStyle.MATTE -> drawMatteSurface(palette)
-                    BackdropStyle.WINDOW_SHADOW -> drawWindowShadow(palette)
-                    BackdropStyle.WASHI_LINEN -> drawWashiLinen(palette)
-                    BackdropStyle.MORNING_MIST -> drawMorningMist(palette)
-                    BackdropStyle.CUSTOM_PHOTO -> drawMatteSurface(palette)
+                    BackdropStyle.WINDOW_SHADOW -> {
+                        drawMatteSurface(palette)
+                        drawWindowShadowOverlay(palette, intensity = 1f)
+                    }
+                    BackdropStyle.WASHI_LINEN -> {
+                        drawMatteSurface(palette)
+                        drawWashiLinenOverlay(palette, intensity = 1f)
+                    }
+                    BackdropStyle.MORNING_MIST -> {
+                        drawMatteSurface(palette)
+                        drawMorningMistOverlay(palette, intensity = 1f)
+                    }
                 }
                 if (scrimAlpha > 0f) {
                     drawRect(palette.background.copy(alpha = scrimAlpha))
@@ -132,28 +142,14 @@ private fun DrawScope.drawMatteSurface(palette: LauncherPalette) {
     drawSubtleGrain(palette, alpha = if (palette.isDark) 0.025f else 0.022f)
 }
 
-/**
- * Window Shadow / Dappled Light: warm diagonal light wash paired with soft blind shadows
- * so the screen reads like physical paper beside a sunlit window.
- */
-private fun DrawScope.drawWindowShadow(palette: LauncherPalette) {
-    val warmLight = if (palette.isDark) Color(0xFF2B2823) else Color(0xFFF6F5EE)
-    val deepCorner = if (palette.isDark) Color(0xFF121213) else Color(0xFFDCE1D5)
-    val shadowBand = if (palette.isDark) Color(0xFF0E0E0F) else Color(0xFFC8CFC0)
+private fun DrawScope.drawWindowShadowOverlay(palette: LauncherPalette, intensity: Float) {
+    val warmLight = if (palette.isDark) Color(0xFF332F28) else Color(0xFFF9F8F2)
+    val shadowBand = if (palette.isDark) Color(0xFF0A0A0B) else Color(0xFFBDC5B4)
 
-    drawRect(
-        brush = Brush.linearGradient(
-            colors = listOf(deepCorner, palette.background, warmLight),
-            start = Offset(0f, size.height),
-            end = Offset(size.width, 0f),
-        ),
-    )
-
-    // Soft radial daylight bloom from top-right
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
-                warmLight.copy(alpha = if (palette.isDark) 0.55f else 0.72f),
+                warmLight.copy(alpha = (if (palette.isDark) 0.45f else 0.62f) * intensity),
                 Color.Transparent,
             ),
             center = Offset(size.width * 0.88f, size.height * 0.14f),
@@ -163,8 +159,7 @@ private fun DrawScope.drawWindowShadow(palette: LauncherPalette) {
         radius = size.maxDimension * 0.78f,
     )
 
-    // Three gentle diagonal window-slat shadows across upper/middle space
-    val bandAlpha = if (palette.isDark) 0.24f else 0.18f
+    val bandAlpha = (if (palette.isDark) 0.30f else 0.24f) * intensity
     for (i in 0..2) {
         val yOffset = size.height * (0.06f + i * 0.22f)
         val bandHeight = size.height * 0.09f
@@ -178,32 +173,28 @@ private fun DrawScope.drawWindowShadow(palette: LauncherPalette) {
         drawPath(path, color = shadowBand.copy(alpha = bandAlpha))
     }
 
-    drawSubtleGrain(palette, alpha = 0.025f)
+    drawSubtleGrain(palette, alpha = 0.022f * intensity)
 }
 
-/**
- * Tactile Linen / Washi Paper: subtle woven horizontal/vertical fibers and a gentle
- * central halo that frames a centered app list without adding clutter.
- */
-private fun DrawScope.drawWashiLinen(palette: LauncherPalette) {
-    val outer = if (palette.isDark) Color(0xFF131314) else Color(0xFFE1E5DB)
-    val halo = if (palette.isDark) Color(0xFF21201E) else Color(0xFFF3F4EE)
+private fun DrawScope.drawWashiLinenOverlay(palette: LauncherPalette, intensity: Float) {
+    val halo = if (palette.isDark) Color(0xFF282724) else Color(0xFFF6F7F1)
     val threadColor = if (palette.isDark) Color(0xFFECEAE4) else Color(0xFF3E443A)
 
-    drawRect(color = outer)
     drawCircle(
         brush = Brush.radialGradient(
-            colors = listOf(halo, palette.background, outer),
+            colors = listOf(
+                halo.copy(alpha = 0.50f * intensity),
+                Color.Transparent,
+            ),
             center = Offset(size.width * 0.5f, size.height * 0.46f),
-            radius = size.maxDimension * 0.62f,
+            radius = size.maxDimension * 0.58f,
         ),
         center = Offset(size.width * 0.5f, size.height * 0.46f),
-        radius = size.maxDimension * 0.62f,
+        radius = size.maxDimension * 0.58f,
     )
 
-    // Subtle linen weave lines
     val stepPx = 10.dp.toPx().coerceAtLeast(8f)
-    val threadAlpha = if (palette.isDark) 0.022f else 0.024f
+    val threadAlpha = (if (palette.isDark) 0.032f else 0.034f) * intensity
     var y = 0f
     while (y < size.height) {
         drawLine(
@@ -225,30 +216,18 @@ private fun DrawScope.drawWashiLinen(palette: LauncherPalette) {
         x += stepPx * 1.4f
     }
 
-    drawSubtleGrain(palette, alpha = 0.022f)
+    drawSubtleGrain(palette, alpha = 0.024f * intensity)
 }
 
-/**
- * Morning Mist / Soft Horizon: layered atmospheric mist and soft distant hill silhouettes
- * in the lower third, keeping the center clean for reading.
- */
-private fun DrawScope.drawMorningMist(palette: LauncherPalette) {
-    val skyTop = if (palette.isDark) Color(0xFF1B1C1E) else Color(0xFFF0F2EB)
-    val mistMid = if (palette.isDark) Color(0xFF232524) else Color(0xFFE3E8DF)
-    val ridgeFar = if (palette.isDark) Color(0xFF1E201F) else Color(0xFFD5DDD0)
-    val ridgeNear = if (palette.isDark) Color(0xFF151617) else Color(0xFFC9D2C4)
+private fun DrawScope.drawMorningMistOverlay(palette: LauncherPalette, intensity: Float) {
+    val mistMid = if (palette.isDark) Color(0xFF2B2E2D) else Color(0xFFE3E8DF)
+    val ridgeFar = if (palette.isDark) Color(0xFF222524) else Color(0xFFD0D9CA)
+    val ridgeNear = if (palette.isDark) Color(0xFF141516) else Color(0xFFC2CCBC)
 
-    drawRect(
-        brush = Brush.verticalGradient(
-            colors = listOf(skyTop, palette.background, mistMid),
-        ),
-    )
-
-    // Soft mist glow near horizon
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
-                mistMid.copy(alpha = 0.85f),
+                mistMid.copy(alpha = 0.68f * intensity),
                 Color.Transparent,
             ),
             center = Offset(size.width * 0.42f, size.height * 0.64f),
@@ -258,7 +237,6 @@ private fun DrawScope.drawMorningMist(palette: LauncherPalette) {
         radius = size.width * 0.95f,
     )
 
-    // Far organic horizon silhouette
     val farPath = Path().apply {
         moveTo(0f, size.height * 0.72f)
         cubicTo(
@@ -270,9 +248,8 @@ private fun DrawScope.drawMorningMist(palette: LauncherPalette) {
         lineTo(0f, size.height)
         close()
     }
-    drawPath(farPath, color = ridgeFar.copy(alpha = if (palette.isDark) 0.55f else 0.48f))
+    drawPath(farPath, color = ridgeFar.copy(alpha = (if (palette.isDark) 0.58f else 0.52f) * intensity))
 
-    // Near softer ridge
     val nearPath = Path().apply {
         moveTo(0f, size.height * 0.82f)
         cubicTo(
@@ -284,12 +261,11 @@ private fun DrawScope.drawMorningMist(palette: LauncherPalette) {
         lineTo(0f, size.height)
         close()
     }
-    drawPath(nearPath, color = ridgeNear.copy(alpha = if (palette.isDark) 0.70f else 0.55f))
+    drawPath(nearPath, color = ridgeNear.copy(alpha = (if (palette.isDark) 0.72f else 0.58f) * intensity))
 
-    drawSubtleGrain(palette, alpha = 0.02f)
+    drawSubtleGrain(palette, alpha = 0.02f * intensity)
 }
 
-/** Deterministic, zero-allocation micro-grain so matte surfaces feel tactile rather than flat. */
 private fun DrawScope.drawSubtleGrain(palette: LauncherPalette, alpha: Float) {
     val dotColor = if (palette.isDark) Color(0xFFECEAE4) else Color(0xFF1D1F1C)
     val step = 18.dp.toPx().coerceAtLeast(12f)

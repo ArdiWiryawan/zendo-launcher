@@ -2,7 +2,6 @@ package com.zendolauncher.ui
 
 import com.zendolauncher.data.BackupPrefs
 import com.zendolauncher.data.HomeAlignment
-import com.zendolauncher.data.HomeMode
 import com.zendolauncher.data.LabelCase
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.ThemeMode
@@ -32,10 +31,10 @@ class BackupRestoreMappingTest {
                 windowEnabled = true,
                 windowStartMinute = 21 * 60,
                 windowEndMinute = 6 * 60,
-                homeMode = HomeMode.CALM_CANVAS,
                 homeAlignment = HomeAlignment.LEFT,
                 labelCase = LabelCase.ORIGINAL,
                 backdropStyle = BackdropStyle.MORNING_MIST,
+                useCustomPhoto = true,
                 scrimStrength = ScrimStrength.DEEP,
                 backdropBlur = true,
                 showCalendarGlance = false,
@@ -51,10 +50,10 @@ class BackupRestoreMappingTest {
         assertTrue(restored.windowEnabled)
         assertEquals(21 * 60, restored.windowStartMinute)
         assertEquals(6 * 60, restored.windowEndMinute)
-        assertEquals(HomeMode.CALM_CANVAS, restored.homeMode)
         assertEquals(HomeAlignment.LEFT, restored.homeAlignment)
         assertEquals(LabelCase.ORIGINAL, restored.labelCase)
         assertEquals(BackdropStyle.MORNING_MIST, restored.backdropStyle)
+        assertTrue(restored.useCustomPhoto)
         assertEquals(ScrimStrength.DEEP, restored.scrimStrength)
         assertTrue(restored.backdropBlur)
         assertFalse(restored.showCalendarGlance)

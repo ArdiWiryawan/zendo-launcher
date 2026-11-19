@@ -29,10 +29,10 @@ data class BackupPrefs(
     val windowEnabled: Boolean = false,
     val windowStartMinute: Int = SettingsStore.DEFAULT_WINDOW_START,
     val windowEndMinute: Int = SettingsStore.DEFAULT_WINDOW_END,
-    val homeMode: HomeMode = HomeMode.QUIET,
     val homeAlignment: HomeAlignment = HomeAlignment.CENTER,
     val labelCase: LabelCase = LabelCase.LOWERCASE,
     val backdropStyle: BackdropStyle = BackdropStyle.MATTE,
+    val useCustomPhoto: Boolean = false,
     val scrimStrength: ScrimStrength = ScrimStrength.BALANCED,
     val backdropBlur: Boolean = false,
     val showCalendarGlance: Boolean = true,
@@ -99,10 +99,10 @@ object BridgeJson {
             .put("windowEnabled", contents.prefs.windowEnabled)
             .put("windowStartMinute", contents.prefs.windowStartMinute)
             .put("windowEndMinute", contents.prefs.windowEndMinute)
-            .put("homeMode", contents.prefs.homeMode.name)
             .put("homeAlignment", contents.prefs.homeAlignment.name)
             .put("labelCase", contents.prefs.labelCase.name)
             .put("backdropStyle", contents.prefs.backdropStyle.name)
+            .put("useCustomPhoto", contents.prefs.useCustomPhoto)
             .put("scrimStrength", contents.prefs.scrimStrength.name)
             .put("backdropBlur", contents.prefs.backdropBlur)
             .put("showCalendarGlance", contents.prefs.showCalendarGlance)
@@ -180,10 +180,11 @@ object BridgeJson {
             ?: SettingsStore.DEFAULT_WINDOW_START).coerceIn(0, 24 * 60 - 1),
         windowEndMinute = (optionalNumber(o, "windowEndMinute")?.toInt()
             ?: SettingsStore.DEFAULT_WINDOW_END).coerceIn(0, 24 * 60 - 1),
-        homeMode = enumOr(o, "homeMode", HomeMode.QUIET),
         homeAlignment = enumOr(o, "homeAlignment", HomeAlignment.CENTER),
         labelCase = enumOr(o, "labelCase", LabelCase.LOWERCASE),
         backdropStyle = enumOr(o, "backdropStyle", BackdropStyle.MATTE),
+        useCustomPhoto = optionalBool(o, "useCustomPhoto", false) ||
+            optionalText(o, "backdropStyle", MAX_STAMP) == "CUSTOM_PHOTO",
         scrimStrength = enumOr(o, "scrimStrength", ScrimStrength.BALANCED),
         backdropBlur = optionalBool(o, "backdropBlur", false),
         showCalendarGlance = optionalBool(o, "showCalendarGlance", true),

@@ -26,8 +26,18 @@ class CalendarRepository(private val context: Context) {
 
     fun listCalendars(): List<DeviceCalendar> {
         if (!hasPermission()) return emptyList()
+        val primary = queryCalendars(
+            selection = "(${CalendarContract.Calendars.DELETED}=0) AND (${CalendarContract.Calendars.VISIBLE}=1 OR ${CalendarContract.Calendars.ACCOUNT_TYPE}=?)",
+            selectionArgs = arrayOf("com.google"),
+        )
+        if (primary != null) return primary
+        return queryCalendars(selection = "${CalendarContract.Calendars.VISIBLE}=1", selectionArgs = null)
+            ?: emptyList()
+    }
+
+    private fun queryCalendars(selection: String, selectionArgs: Array<String>?): List<DeviceCalendar>? {
         val out = ArrayList<DeviceCalendar>()
-        runCatching {
+        return try {
             context.contentResolver.query(
                 CalendarContract.Calendars.CONTENT_URI,
                 arrayOf(
@@ -37,8 +47,9 @@ class CalendarRepository(private val context: Context) {
                     CalendarContract.Calendars.ACCOUNT_TYPE,
                     CalendarContract.Calendars.SYNC_EVENTS,
                 ),
-                "${CalendarContract.Calendars.VISIBLE}=1",
-                null, null,
+                selection,
+                selectionArgs,
+                null,
             )?.use { c ->
                 val idCol = c.getColumnIndex(CalendarContract.Calendars._ID)
                 val nameCol = c.getColumnIndex(CalendarContract.Calendars.CALENDAR_DISPLAY_NAME)
@@ -55,8 +66,10 @@ class CalendarRepository(private val context: Context) {
                     )
                 }
             }
+            out
+        } catch (_: Exception) {
+            null
         }
-        return out
     }
 
     /**

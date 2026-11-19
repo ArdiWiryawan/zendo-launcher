@@ -42,19 +42,19 @@ All apps   Settings
 - **Essentials** — pin apps to the home screen, reorder them, unpin them. In the app list
   every row carries a visible **Pin** action, so the feature does not depend on knowing the
   long press; holding a row still opens the same menu as a shortcut.
-- **Two Home experiences: Quiet Home (default) and Calm Canvas.** Starts on a
-  single ultra-clean Quiet Home (centered by default, toggleable to left; lowercase
-  toggleable) with clock, Google Calendar glance, and clean pinned apps without
-  row clutter. Switch to Calm Canvas in Settings for a multi-page layout (Home,
-  Plan, Today, Usage, Note).
-- **Soft Matte Charcoal & Warm Sage themes + custom wallpapers.** Replaces harsh
+- **Quiet Home (centered & lowercase by default).** One serene Home screen with
+  clock, Google Calendar glance, optional screen-time whisper, and clean pinned apps
+  without row clutter (alignment toggleable between Center and Left; casing toggleable
+  between lowercase and Original).
+- **Soft Matte Charcoal & Warm Sage themes + layered wallpapers.** Replaces harsh
   void-black with Soft Matte Charcoal and Warm Sage Paper, paired with three
-  bundled procedural wallpapers (*Window shadow*, *Washi linen*, *Morning mist*) or
-  your own gallery photo behind an adaptive legibility scrim and optional blur.
-- **Mindful Gate for distracting apps.** Replaces direct taps on chosen social apps
-  with a breathing delay, real-time today screen-usage mirror, an intention prompt
-  (with a gentle pivot when *"Just checking / bored"*), and optional 5m/10m/15m
-  local notification check-in reminders.
+  bundled procedural atmospheres (*Window shadow*, *Washi linen*, *Morning mist*)
+  that also layer cleanly over your own gallery photo behind an adaptive scrim and
+  live Settings preview.
+- **Mindful Gate (on by default for social media).** Automatically detects installed
+  social-media apps on first run and interposes a breathing delay, today screen-usage
+  mirror, intention prompt with a *"Take a break"* option, and optional 5m/10m/15m
+  local notification reminders.
 - **Google Calendar glance & Plan (offline).** Reads Google Calendar synced on the
   device (`READ_CALENDAR`), with 1-tap *Use Google Calendars*, a Google-only toggle,
   and a direct *Open Google Calendar* action.
@@ -91,7 +91,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.8.1` (versionCode 19). See the releases list
+The newest build is currently `debug-0.8.2` (versionCode 20). See the releases list
 for its sha256.
 
 To build a fresh one yourself:

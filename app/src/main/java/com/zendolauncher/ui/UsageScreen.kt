@@ -1,10 +1,15 @@
 package com.zendolauncher.ui
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -87,6 +92,7 @@ fun UsagePage(viewModel: LauncherViewModel, state: UiState) {
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun UsageOverviewBody(
     viewModel: LauncherViewModel,
@@ -135,9 +141,25 @@ private fun UsageOverviewBody(
                 "and real-time context inside the Mindful Gate.",
         )
         Spacer(Modifier.height(LauncherSpace.sm))
-        Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
+        SecondaryText(
+            "If Android shows \"Restricted setting\" (Izin terbatas) when toggling Usage Access: " +
+                "tap Open App Info below → tap the top-right ⋮ menu → Allow restricted settings, " +
+                "then return to Grant usage access.",
+        )
+        Spacer(Modifier.height(LauncherSpace.sm))
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
+            verticalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
+        ) {
             QuietAction("Grant usage access") {
                 runCatching { context.startActivity(UsageRepository(context).settingsIntent()) }
+            }
+            QuietAction("Open App Info") {
+                val intent = Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null),
+                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                runCatching { context.startActivity(intent) }
             }
             QuietAction("Refresh") { viewModel.refreshUsage() }
         }
