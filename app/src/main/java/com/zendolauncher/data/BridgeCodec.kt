@@ -2,8 +2,11 @@ package com.zendolauncher.data
 
 import com.zendolauncher.core.DayRecord
 import com.zendolauncher.core.Highlight
+import com.zendolauncher.core.MindfulGate
 import com.zendolauncher.core.Origins
 import com.zendolauncher.core.TaskItem
+import com.zendolauncher.ui.theme.BackdropStyle
+import com.zendolauncher.ui.theme.ScrimStrength
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -26,6 +29,16 @@ data class BackupPrefs(
     val windowEnabled: Boolean = false,
     val windowStartMinute: Int = SettingsStore.DEFAULT_WINDOW_START,
     val windowEndMinute: Int = SettingsStore.DEFAULT_WINDOW_END,
+    val homeMode: HomeMode = HomeMode.QUIET,
+    val homeAlignment: HomeAlignment = HomeAlignment.CENTER,
+    val labelCase: LabelCase = LabelCase.LOWERCASE,
+    val backdropStyle: BackdropStyle = BackdropStyle.MATTE,
+    val scrimStrength: ScrimStrength = ScrimStrength.BALANCED,
+    val backdropBlur: Boolean = false,
+    val showCalendarGlance: Boolean = true,
+    val showUsageOnHome: Boolean = true,
+    val pauseDelaySeconds: Int = MindfulGate.DEFAULT_DELAY_SECONDS,
+    val gateTimeboxEnabled: Boolean = true,
 )
 
 /** Everything a full local backup contains. No tokens, no event bodies, no logs. */
@@ -86,6 +99,16 @@ object BridgeJson {
             .put("windowEnabled", contents.prefs.windowEnabled)
             .put("windowStartMinute", contents.prefs.windowStartMinute)
             .put("windowEndMinute", contents.prefs.windowEndMinute)
+            .put("homeMode", contents.prefs.homeMode.name)
+            .put("homeAlignment", contents.prefs.homeAlignment.name)
+            .put("labelCase", contents.prefs.labelCase.name)
+            .put("backdropStyle", contents.prefs.backdropStyle.name)
+            .put("scrimStrength", contents.prefs.scrimStrength.name)
+            .put("backdropBlur", contents.prefs.backdropBlur)
+            .put("showCalendarGlance", contents.prefs.showCalendarGlance)
+            .put("showUsageOnHome", contents.prefs.showUsageOnHome)
+            .put("pauseDelaySeconds", contents.prefs.pauseDelaySeconds)
+            .put("gateTimeboxEnabled", contents.prefs.gateTimeboxEnabled)
         return JSONObject()
             .put("format", BACKUP_FORMAT)
             .put("schemaVersion", SCHEMA_VERSION)
@@ -157,6 +180,18 @@ object BridgeJson {
             ?: SettingsStore.DEFAULT_WINDOW_START).coerceIn(0, 24 * 60 - 1),
         windowEndMinute = (optionalNumber(o, "windowEndMinute")?.toInt()
             ?: SettingsStore.DEFAULT_WINDOW_END).coerceIn(0, 24 * 60 - 1),
+        homeMode = enumOr(o, "homeMode", HomeMode.QUIET),
+        homeAlignment = enumOr(o, "homeAlignment", HomeAlignment.CENTER),
+        labelCase = enumOr(o, "labelCase", LabelCase.LOWERCASE),
+        backdropStyle = enumOr(o, "backdropStyle", BackdropStyle.MATTE),
+        scrimStrength = enumOr(o, "scrimStrength", ScrimStrength.BALANCED),
+        backdropBlur = optionalBool(o, "backdropBlur", false),
+        showCalendarGlance = optionalBool(o, "showCalendarGlance", true),
+        showUsageOnHome = optionalBool(o, "showUsageOnHome", true),
+        pauseDelaySeconds = (optionalNumber(o, "pauseDelaySeconds")?.toInt()
+            ?: MindfulGate.DEFAULT_DELAY_SECONDS)
+            .let { if (it in MindfulGate.DELAY_OPTIONS_SECONDS) it else MindfulGate.DEFAULT_DELAY_SECONDS },
+        gateTimeboxEnabled = optionalBool(o, "gateTimeboxEnabled", true),
     )
 
     // ---- Strict field readers -----------------------------------------------------

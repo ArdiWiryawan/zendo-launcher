@@ -7,17 +7,28 @@
       lets the launcher see packages that expose a MAIN/LAUNCHER activity on API 30+.
       QUERY_ALL_PACKAGES is deliberately NOT used.
 
-      READ_CALENDAR (runtime): the optional Plan page agenda. Asked only when the user
-      opens a calendar feature, never at startup; all calendar use is read-only and
-      offline. There is no wallpaper permission, no usage-stats access and no network
-      permission: the bundled wallpaper gallery and the screen-time summary were removed.
+      READ_CALENDAR (runtime): the optional Plan page agenda and Home calendar glance.
+      Asked only when the user opens a calendar feature, never at startup; all calendar
+      use is read-only and offline.
+
+      PACKAGE_USAGE_STATS (special access, optional): powers today's screen-usage summary
+      and the real-time context mirror inside the Mindful Gate. Strictly opt-in via
+      system Usage Access settings.
+
+      POST_NOTIFICATIONS (runtime, Android 13+): used only if the user picks a session
+      timebox reminder in the Mindful Gate. Still no INTERNET permission anywhere.
     -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <queries>
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <package android:name="com.google.android.calendar" />
     </queries>
 
     <application
@@ -48,6 +59,10 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <receiver
+            android:name=".platform.SessionReminderReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

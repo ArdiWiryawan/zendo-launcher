@@ -100,9 +100,9 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
             Spacer(Modifier.height(LauncherSpace.md))
 
             if (!state.calendarPermission) {
-                SectionHeading("Calendar access")
+                SectionHeading("Google Calendar access")
                 Spacer(Modifier.height(LauncherSpace.sm))
-                EmptyNote("The launcher reads your device calendar only, offline. Nothing is uploaded.")
+                EmptyNote("Reads your synced Google Calendar events on this device, offline. Nothing is uploaded.")
                 Spacer(Modifier.height(LauncherSpace.xs))
                 SecondaryText("Permission is asked only here, when you open the calendar.")
                 CalendarAccessAction(viewModel, state.settings.calendarAsked)
@@ -113,10 +113,9 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                 }
                 SectionHeading(label)
                 Spacer(Modifier.height(LauncherSpace.xs))
-                // Honest source line: device provider data, never claimed live.
                 SecondaryText(
                     if (state.lastCalendarRefresh > 0L) {
-                        "Device calendar · updated ${
+                        "Google Calendar (device sync) · updated ${
                             java.time.Instant.ofEpochMilli(state.lastCalendarRefresh)
                                 .atZone(ZoneId.systemDefault())
                                 .format(DateTimeFormatter.ofPattern("HH:mm"))
@@ -124,7 +123,7 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                     } else if (state.calendarLoading) {
                         "Loading…"
                     } else {
-                        "Device calendar"
+                        "Google Calendar (device sync)"
                     },
                 )
                 Spacer(Modifier.height(LauncherSpace.sm))
@@ -137,12 +136,21 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                 if (events.isEmpty() && !state.calendarLoading) {
                     EmptyNote(
                         when {
+                            state.calendars.none { it.isGoogle } && state.settings.shownCalendarIds.isEmpty() ->
+                                "No synced Google Calendar found on this device yet."
                             state.settings.shownCalendarIds.isEmpty() ->
-                                "No calendars chosen yet. Pick at least one below."
+                                "No calendars chosen yet. Pick your Google calendars below."
                             selected == today -> "Nothing today. The day is open."
                             else -> "Nothing on this date."
                         },
                     )
+                    if (state.settings.shownCalendarIds.isEmpty() && state.calendars.any { it.isGoogle }) {
+                        QuietAction("Use Google Calendars", onClick = { viewModel.selectGoogleCalendars() })
+                    } else if (state.calendars.none { it.isGoogle }) {
+                        SecondaryText(
+                            "Sign in to Google Calendar or turn on Calendar sync in Android Settings → Accounts → Google.",
+                        )
+                    }
                 } else {
                     events.forEach { event ->
                         UpcomingRow(event.startMillis, event.endMillis, event.title, event.allDay)
@@ -152,55 +160,55 @@ fun CalendarScreen(viewModel: LauncherViewModel, state: UiState) {
                 Spacer(Modifier.height(LauncherSpace.md))
                 Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
                     QuietAction("Refresh", onClick = { viewModel.refreshCalendar() })
-                    QuietAction("Open system calendar", onClick = {
+                    QuietAction("Open Google Calendar", onClick = {
                         val millis = selected.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
-                        val uri = CalendarContract.CONTENT_URI.buildUpon()
-                            .appendPath("time").appendPath(millis.toString()).build()
-                        try {
-                            context.startActivity(Intent(Intent.ACTION_VIEW).setData(uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                        } catch (_: ActivityNotFoundException) {
-                            try {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW).setType("vnd.android.cursor.item/event")
-                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                                )
-                            } catch (_: ActivityNotFoundException) {
-                            }
-                        }
+                        openGoogleCalendar(context, millis)
                     })
                 }
                 if (state.calendars.isNotEmpty()) {
                     Spacer(Modifier.height(LauncherSpace.xl))
-                    SectionHeading("Calendars")
+                    SectionHeading("Google & Device Calendars")
                     Spacer(Modifier.height(LauncherSpace.sm))
                     SecondaryText(
-                        "Choose the calendars the agenda may read. Nothing is read until " +
-                            "you choose, and the choice is remembered.",
+                        "Choose which synced calendars appear on Home and Plan. Nothing is read until you choose.",
+                    )
+                    Spacer(Modifier.height(LauncherSpace.sm))
+                    ToggleRow(
+                        label = "Google calendars only",
+                        checked = state.settings.calendarGoogleOnly,
+                        onCheckedChange = { only ->
+                            viewModel.setCalendarGoogleOnly(only)
+                            viewModel.refreshCalendarEvents()
+                        },
                     )
                     if (state.settings.shownCalendarIds.isEmpty()) {
                         Spacer(Modifier.height(LauncherSpace.xs))
                         SecondaryText("No calendars chosen yet.")
                     }
                     Spacer(Modifier.height(LauncherSpace.xs))
-                    // Grouped by account so an account is unmistakable; local
-                    // calendars without account metadata sit under their own header.
-                    state.calendars.groupBy { it.accountName ?: "On this device" }
-                        .toSortedMap()
-                        .forEach { (account, cals) ->
-                            Spacer(Modifier.height(LauncherSpace.sm))
-                            SecondaryText(
-                                if (cals.any { it.isGoogle }) "$account · Google" else account,
-                            )
-                            cals.forEach { cal ->
-                                CalendarToggle(viewModel, state, cal)
-                            }
+                    val grouped = state.calendars.groupBy { it.accountName ?: "On this device" }
+                        .entries
+                        .sortedWith(
+                            compareByDescending<Map.Entry<String, List<com.zendolauncher.model.DeviceCalendar>>> {
+                                it.value.any { cal -> cal.isGoogle }
+                            }.thenBy { it.key },
+                        )
+                    grouped.forEach { (account, cals) ->
+                        Spacer(Modifier.height(LauncherSpace.sm))
+                        SecondaryText(
+                            if (cals.any { it.isGoogle }) "$account · Google Calendar" else account,
+                        )
+                        cals.forEach { cal ->
+                            CalendarToggle(viewModel, state, cal)
                         }
+                    }
                 }
-                if (state.calendars.isNotEmpty() && state.calendars.none { it.syncEvents }) {
+                val googleCals = state.calendars.filter { it.isGoogle }
+                if (googleCals.isNotEmpty() && googleCals.none { it.syncEvents }) {
                     Spacer(Modifier.height(LauncherSpace.md))
                     SecondaryText(
-                        "Sync looks off for these calendars, so new events may not " +
-                            "arrive. Check account sync in system Settings.",
+                        "Google Calendar sync looks off on this device, so new events may not " +
+                            "arrive. Check account sync in Android Settings.",
                     )
                 }
                 Spacer(Modifier.height(LauncherSpace.xl))
@@ -314,6 +322,34 @@ private fun WeekStrip(
                     SecondaryText("today")
                 }
             }
+        }
+    }
+}
+
+private const val GOOGLE_CALENDAR_PACKAGE = "com.google.android.calendar"
+
+private fun openGoogleCalendar(context: android.content.Context, timeMillis: Long) {
+    val uri = CalendarContract.CONTENT_URI.buildUpon()
+        .appendPath("time").appendPath(timeMillis.toString()).build()
+
+    val googleTimeIntent = Intent(Intent.ACTION_VIEW)
+        .setData(uri)
+        .setPackage(GOOGLE_CALENDAR_PACKAGE)
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (runCatching { context.startActivity(googleTimeIntent) }.isSuccess) return
+
+    val googleLaunch = context.packageManager.getLaunchIntentForPackage(GOOGLE_CALENDAR_PACKAGE)
+        ?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    if (googleLaunch != null && runCatching { context.startActivity(googleLaunch) }.isSuccess) return
+
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW).setData(uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    } catch (_: ActivityNotFoundException) {
+        runCatching {
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW).setType("vnd.android.cursor.item/event")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         }
     }
 }

@@ -21,9 +21,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.zendolauncher.data.ThemeMode
+import com.zendolauncher.ui.theme.BackdropStyle
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
+import com.zendolauncher.ui.theme.label
 
 /**
  * First-run explanation. One scrollable page rather than a wizard: there is nothing to
@@ -59,15 +62,33 @@ fun OnboardingScreen(viewModel: LauncherViewModel, state: UiState) {
             )
             Spacer(Modifier.height(LauncherSpace.lg + LauncherSpace.xs))
 
-            Line("It replaces your Home screen with a short text list of the apps you choose, so the phone shows fewer things at once.")
+            Line("It replaces your Home screen with a calm space — just time, your next calendar glance, and the few apps you truly need.")
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
-            Line("Open All apps and use the Pin action on an app, or hold your finger on it, to add it to Home.")
+            Line("Open All apps to pin essentials, long-press any app to gate it with a Mindful Pause, or switch between Quiet Home and Calm Canvas in Settings.")
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
-            Line("Home starts as that one list. Today, Plan and Note pages are added from Edit pages, one at a time.")
+            ChoiceRow(
+                label = "Pick your surface",
+                options = listOf(
+                    ThemeMode.DARK to "Matte Charcoal",
+                    ThemeMode.LIGHT to "Warm Sage",
+                ),
+                selected = state.settings.theme,
+                onSelect = { viewModel.setTheme(it) },
+            )
+            Spacer(Modifier.height(LauncherSpace.md))
+            ChoiceRow(
+                label = "Wallpaper mood",
+                options = listOf(
+                    BackdropStyle.MATTE to BackdropStyle.MATTE.label(),
+                    BackdropStyle.WINDOW_SHADOW to BackdropStyle.WINDOW_SHADOW.label(),
+                    BackdropStyle.WASHI_LINEN to BackdropStyle.WASHI_LINEN.label(),
+                    BackdropStyle.MORNING_MIST to BackdropStyle.MORNING_MIST.label(),
+                ),
+                selected = state.settings.backdropStyle,
+                onSelect = { viewModel.setBackdropStyle(it) },
+            )
             Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
-            Line("Android owns the Home app setting, so making Zendo the default happens in your device settings.")
-            Spacer(Modifier.height(LauncherSpace.lg - LauncherSpace.xs))
-            Line("Choosing another launcher in that same screen restores your previous Home screen.")
+            Line("Android owns the Home app setting, so making Zendo the default happens in your device settings. You can always switch back there.")
 
             Spacer(Modifier.height(LauncherSpace.xl - LauncherSpace.xs))
             Hairline()

@@ -36,6 +36,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import com.zendolauncher.core.AppQuery
+import com.zendolauncher.core.UsageCalculator
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
@@ -237,10 +238,15 @@ internal fun letterOf(label: String): String {
 /** One row of the drawer. No separator: at this length a rule per row is texture. */
 @Composable
 private fun AppListRow(viewModel: LauncherViewModel, state: UiState, target: LaunchTarget) {
-    // Pin state is whether the key lives on any Home page — the legacy flat favourites
-    // list is migration-only and is never updated after migration.
     val pinnedKeys = remember(state.settings.home) {
         state.settings.home.pages.flatMap { it.config.itemKeys }.toSet()
+    }
+    val usageWhisper = if (state.settings.showUsageOnHome && state.usageAccess) {
+        state.dailyUsage.byPackage[target.packageName]
+            ?.takeIf { it.foregroundMillis >= 60_000L }
+            ?.let { UsageCalculator.formatDuration(it.foregroundMillis) }
+    } else {
+        null
     }
     AppRow(
         viewModel = viewModel,
@@ -249,8 +255,12 @@ private fun AppListRow(viewModel: LauncherViewModel, state: UiState, target: Lau
         onClick = { viewModel.launch(target) },
         onToggleFavourite = { viewModel.toggleFavourite(target.key) },
         onToggleHidden = { viewModel.toggleHidden(target.key) },
-        // The long press stays for anyone who knows it, but pinning must not depend on
-        // discovering it, so the drawer shows the action outright.
+        usageWhisper = usageWhisper,
+        isGated = target.key in state.settings.distract,
+        onToggleGate = {
+            if (!state.settings.pauseEnabled) viewModel.setPauseEnabled(true)
+            viewModel.toggleDistract(target.key)
+        },
         showPinAction = true,
     )
 }

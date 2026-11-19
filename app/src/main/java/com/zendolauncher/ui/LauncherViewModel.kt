@@ -1,15 +1,18 @@
 package com.zendolauncher.ui
 
 import android.app.Application
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.core.AppQuery
 import com.zendolauncher.core.CalendarCache
+import com.zendolauncher.core.DailyUsageSnapshot
 import com.zendolauncher.core.DayRecord
 import com.zendolauncher.core.Highlight
 import com.zendolauncher.core.HomeLayout
+import com.zendolauncher.core.MindfulGate
 import com.zendolauncher.core.PageType
 import com.zendolauncher.core.TaskItem
 import com.zendolauncher.core.primary
@@ -20,18 +23,26 @@ import com.zendolauncher.data.BridgeJson
 import com.zendolauncher.data.FocusNoteStore
 import com.zendolauncher.data.HighlightStore
 import com.zendolauncher.data.HistoryStore
+import com.zendolauncher.data.HomeAlignment
+import com.zendolauncher.data.HomeMode
+import com.zendolauncher.data.LabelCase
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.SettingsStore
 import com.zendolauncher.data.TaskStore
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.data.TodayActionStore
+import com.zendolauncher.data.WallpaperPhotoStore
 import com.zendolauncher.model.CalendarEvent
 import com.zendolauncher.model.DeviceCalendar
 import com.zendolauncher.model.LaunchTarget
 import com.zendolauncher.platform.AppLauncher
 import com.zendolauncher.platform.AppRepository
 import com.zendolauncher.platform.CalendarRepository
+import com.zendolauncher.platform.SessionReminderScheduler
 import com.zendolauncher.platform.ShortcutRepository
+import com.zendolauncher.platform.UsageRepository
+import com.zendolauncher.ui.theme.BackdropStyle
+import com.zendolauncher.ui.theme.ScrimStrength
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -53,7 +64,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 
-enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, CALENDAR, HISTORY, HIGHLIGHT_EDITOR, TASK_EDITOR }
+enum class Screen { ONBOARDING, HOME, APPS, SETTINGS, CALENDAR, HISTORY, USAGE, HIGHLIGHT_EDITOR, TASK_EDITOR }
 
 /** A parsed backup file waiting on the restore confirmation. */
 data class BackupPreviewUi(
@@ -169,6 +180,11 @@ data class UiState(
     val taskEditorError: String? = null,
     val showDiscardTask: Boolean = false,
     val confirmDeleteTaskId: String? = null,
+    // ---- Usage & Wallpaper (local, opt-in) ---------------------------------------
+    val usageAccess: Boolean = false,
+    val dailyUsage: DailyUsageSnapshot = DailyUsageSnapshot.EMPTY,
+    val customWallpaperBitmap: Bitmap? = null,
+    val hasNotificationPermission: Boolean = true,
 )
 
 /** The four app lists, grouped only so [`lists`]'s `combine` stays within its arity. */
@@ -207,6 +223,9 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val todayActionStore = TodayActionStore(application)
     private val historyStore = HistoryStore(application)
     private val calendarRepository = CalendarRepository(application)
+    private val usageRepository = UsageRepository(application)
+    private val wallpaperPhotoStore = WallpaperPhotoStore(application)
+    private val reminderScheduler = SessionReminderScheduler(application)
     private val appLauncher = AppLauncher(application)
 
     private val _screen = MutableStateFlow(if (settingsStore.read().onboardingSeen) Screen.HOME else Screen.ONBOARDING)
@@ -295,6 +314,12 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     private val _confirmClearHistory = MutableStateFlow(false)
     private val _backupPreview = MutableStateFlow<BackupPreviewUi?>(null)
     private val _dataMessage = MutableStateFlow<String?>(null)
+
+    // Usage & custom wallpaper state.
+    private val _usageAccess = MutableStateFlow(false)
+    private val _dailyUsage = MutableStateFlow(DailyUsageSnapshot.EMPTY)
+    private val _customWallpaperBitmap = MutableStateFlow<Bitmap?>(null)
+    private val _hasNotificationPermission = MutableStateFlow(true)
 
     /** Where Back returns from Settings; lets Back-to-drawer keep the drawer query. */
     private var settingsReturn: Screen = Screen.HOME
@@ -507,9 +532,27 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         )
     }
 
+    private data class WellbeingVisuals(
+        val usageAccess: Boolean,
+        val dailyUsage: DailyUsageSnapshot,
+        val customWallpaper: Bitmap?,
+        val hasNotificationPermission: Boolean,
+    )
+
+    private val wellbeingVisuals: Flow<WellbeingVisuals> = combine(
+        _usageAccess,
+        _dailyUsage,
+        _customWallpaperBitmap,
+        _hasNotificationPermission,
+    ) { usageAccess, dailyUsage, customWallpaper, hasNotif ->
+        WellbeingVisuals(usageAccess, dailyUsage, customWallpaper, hasNotif)
+    }
+
+    private val overlays: Flow<Pair<LaunchTarget?, Boolean>> = combine(_pendingPause, _addingPage) { a, b -> a to b }
+
     val state: StateFlow<UiState> =
-        combine(base, _pendingPause, today, extras, _addingPage) {
-                base, pendingPause, t, x, addingPage ->
+        combine(base, overlays, today, extras, wellbeingVisuals) {
+                base, (pendingPause, addingPage), t, x, w ->
             base.copy(
                 pendingPause = pendingPause,
                 highlights = t.highlights,
@@ -549,6 +592,10 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 backupPreview = x.backupPreview,
                 dataMessage = x.dataMessage,
                 addingPage = addingPage,
+                usageAccess = w.usageAccess,
+                dailyUsage = w.dailyUsage,
+                customWallpaperBitmap = w.customWallpaper,
+                hasNotificationPermission = w.hasNotificationPermission,
             )
         }.stateIn(
             viewModelScope,
@@ -582,6 +629,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     tasks = tasks,
                 )
             }.collect { }
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            if (wallpaperPhotoStore.hasPhoto()) {
+                _customWallpaperBitmap.value = wallpaperPhotoStore.loadBitmap()
+            }
         }
     }
 
@@ -647,7 +699,31 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         // Re-check on every resume/refresh: a grant or revocation made in Settings
         // while the launcher was away must update the UI without requesting anything.
         // This reads the current state only; it never launches a permission dialog.
-        _calendarPermission.value = calendarRepository.hasPermission()
+        val calGranted = calendarRepository.hasPermission()
+        _calendarPermission.value = calGranted
+        val usageGranted = usageRepository.hasAccess()
+        _usageAccess.value = usageGranted
+        _hasNotificationPermission.value = reminderScheduler.hasNotificationPermission()
+
+        if (usageGranted) {
+            refreshUsage()
+        } else {
+            _dailyUsage.value = DailyUsageSnapshot.EMPTY
+        }
+        val settings = settingsStore.settings.value
+        if (calGranted && settings.showCalendarGlance && settings.shownCalendarIds.isNotEmpty() &&
+            CalendarCache.isStale(_lastCalendarRefresh.value, System.currentTimeMillis())
+        ) {
+            refreshCalendarEvents()
+        }
+    }
+
+    fun refreshUsage() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val granted = usageRepository.hasAccess()
+            _usageAccess.value = granted
+            _dailyUsage.value = if (granted) usageRepository.readToday() else DailyUsageSnapshot.EMPTY
+        }
     }
 
     /**
@@ -701,6 +777,11 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
     fun openCalendar() {
         _screen.value = Screen.CALENDAR
         refreshCalendar()
+    }
+
+    fun openUsage() {
+        _screen.value = Screen.USAGE
+        refreshUsage()
     }
 
     fun goHome() {
@@ -806,7 +887,7 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                 goHome()
                 return true
             }
-            Screen.CALENDAR, Screen.HISTORY -> {
+            Screen.CALENDAR, Screen.HISTORY, Screen.USAGE -> {
                 goHome()
                 return true
             }
@@ -931,20 +1012,39 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             endMinute = settings.windowEndMinute,
         )
         if (pause) {
+            if (_usageAccess.value) refreshUsage()
             _pendingPause.value = target
         } else {
             appLauncher.launch(target)
         }
     }
 
-    /** The dialog's Continue: one direct launch, no journaling. */
-    fun confirmPause() {
-        _pendingPause.value?.let { appLauncher.launch(it) }
+    /**
+     * Completes the Mindful Gate: launches the target app and, if a session timebox
+     * was chosen, schedules a quiet local notification reminder.
+     */
+    fun confirmPause(timeboxMinutes: Int? = null, intention: String? = null) {
+        val target = _pendingPause.value ?: return
+        if (timeboxMinutes != null && timeboxMinutes > 0) {
+            reminderScheduler.schedule(
+                targetKey = target.key,
+                appLabel = target.label,
+                minutes = timeboxMinutes,
+                intention = intention,
+            )
+        }
+        appLauncher.launch(target)
         _pendingPause.value = null
     }
 
     /** The dialog's Cancel: back to the list, nothing launched. */
     fun cancelPause() { _pendingPause.value = null }
+
+    /** Reorders a pinned app on the primary APPS page by [delta] (-1 up, +1 down). */
+    fun reorderPinnedOnHome(key: String, delta: Int) {
+        val pageId = settingsStore.settings.value.home.pinTargetPageId() ?: return
+        moveItemBy(pageId, key, delta)
+    }
 
     /**
      * Pins or unpins an app. When the pin is refused — the target page already holds
@@ -1012,6 +1112,62 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
             )
 
     fun setTheme(theme: ThemeMode) = settingsStore.update { it.copy(theme = theme) }
+
+    fun setHomeMode(mode: HomeMode) = settingsStore.update { current ->
+        val nextHome = if (mode == HomeMode.CALM_CANVAS) current.home.ensureCalmCanvasPages() else current.home
+        current.copy(homeMode = mode, home = nextHome)
+    }
+
+    fun setHomeAlignment(alignment: HomeAlignment) =
+        settingsStore.update { it.copy(homeAlignment = alignment) }
+
+    fun setLabelCase(labelCase: LabelCase) =
+        settingsStore.update { it.copy(labelCase = labelCase) }
+
+    fun setBackdropStyle(style: BackdropStyle) =
+        settingsStore.update { it.copy(backdropStyle = style) }
+
+    fun setScrimStrength(strength: ScrimStrength) =
+        settingsStore.update { it.copy(scrimStrength = strength) }
+
+    fun setBackdropBlur(blur: Boolean) =
+        settingsStore.update { it.copy(backdropBlur = blur) }
+
+    fun importWallpaperPhoto(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val bitmap = wallpaperPhotoStore.saveFromUri(uri) ?: return@launch
+            _customWallpaperBitmap.value = bitmap
+            settingsStore.update { it.copy(backdropStyle = BackdropStyle.CUSTOM_PHOTO) }
+        }
+    }
+
+    fun clearWallpaperPhoto() {
+        viewModelScope.launch(Dispatchers.IO) {
+            wallpaperPhotoStore.clear()
+            _customWallpaperBitmap.value = null
+            settingsStore.update { current ->
+                if (current.backdropStyle == BackdropStyle.CUSTOM_PHOTO) {
+                    current.copy(backdropStyle = BackdropStyle.MATTE)
+                } else {
+                    current
+                }
+            }
+        }
+    }
+
+    fun setShowCalendarGlance(show: Boolean) =
+        settingsStore.update { it.copy(showCalendarGlance = show) }
+
+    fun setShowUsageOnHome(show: Boolean) =
+        settingsStore.update { it.copy(showUsageOnHome = show) }
+
+    fun setPauseDelaySeconds(seconds: Int) = settingsStore.update {
+        val clamped = if (seconds in MindfulGate.DELAY_OPTIONS_SECONDS) seconds else MindfulGate.DEFAULT_DELAY_SECONDS
+        it.copy(pauseDelaySeconds = clamped)
+    }
+
+    fun setGateTimeboxEnabled(enabled: Boolean) =
+        settingsStore.update { it.copy(gateTimeboxEnabled = enabled) }
 
     fun setPauseEnabled(enabled: Boolean) = settingsStore.update { it.copy(pauseEnabled = enabled) }
 
@@ -1425,6 +1581,14 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
         refreshCalendarEvents()
     }
 
+    /** Explicitly selects all visible Google Calendar accounts on this device in one tap. */
+    fun selectGoogleCalendars() {
+        val googleIds = _calendars.value.filter { it.isGoogle }.map { it.id }.toSet()
+        if (googleIds.isEmpty()) return
+        settingsStore.update { it.copy(calendarGoogleOnly = true) }
+        setShownCalendars(googleIds)
+    }
+
     fun eventsFor(date: LocalDate): List<CalendarEvent> {
         val zone = ZoneId.systemDefault()
         return _calendarEvents.value.filter {
@@ -1536,6 +1700,16 @@ class LauncherViewModel(application: Application) : AndroidViewModel(application
                     windowEnabled = s.windowEnabled,
                     windowStartMinute = s.windowStartMinute,
                     windowEndMinute = s.windowEndMinute,
+                    homeMode = s.homeMode,
+                    homeAlignment = s.homeAlignment,
+                    labelCase = s.labelCase,
+                    backdropStyle = s.backdropStyle,
+                    scrimStrength = s.scrimStrength,
+                    backdropBlur = s.backdropBlur,
+                    showCalendarGlance = s.showCalendarGlance,
+                    showUsageOnHome = s.showUsageOnHome,
+                    pauseDelaySeconds = s.pauseDelaySeconds,
+                    gateTimeboxEnabled = s.gateTimeboxEnabled,
                 ),
             )
             val raw = BridgeJson.encodeBackup(contents, BuildConfig.VERSION_NAME, System.currentTimeMillis())
@@ -1588,4 +1762,14 @@ internal fun LauncherSettings.restoredFromBackup(prefs: BackupPrefs): LauncherSe
     windowEnabled = prefs.windowEnabled,
     windowStartMinute = prefs.windowStartMinute,
     windowEndMinute = prefs.windowEndMinute,
+    homeMode = prefs.homeMode,
+    homeAlignment = prefs.homeAlignment,
+    labelCase = prefs.labelCase,
+    backdropStyle = prefs.backdropStyle,
+    scrimStrength = prefs.scrimStrength,
+    backdropBlur = prefs.backdropBlur,
+    showCalendarGlance = prefs.showCalendarGlance,
+    showUsageOnHome = prefs.showUsageOnHome,
+    pauseDelaySeconds = prefs.pauseDelaySeconds,
+    gateTimeboxEnabled = prefs.gateTimeboxEnabled,
 )

@@ -114,7 +114,7 @@ fun PlanPage(viewModel: LauncherViewModel, state: UiState) {
 
         when {
             !state.calendarPermission -> {
-                EmptyNote("The launcher reads your device calendar only, offline. Nothing is uploaded.")
+                EmptyNote("Reads your Google Calendar synced on this device, offline. Nothing is uploaded.")
                 Spacer(Modifier.height(LauncherSpace.xs))
                 SecondaryText("Permission is asked only when you open the calendar.")
                 CalendarAccessAction(viewModel, state.settings.calendarAsked)
@@ -125,18 +125,21 @@ fun PlanPage(viewModel: LauncherViewModel, state: UiState) {
             }
 
             state.calendars.isEmpty() -> {
-                EmptyNote("No calendars are visible to Android yet.")
+                EmptyNote("No synced Google Calendar found on Android yet.")
                 Spacer(Modifier.height(LauncherSpace.xs))
                 SecondaryText(
-                    "If your events live in another app, set that account up on this device first.",
+                    "Sign in to your Google account and enable Calendar sync in Android Settings.",
                 )
                 QuietAction("Check again", onClick = { viewModel.refreshCalendar() })
             }
 
             state.settings.shownCalendarIds.isEmpty() -> {
-                EmptyNote("No calendars chosen yet. The agenda stays empty until you choose.")
+                EmptyNote("No Google calendars chosen yet. The agenda stays empty until you choose.")
                 Spacer(Modifier.height(LauncherSpace.xs))
                 SecondaryText("This is deliberate: nothing is read until you pick it.")
+                if (state.calendars.any { it.isGoogle }) {
+                    QuietAction("Use Google Calendars", onClick = { viewModel.selectGoogleCalendars() })
+                }
                 QuietAction("Choose calendars", onClick = { viewModel.openCalendar() })
             }
 

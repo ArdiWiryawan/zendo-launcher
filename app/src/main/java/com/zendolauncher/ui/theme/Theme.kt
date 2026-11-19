@@ -18,13 +18,12 @@ import androidx.compose.ui.unit.sp
 import com.zendolauncher.data.ThemeMode
 
 /**
- * Monochrome palette. Two tones of text and one hairline separator carry the whole
- * hierarchy, so there is nothing to make loud.
+ * Calm, tactile two-theme palette: Soft Matte Charcoal (dark) and Warm Sage Paper (light).
  *
- * Light is a warm paper, not white: a full-white Home screen on an OLED phone is a
- * lamp pointed at the user's face at night, and the earlier #F7F7F5 read as glare in a
- * dark room. #EFEDE6 keeps the same two-tone hierarchy at roughly 88% luminance, which
- * is still unmistakably light while being comfortable to hold.
+ * Dark avoids harsh pure-OLED void black (#0B0B0C) in favour of a warm matte charcoal
+ * (#171718) that reads like dark paper rather than a powered-off screen. Light uses a
+ * soft sage-warm paper (#EAECE5) at comfortable luminance so neither theme glares or
+ * feels sterile.
  */
 @Immutable
 data class LauncherPalette(
@@ -36,18 +35,18 @@ data class LauncherPalette(
 )
 
 val DarkPalette = LauncherPalette(
-    background = Color(0xFF0B0B0C),
-    primary = Color(0xFFF2F2F0),
-    secondary = Color(0xFF8A8A88),
-    separator = Color(0xFF1F1F21),
+    background = Color(0xFF171718),
+    primary = Color(0xFFECEAE4),
+    secondary = Color(0xFF94918A),
+    separator = Color(0xFF2B2A28),
     isDark = true,
 )
 
 val LightPalette = LauncherPalette(
-    background = Color(0xFFEFEDE6),
-    primary = Color(0xFF1A1A19),
-    secondary = Color(0xFF6B6B67),
-    separator = Color(0xFFDCD9D0),
+    background = Color(0xFFEAECE5),
+    primary = Color(0xFF1D1F1C),
+    secondary = Color(0xFF676B63),
+    separator = Color(0xFFD3D7CC),
     isDark = false,
 )
 

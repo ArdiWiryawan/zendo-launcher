@@ -31,7 +31,7 @@ enum class PageType {
     /** Focus session state and a quick note. */
     NOTES,
 
-    /** Recognised and stored, not implemented. See the class comment. */
+    /** Usage & wellbeing overview (screen time + calendar glance). */
     WIDGET,
 }
 
@@ -39,9 +39,9 @@ enum class PageType {
 fun PageType.defaultName(): String = when (this) {
     PageType.TODAY -> "Today"
     PageType.APPS -> "Apps"
-    PageType.PLAN -> "Plan & Focus"
-    PageType.NOTES -> "Focus"
-    PageType.WIDGET -> "Widget"
+    PageType.PLAN -> "Plan"
+    PageType.NOTES -> "Note"
+    PageType.WIDGET -> "Usage"
 }
 
 /**
@@ -228,6 +228,24 @@ data class HomeLayout(
 
     /** Where the apps of the active page live: the active page, or the first APPS page. */
     fun activeAppsPageId(): String? = pinTargetPageId()
+
+    /**
+     * Expands a single-page layout into the structured Calm Canvas multi-page set while
+     * keeping the user's pinned apps intact on the primary APPS page.
+     */
+    fun ensureCalmCanvasPages(): HomeLayout {
+        if (pages.size > 1) return this
+        val existingApps = pages.firstOrNull { it.type == PageType.APPS }
+            ?: HomePage("p_apps", PageType.APPS, PageType.APPS.defaultName())
+        val expanded = listOf(
+            existingApps,
+            HomePage("p_plan", PageType.PLAN, PageType.PLAN.defaultName()),
+            HomePage("p_today", PageType.TODAY, PageType.TODAY.defaultName()),
+            HomePage("p_usage", PageType.WIDGET, PageType.WIDGET.defaultName()),
+            HomePage("p_note", PageType.NOTES, PageType.NOTES.defaultName()),
+        )
+        return sanitize(copy(pages = expanded, activePageId = existingApps.id))
+    }
 
     companion object {
         const val MIN_PAGES = 1

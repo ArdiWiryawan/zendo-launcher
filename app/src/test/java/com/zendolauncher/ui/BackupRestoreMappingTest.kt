@@ -1,8 +1,13 @@
 package com.zendolauncher.ui
 
 import com.zendolauncher.data.BackupPrefs
+import com.zendolauncher.data.HomeAlignment
+import com.zendolauncher.data.HomeMode
+import com.zendolauncher.data.LabelCase
 import com.zendolauncher.data.LauncherSettings
 import com.zendolauncher.data.ThemeMode
+import com.zendolauncher.ui.theme.BackdropStyle
+import com.zendolauncher.ui.theme.ScrimStrength
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -27,6 +32,16 @@ class BackupRestoreMappingTest {
                 windowEnabled = true,
                 windowStartMinute = 21 * 60,
                 windowEndMinute = 6 * 60,
+                homeMode = HomeMode.CALM_CANVAS,
+                homeAlignment = HomeAlignment.LEFT,
+                labelCase = LabelCase.ORIGINAL,
+                backdropStyle = BackdropStyle.MORNING_MIST,
+                scrimStrength = ScrimStrength.DEEP,
+                backdropBlur = true,
+                showCalendarGlance = false,
+                showUsageOnHome = false,
+                pauseDelaySeconds = 8,
+                gateTimeboxEnabled = false,
             ),
         )
         assertEquals(ThemeMode.LIGHT, restored.theme)
@@ -36,6 +51,16 @@ class BackupRestoreMappingTest {
         assertTrue(restored.windowEnabled)
         assertEquals(21 * 60, restored.windowStartMinute)
         assertEquals(6 * 60, restored.windowEndMinute)
+        assertEquals(HomeMode.CALM_CANVAS, restored.homeMode)
+        assertEquals(HomeAlignment.LEFT, restored.homeAlignment)
+        assertEquals(LabelCase.ORIGINAL, restored.labelCase)
+        assertEquals(BackdropStyle.MORNING_MIST, restored.backdropStyle)
+        assertEquals(ScrimStrength.DEEP, restored.scrimStrength)
+        assertTrue(restored.backdropBlur)
+        assertFalse(restored.showCalendarGlance)
+        assertFalse(restored.showUsageOnHome)
+        assertEquals(8, restored.pauseDelaySeconds)
+        assertFalse(restored.gateTimeboxEnabled)
     }
 
     /**

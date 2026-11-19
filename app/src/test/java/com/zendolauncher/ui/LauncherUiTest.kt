@@ -22,8 +22,12 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.BuildConfig
 import com.zendolauncher.LauncherActivity
 import com.zendolauncher.core.PageType
+import com.zendolauncher.data.HomeAlignment
+import com.zendolauncher.data.HomeMode
+import com.zendolauncher.data.LabelCase
 import com.zendolauncher.data.ThemeMode
 import com.zendolauncher.model.LaunchTarget
+import com.zendolauncher.ui.theme.BackdropStyle
 import com.zendolauncher.ui.theme.LauncherTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -70,6 +74,11 @@ class LauncherUiTest {
      */
     private fun resetSettings() {
         viewModel.setTheme(ThemeMode.DARK)
+        viewModel.setHomeMode(HomeMode.QUIET)
+        viewModel.setHomeAlignment(HomeAlignment.CENTER)
+        viewModel.setLabelCase(LabelCase.LOWERCASE)
+        viewModel.setBackdropStyle(BackdropStyle.MATTE)
+        viewModel.setShowCalendarGlance(true)
         viewModel.setPauseEnabled(false)
         viewModel.setReduceMotion(false)
         viewModel.setWindowEnabled(false)
@@ -77,6 +86,7 @@ class LauncherUiTest {
 
         val pages = viewModel.state.value.settings.home.pages
         val keep = pages.firstOrNull { it.type == PageType.APPS } ?: pages.first()
+        keep.config.itemKeys.toList().forEach { viewModel.toggleFavourite(it) }
         pages.filter { it.id != keep.id }.forEach { viewModel.removePage(it.id) }
         viewModel.onPagerSettled(0)
         viewModel.goToPage(0)
@@ -117,30 +127,26 @@ class LauncherUiTest {
     private val clockPattern = Regex("""\b\d{1,2}:\d{2}\b""")
     private val datePattern = Regex("""\p{L}+,\s*\d{1,2}\s+\p{L}+""")
 
-    // ---- Home: one page, text only ---------------------------------------------------
+    // ---- Home: Quiet default & Calm Canvas -----------------------------------------
 
     @Test
-    fun home_startsWithASingleAppsPage_andNoPageDots() {
-        val home = viewModel.state.value.settings.home
-        assertEquals(1, home.pages.size)
-        assertEquals(PageType.APPS, home.pages.single().type)
+    fun home_defaultsToQuietHome_withClockCalendarGlanceAndNoPageDots() {
+        val settings = viewModel.state.value.settings
+        assertEquals(HomeMode.QUIET, settings.homeMode)
+        assertEquals(HomeAlignment.CENTER, settings.homeAlignment)
+        assertEquals(LabelCase.LOWERCASE, settings.labelCase)
+        assertEquals(1, settings.home.pages.size)
 
-        // One page means nothing to indicate and nothing to swipe to. The page's own name
-        // is a heading, not a dot: it appears once, at the top of the list.
-        rule.onAllNodesWithText("Apps").assertCountEquals(1)
-        rule.onNodeWithText("No apps on this page yet. Open All apps and pin the ones you want.").assertIsDisplayed()
+        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
+        rule.onAllNodes(textMatching(datePattern)).assertCountEquals(1)
+        rule.onNodeWithText("Tap to connect Google Calendar").assertIsDisplayed()
+        rule.onNodeWithText("No apps on Home yet. Open All apps and pin the essentials.").assertIsDisplayed()
         rule.onNodeWithText("Search apps").assertIsDisplayed()
+        rule.onAllNodesWithText("Edit pages").assertCountEquals(0)
     }
 
     @Test
-    fun home_hasNoClockOnTheAppsPage() {
-        // The clock belongs to the Today page. On a fresh install there is no Today page,
-        // so the first screen is the list and nothing else.
-        rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(0)
-    }
-
-    @Test
-    fun home_showsPinnedAppsAsText() {
+    fun quietHome_showsPinnedAppsLowercaseByDefault_andSupportsOriginalAndLeftAlignment() {
         val keys = listOf(
             FakeApps.install(rule.activity, "com.example.textonly1", "Alpha"),
             FakeApps.install(rule.activity, "com.example.textonly2", "Beta"),
@@ -153,8 +159,65 @@ class LauncherUiTest {
         assertEquals(keys, viewModel.state.value.settings.home.page("p_apps")?.config?.itemKeys)
         val resolved = viewModel.state.value.favourites
         assertEquals(2, resolved.size)
-        // Rendered with the label the launcher resolved, as text — no icon slot at all.
-        resolved.forEach { rule.onNodeWithText(it.label).assertIsDisplayed() }
+        resolved.forEach {
+            rule.onNodeWithText(it.label.lowercase()).performScrollTo().assertIsDisplayed()
+        }
+        rule.onAllNodesWithText("Unpin").assertCountEquals(0)
+
+        viewModel.setLabelCase(LabelCase.ORIGINAL)
+        viewModel.setHomeAlignment(HomeAlignment.LEFT)
+        rule.waitForIdle()
+
+        resolved.forEach {
+            rule.onNodeWithText(it.label).performScrollTo().assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun appRow_respectsLowercaseToggle_andCenteredMode() {
+        val target = LaunchTarget("com.instagram.android", ".Main", "Instagram")
+        rule.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                LauncherTheme(mode = ThemeMode.DARK) {
+                    AppRow(
+                        viewModel = viewModel,
+                        target = target,
+                        isFavourite = true,
+                        onClick = {},
+                        onToggleFavourite = {},
+                        onToggleHidden = {},
+                        lowercaseLabel = true,
+                        centered = true,
+                        showFavouriteDot = false,
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("instagram").assertIsDisplayed()
+        rule.onAllNodesWithText("Instagram").assertCountEquals(0)
+        rule.onAllNodesWithText("Unpin").assertCountEquals(0)
+    }
+
+    @Test
+    fun switchingToCalmCanvas_expandsStructuredPages_andPreservesPinnedApps() {
+        val key = FakeApps.install(rule.activity, "com.example.keep", "KeepApp")
+        viewModel.refreshApps()
+        awaitVisibleApps(1)
+        viewModel.toggleFavourite(key)
+        rule.waitForIdle()
+
+        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
+        rule.waitForIdle()
+
+        val pages = viewModel.state.value.settings.home.pages
+        assertEquals(5, pages.size)
+        assertEquals(
+            listOf(PageType.APPS, PageType.PLAN, PageType.TODAY, PageType.WIDGET, PageType.NOTES),
+            pages.map { it.type },
+        )
+        assertEquals(listOf(key), pages.first().config.itemKeys)
+        rule.onNodeWithText("Edit pages").assertIsDisplayed()
     }
 
     @Test
@@ -172,6 +235,11 @@ class LauncherUiTest {
 
     @Test
     fun editPages_addPage_offersTypes_andCreatesTheChosenOne() {
+        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
+        // Trim back to 1 page so this verifies Add Page from 1 -> 2 in Calm Canvas.
+        viewModel.state.value.settings.home.pages.drop(1).forEach { viewModel.removePage(it.id) }
+        rule.waitForIdle()
+
         viewModel.enterPageEdit()
         rule.waitForIdle()
         rule.onNodeWithText("Add page").performClick()
@@ -193,6 +261,9 @@ class LauncherUiTest {
 
     @Test
     fun addPage_back_closesThePickerWithoutAddingAPage() {
+        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
+        viewModel.state.value.settings.home.pages.drop(1).forEach { viewModel.removePage(it.id) }
+        rule.waitForIdle()
         val before = viewModel.state.value.settings.home.pages.size
         viewModel.enterPageEdit()
         viewModel.openAddPage()
@@ -206,12 +277,14 @@ class LauncherUiTest {
         viewModel.leavePageEdit()
     }
 
-    /** The Today page exists only when it was added: clock, date and the local dashboard. */
+    /** The Today page renders clock, date and the local dashboard in Calm Canvas. */
     @Test
-    fun todayPage_rendersClockAndDashboard_onlyWhenAdded() {
-        rule.onAllNodesWithText("Highlights").assertCountEquals(0)
-
-        viewModel.addPage(PageType.TODAY)
+    fun todayPage_rendersClockAndDashboard_inCalmCanvas() {
+        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
+        rule.waitForIdle()
+        val todayIndex = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.TODAY }
+        assertTrue(todayIndex >= 0)
+        viewModel.goToPage(todayIndex)
         rule.waitForIdle()
 
         rule.onAllNodes(textMatching(clockPattern)).assertCountEquals(1)
@@ -219,10 +292,6 @@ class LauncherUiTest {
         rule.onNodeWithText("Name the one thing that matters today.").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Highlights").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("No tasks yet. Add the first one below.").performScrollTo().assertIsDisplayed()
-
-        val today = viewModel.state.value.settings.home.pages.last()
-        viewModel.removePage(today.id)
-        rule.waitForIdle()
     }
 
     /**
@@ -232,32 +301,32 @@ class LauncherUiTest {
      */
     @Test
     fun planPage_rendersAgendaStates_andDateNavigation() {
-        viewModel.addPage(PageType.PLAN)
+        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
+        rule.waitForIdle()
+        val planIndex = viewModel.state.value.settings.home.pages.indexOfFirst { it.type == PageType.PLAN }
+        assertTrue(planIndex >= 0)
+        viewModel.goToPage(planIndex)
         rule.waitForIdle()
 
         rule.onNodeWithText("Plan").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Earlier").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Later").performScrollTo().assertIsDisplayed()
         rule.onNodeWithText("Allow calendar access").performScrollTo().assertIsDisplayed()
-
-        val plan = viewModel.state.value.settings.home.pages.last()
-        viewModel.removePage(plan.id)
-        rule.waitForIdle()
     }
 
     // ---- Settings --------------------------------------------------------------------
 
     @Test
-    fun settings_themeChoice_isLightOrDark_andDefaultsToDark() {
+    fun settings_themeChoice_isWarmSageOrMatteCharcoal_andDefaultsToDark() {
         viewModel.openSettings()
         rule.waitForIdle()
         assertEquals(ThemeMode.DARK, viewModel.state.value.settings.theme)
 
-        rule.onNodeWithText("Light").performClick()
+        rule.onNodeWithText("Warm Sage").performClick()
         rule.waitForIdle()
         assertEquals(ThemeMode.LIGHT, viewModel.state.value.settings.theme)
 
-        rule.onNodeWithText("Dark").performClick()
+        rule.onNodeWithText("Matte Charcoal").performClick()
         rule.waitForIdle()
         assertEquals(ThemeMode.DARK, viewModel.state.value.settings.theme)
     }
@@ -270,37 +339,37 @@ class LauncherUiTest {
         rule.onAllNodesWithText("System").assertCountEquals(0)
     }
 
-    /**
-     * The rows that were removed: pin limits and order, 24-hour clock, icon style, layout
-     * mode, wallpaper gallery, screen time, Zendo import, gesture toggles. Each was a
-     * setting for something a person either never changes or changes elsewhere.
-     */
     @Test
-    fun settings_noLongerShowsTheRowsThatWereRemoved() {
+    fun settings_noLongerShowsLegacyBloatedRows() {
         viewModel.openSettings()
         rule.waitForIdle()
         listOf(
             "24-hour clock",
             "Pinned apps per page",
             "App icons",
-            "Layout",
             "Match wallpaper",
-            "Open wallpaper gallery",
-            "Screen time summary",
             "Import a Zendo snapshot",
             "Horizontal swipe pages Home",
             "Swipe up on bottom bar opens drawer",
-            "Show today",
         ).forEach { label ->
             rule.onAllNodesWithText(label).assertCountEquals(0)
         }
     }
 
     @Test
-    fun settings_showsItsRemainingSections() {
+    fun settings_showsItsSections() {
         viewModel.openSettings()
         rule.waitForIdle()
-        listOf("Appearance", "Apps", "Calendar", "Data", "Pause", "Home app", "About").forEach { label ->
+        listOf(
+            "Appearance",
+            "Glance & Usage",
+            "Apps",
+            "Calendar",
+            "Data",
+            "Mindful Gate",
+            "Home app",
+            "About",
+        ).forEach { label ->
             rule.onNodeWithText(label).performScrollTo().assertIsDisplayed()
         }
     }
@@ -316,17 +385,12 @@ class LauncherUiTest {
         assertTrue(viewModel.state.value.settings.reduceMotion)
     }
 
-    /**
-     * The About line shipped a hardcoded "0.2.0" and went stale the first time the version
-     * was raised, so a user on 0.2.1 was told they were on 0.2.0. It now reads the version
-     * the build actually carries; this asserts the two cannot drift apart again.
-     */
     @Test
     fun aboutLine_reportsTheVersionTheBuildCarries() {
         viewModel.openSettings()
         rule.waitForIdle()
         rule.onNodeWithText(
-            "Zendo Launcher ${BuildConfig.VERSION_NAME}, a standalone monochrome home screen.",
+            "Zendo Launcher ${BuildConfig.VERSION_NAME}, a standalone calm home screen.",
         ).performScrollTo().assertIsDisplayed()
     }
 
@@ -523,6 +587,10 @@ class LauncherUiTest {
      */
     @Test
     fun editMode_renamesAndReordersPages_andPutsThemBack() {
+        viewModel.setHomeMode(HomeMode.CALM_CANVAS)
+        viewModel.state.value.settings.home.pages.drop(1).forEach { viewModel.removePage(it.id) }
+        rule.waitForIdle()
+
         val startIds = viewModel.state.value.settings.home.pages.map { it.id }
         val startNames = viewModel.state.value.settings.home.pages.associate { it.id to it.name }
         val pageId = startIds.first()

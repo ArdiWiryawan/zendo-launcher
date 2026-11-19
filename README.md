@@ -1,10 +1,11 @@
 # Zendo Launcher
 
-A standalone, monochrome Android home screen. It replaces your launcher with a clock, a
-date, and a short list of apps you actually use. Nothing else.
+A calm, standalone Android home screen built to reduce social media addiction and
+doom scrolling. It replaces your launcher with a tactile surface, clock, Google
+Calendar glance, and a clean list of the apps you actually intend to open.
 
-Built as a real native Android app in Kotlin and Jetpack Compose. It is a separate
-product from Zendo and works fully without it.
+Built as a real native Android app in Kotlin and Jetpack Compose. It is a companion
+to Zendo and works 100% standalone without an account or network connection.
 
 ```
 14:05
@@ -41,9 +42,24 @@ All apps   Settings
 - **Essentials** — pin apps to the home screen, reorder them, unpin them. In the app list
   every row carries a visible **Pin** action, so the feature does not depend on knowing the
   long press; holding a row still opens the same menu as a shortcut.
-- **One page to start.** A fresh install is one page holding the apps you pinned, starting
-  at the top of the page like every other screen. Today, Plan and Note
-  pages are added on purpose from **Edit pages → Add page**.
+- **Two Home experiences: Quiet Home (default) and Calm Canvas.** Starts on a
+  single ultra-clean Quiet Home (centered by default, toggleable to left; lowercase
+  toggleable) with clock, Google Calendar glance, and clean pinned apps without
+  row clutter. Switch to Calm Canvas in Settings for a multi-page layout (Home,
+  Plan, Today, Usage, Note).
+- **Soft Matte Charcoal & Warm Sage themes + custom wallpapers.** Replaces harsh
+  void-black with Soft Matte Charcoal and Warm Sage Paper, paired with three
+  bundled procedural wallpapers (*Window shadow*, *Washi linen*, *Morning mist*) or
+  your own gallery photo behind an adaptive legibility scrim and optional blur.
+- **Mindful Gate for distracting apps.** Replaces direct taps on chosen social apps
+  with a breathing delay, real-time today screen-usage mirror, an intention prompt
+  (with a gentle pivot when *"Just checking / bored"*), and optional 5m/10m/15m
+  local notification check-in reminders.
+- **Google Calendar glance & Plan (offline).** Reads Google Calendar synced on the
+  device (`READ_CALENDAR`), with 1-tap *Use Google Calendars*, a Google-only toggle,
+  and a direct *Open Google Calendar* action.
+- **Screen usage awareness (optional).** Opt-in `PACKAGE_USAGE_STATS` reads today's
+  foreground duration and app-open counts locally — no charts, no guilt, no streaks.
 - **Hide apps** you would rather not see, without uninstalling anything. The hidden list
   names apps by their real label, not by package name, and hiding offers an **Undo** that
   stays on screen for a few seconds.
@@ -75,7 +91,7 @@ The APK is built by GitHub Actions — no Android Studio, no local SDK, nothing 
 unzipping. This link deliberately points at the releases list, not at a version: every
 build here is a **prerelease**, and GitHub's `/releases/latest/` form skips prereleases, so
 a pinned tag or `/releases/latest/` would go stale (or 404) the moment a new build ships.
-The newest build is currently `debug-0.7.1` (versionCode 17). See the releases list
+The newest build is currently `debug-0.8.0` (versionCode 18). See the releases list
 for its sha256.
 
 To build a fresh one yourself:
@@ -145,14 +161,16 @@ on its own, and it can always be changed back.
 
 ## Privacy
 
-- The launcher does not declare the `INTERNET` permission, and no longer declares
-  `SET_WALLPAPER` or `PACKAGE_USAGE_STATS`: the bundled wallpaper gallery and the
-  screen-time summary were removed. Calendar access (`READ_CALENDAR`) is requested only
-  when you open a calendar feature, is read-only against the on-device provider, and never
-  uploads anything.
-- Your app list is discovered through the system's `LauncherApps` service, which is how
-  Android intends launchers to work. `QUERY_ALL_PACKAGES` is not used; a narrow `<queries>`
-  entry for `MAIN`/`LAUNCHER` activities is.
+- The launcher does not declare the `INTERNET` permission and never uploads anything.
+- `READ_CALENDAR` is requested only when you open a calendar feature and reads synced
+  on-device calendars (such as Google Calendar) read-only and offline.
+- `PACKAGE_USAGE_STATS` is strictly optional (granted in system Usage Access settings)
+  and reads today's local usage summary only when you open Usage or trigger a Mindful
+  Gate pause.
+- `POST_NOTIFICATIONS` (Android 13+) is requested only if you pick a Mindful Gate
+  timebox reminder.
+- Your app list is discovered through the system's `LauncherApps` service (`QUERY_ALL_PACKAGES`
+  is not used; `<queries>` covers `MAIN`/`LAUNCHER` activities and `com.google.android.calendar`).
 - Pinned apps, hidden apps, the Home layout, theme, highlights, tasks, history records and
   the explicit calendar selection are stored in local `SharedPreferences` on the device.
   They are never uploaded, Android's automatic backup is off, and the only way data leaves

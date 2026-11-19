@@ -6,6 +6,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.ViewModelProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.zendolauncher.LauncherActivity
@@ -163,5 +164,32 @@ class CalendarPermissionTest {
         } finally {
             job.cancel()
         }
+    }
+
+    @Test
+    fun googleCalendarSelection_displaysOneTapAction_whenGoogleCalendarsAvailable() {
+        val cals = listOf(
+            com.zendolauncher.model.DeviceCalendar(10L, "Primary", "me@gmail.com", "com.google"),
+            com.zendolauncher.model.DeviceCalendar(20L, "Phone", null, null),
+        )
+        rule.activityRule.scenario.onActivity { activity ->
+            val vm = ViewModelProvider(activity)[LauncherViewModel::class.java]
+            activity.setContent {
+                LauncherTheme(mode = vm.state.value.settings.theme) {
+                    CalendarScreen(
+                        vm,
+                        vm.state.value.copy(
+                            calendarPermission = true,
+                            calendars = cals,
+                            calendarLoading = false,
+                        ),
+                    )
+                }
+            }
+        }
+        rule.waitForIdle()
+        rule.onNodeWithText("Use Google Calendars").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("Open Google Calendar").performScrollTo().assertIsDisplayed()
+        rule.onNodeWithText("me@gmail.com · Google Calendar").performScrollTo().assertIsDisplayed()
     }
 }

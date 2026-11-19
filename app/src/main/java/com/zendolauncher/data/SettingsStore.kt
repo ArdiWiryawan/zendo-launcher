@@ -5,19 +5,32 @@ import android.content.SharedPreferences
 import androidx.core.content.edit
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.HomeLayoutCodec
+import com.zendolauncher.core.MindfulGate
 import com.zendolauncher.core.PageConfig
 import com.zendolauncher.core.PageType
+import com.zendolauncher.ui.theme.BackdropStyle
+import com.zendolauncher.ui.theme.ScrimStrength
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
- * The launcher has exactly two looks. There is no "System" state: it existed so the app
- * could defer the choice, but a launcher that renders a near-white Home screen because the
- * phone was in light mode is the glare this product was built to remove. Two options, one
- * tap each, nothing to reason about.
+ * The launcher has two calm moods: Soft Matte Charcoal (DARK) and Warm Sage Paper (LIGHT).
  */
 enum class ThemeMode { LIGHT, DARK }
+
+/**
+ * Two Home experiences:
+ *  - QUIET: ultra-clean single screen (clock, calendar glance, clean app list, search).
+ *  - CALM_CANVAS: structured multi-page pager (Home, Plan, Today, Usage, Note).
+ */
+enum class HomeMode { QUIET, CALM_CANVAS }
+
+/** Horizontal alignment for Quiet Home content. */
+enum class HomeAlignment { CENTER, LEFT }
+
+/** Casing for app labels on Home. */
+enum class LabelCase { LOWERCASE, ORIGINAL }
 
 /**
  * All launcher preferences. Local only — nothing here is ever uploaded.
@@ -63,6 +76,22 @@ class SettingsStore(context: Context) {
         // ever learns that no layout has been written yet. It is idempotent: once a layout
         // is stored, the legacy keys are not consulted again. See migrateHome.
         home = readHome(),
+        homeMode = prefs.getString(KEY_HOME_MODE, null)
+            ?.let { name -> HomeMode.entries.firstOrNull { it.name == name } } ?: HomeMode.QUIET,
+        homeAlignment = prefs.getString(KEY_HOME_ALIGNMENT, null)
+            ?.let { name -> HomeAlignment.entries.firstOrNull { it.name == name } } ?: HomeAlignment.CENTER,
+        labelCase = prefs.getString(KEY_LABEL_CASE, null)
+            ?.let { name -> LabelCase.entries.firstOrNull { it.name == name } } ?: LabelCase.LOWERCASE,
+        backdropStyle = prefs.getString(KEY_BACKDROP_STYLE, null)
+            ?.let { name -> BackdropStyle.entries.firstOrNull { it.name == name } } ?: BackdropStyle.MATTE,
+        scrimStrength = prefs.getString(KEY_SCRIM_STRENGTH, null)
+            ?.let { name -> ScrimStrength.entries.firstOrNull { it.name == name } } ?: ScrimStrength.BALANCED,
+        backdropBlur = prefs.getBoolean(KEY_BACKDROP_BLUR, false),
+        showCalendarGlance = prefs.getBoolean(KEY_SHOW_CALENDAR_GLANCE, true),
+        showUsageOnHome = prefs.getBoolean(KEY_SHOW_USAGE_ON_HOME, true),
+        pauseDelaySeconds = prefs.getInt(KEY_PAUSE_DELAY_SECONDS, MindfulGate.DEFAULT_DELAY_SECONDS)
+            .let { if (it in MindfulGate.DELAY_OPTIONS_SECONDS) it else MindfulGate.DEFAULT_DELAY_SECONDS },
+        gateTimeboxEnabled = prefs.getBoolean(KEY_GATE_TIMEBOX_ENABLED, true),
     )
 
     fun update(transform: (LauncherSettings) -> LauncherSettings) {
@@ -88,6 +117,16 @@ class SettingsStore(context: Context) {
             putString(KEY_HOME_PAGES, HomeLayoutCodec.encode(next.home))
             putString(KEY_HOME_ACTIVE_PAGE, next.home.activePageId.orEmpty())
             putInt(KEY_HOME_PAGES_VERSION, HOME_PAGES_VERSION)
+            putString(KEY_HOME_MODE, next.homeMode.name)
+            putString(KEY_HOME_ALIGNMENT, next.homeAlignment.name)
+            putString(KEY_LABEL_CASE, next.labelCase.name)
+            putString(KEY_BACKDROP_STYLE, next.backdropStyle.name)
+            putString(KEY_SCRIM_STRENGTH, next.scrimStrength.name)
+            putBoolean(KEY_BACKDROP_BLUR, next.backdropBlur)
+            putBoolean(KEY_SHOW_CALENDAR_GLANCE, next.showCalendarGlance)
+            putBoolean(KEY_SHOW_USAGE_ON_HOME, next.showUsageOnHome)
+            putInt(KEY_PAUSE_DELAY_SECONDS, next.pauseDelaySeconds)
+            putBoolean(KEY_GATE_TIMEBOX_ENABLED, next.gateTimeboxEnabled)
         }
         _settings.value = next
     }
@@ -251,6 +290,16 @@ class SettingsStore(context: Context) {
         private const val KEY_CALENDAR_ASKED = "calendar_asked"
         private const val KEY_CALENDAR_GOOGLE_ONLY = "calendar_google_only"
         private const val KEY_CALENDAR_SCHEMA = "calendar_selection_schema"
+        private const val KEY_HOME_MODE = "home_mode"
+        private const val KEY_HOME_ALIGNMENT = "home_alignment"
+        private const val KEY_LABEL_CASE = "label_case"
+        private const val KEY_BACKDROP_STYLE = "backdrop_style"
+        private const val KEY_SCRIM_STRENGTH = "scrim_strength"
+        private const val KEY_BACKDROP_BLUR = "backdrop_blur"
+        private const val KEY_SHOW_CALENDAR_GLANCE = "show_calendar_glance"
+        private const val KEY_SHOW_USAGE_ON_HOME = "show_usage_on_home"
+        private const val KEY_PAUSE_DELAY_SECONDS = "pause_delay_seconds"
+        private const val KEY_GATE_TIMEBOX_ENABLED = "gate_timebox_enabled"
 
         /** Advisory, written beside the blob so a future change can tell old from malformed. */
         const val HOME_PAGES_VERSION = 1
@@ -322,4 +371,14 @@ data class LauncherSettings(
      * are first readable.
      */
     val calendarSelectionSchema: Boolean = false,
+    val homeMode: HomeMode = HomeMode.QUIET,
+    val homeAlignment: HomeAlignment = HomeAlignment.CENTER,
+    val labelCase: LabelCase = LabelCase.LOWERCASE,
+    val backdropStyle: BackdropStyle = BackdropStyle.MATTE,
+    val scrimStrength: ScrimStrength = ScrimStrength.BALANCED,
+    val backdropBlur: Boolean = false,
+    val showCalendarGlance: Boolean = true,
+    val showUsageOnHome: Boolean = true,
+    val pauseDelaySeconds: Int = MindfulGate.DEFAULT_DELAY_SECONDS,
+    val gateTimeboxEnabled: Boolean = true,
 )

@@ -54,12 +54,19 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
+import com.zendolauncher.core.CalendarGlance
 import com.zendolauncher.core.HomeLayout
 import com.zendolauncher.core.HomePage
 import com.zendolauncher.core.PageType
+import com.zendolauncher.core.UsageCalculator
+import com.zendolauncher.data.HomeAlignment
+import com.zendolauncher.data.HomeMode
+import com.zendolauncher.data.LabelCase
+import com.zendolauncher.ui.theme.HomeBackdrop
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherSpace
 import com.zendolauncher.ui.theme.LauncherType
@@ -115,107 +122,114 @@ fun HomeScreen(viewModel: LauncherViewModel, state: UiState) {
         }
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .background(palette.background)
-            .systemBarsPadding(),
-    ) {
-        if (state.pageEditing) {
-            PageManager(
-                viewModel = viewModel,
-                state = state,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-            )
-        } else {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                // One page cannot be swiped anywhere, so the pager only claims the
-                // gesture once there is somewhere to go.
-                userScrollEnabled = pages.size > 1,
-            ) { index ->
-                val page = pages.getOrNull(index) ?: return@HorizontalPager
-                // Keyed on the page id so a page's own remembered state — the focus note's
-                // draft in particular — does not leak into whatever page takes its index
-                // after a reorder.
-                key(page.id) {
-                    PageBody(page, viewModel, state)
+    Box(Modifier.fillMaxSize()) {
+        HomeBackdrop(
+            style = state.settings.backdropStyle,
+            scrimStrength = state.settings.scrimStrength,
+            blurPhoto = state.settings.backdropBlur,
+            customBitmap = state.customWallpaperBitmap,
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        Column(
+            Modifier
+                .fillMaxSize()
+                .systemBarsPadding(),
+        ) {
+            if (state.settings.homeMode == HomeMode.QUIET) {
+                QuietHomePage(
+                    viewModel = viewModel,
+                    state = state,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                )
+            } else if (state.pageEditing) {
+                PageManager(
+                    viewModel = viewModel,
+                    state = state,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                )
+            } else {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    userScrollEnabled = pages.size > 1,
+                ) { index ->
+                    val page = pages.getOrNull(index) ?: return@HorizontalPager
+                    key(page.id) {
+                        PageBody(page, viewModel, state)
+                    }
                 }
             }
-        }
 
-        state.undoHidden?.let {
-            // The gutter lives on the scrolling page above, not on this column, so the note
-            // has to carry its own or its text starts flush against the screen edge.
-            UndoNote(
-                text = "Hidden ${it.label}.",
-                actionLabel = "Undo",
-                onAction = { viewModel.undoHide() },
-                modifier = Modifier.padding(horizontal = LauncherSpace.gutter),
-            )
-            Spacer(Modifier.height(LauncherSpace.sm))
-        }
+            state.undoHidden?.let {
+                UndoNote(
+                    text = "Hidden ${it.label}.",
+                    actionLabel = "Undo",
+                    onAction = { viewModel.undoHide() },
+                    modifier = Modifier.padding(horizontal = LauncherSpace.gutter),
+                )
+                Spacer(Modifier.height(LauncherSpace.sm))
+            }
 
-        state.pinNotice?.let {
-            SecondaryText(it, modifier = Modifier.padding(horizontal = LauncherSpace.gutter))
-            Spacer(Modifier.height(LauncherSpace.sm))
-        }
+            state.pinNotice?.let {
+                SecondaryText(it, modifier = Modifier.padding(horizontal = LauncherSpace.gutter))
+                Spacer(Modifier.height(LauncherSpace.sm))
+            }
 
-        if (!state.pageEditing && pages.size > 1) {
-            PageIndicator(pages, pagerState) { viewModel.goToPage(it) }
-        }
-        if (state.pageEditing) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = LauncherSpace.gutter, vertical = LauncherSpace.md),
-                horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                QuietAction("Done", onClick = { viewModel.leavePageEdit() })
-                // Absent at the limit rather than present-and-inert: a control that cannot
-                // do anything is worse than one that is not there.
-                if (pages.size < HomeLayout.MAX_PAGES) {
-                    QuietAction("Add page", onClick = { viewModel.openAddPage() })
+            if (state.settings.homeMode == HomeMode.CALM_CANVAS && !state.pageEditing && pages.size > 1) {
+                PageIndicator(pages, pagerState) { viewModel.goToPage(it) }
+            }
+            if (state.settings.homeMode == HomeMode.CALM_CANVAS && state.pageEditing) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = LauncherSpace.gutter, vertical = LauncherSpace.md),
+                    horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    QuietAction("Done", onClick = { viewModel.leavePageEdit() })
+                    if (pages.size < HomeLayout.MAX_PAGES) {
+                        QuietAction("Add page", onClick = { viewModel.openAddPage() })
+                    }
                 }
-            }
-        } else {
-            // The search pill sits directly above the bottom chrome on every page: it is
-            // the one way into the drawer that does not need a reach to the top of the
-            // screen, and the drawer is where apps are pinned from.
-            val pillShape = RoundedCornerShape(999.dp)
-            Box(
-                contentAlignment = Alignment.Center,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = LauncherSpace.gutter)
-                    .height(LauncherSpace.touchTarget)
-                    .clip(pillShape)
-                    .border(LauncherSpace.hairline, palette.separator, pillShape)
-                    .clickable(role = Role.Button) { viewModel.openApps(autoFocusSearch = true) },
-            ) {
-                Text("Search apps", style = LauncherType.action, color = palette.secondary)
-            }
-            Spacer(Modifier.height(LauncherSpace.sm))
-            // Swipe-up chrome: the bottom bar owns the vertical swipe so scrollable
-            // page content keeps its gesture. Taps still reach the actions; a deliberate
-            // upward drag opens the drawer instead.
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .swipeUpToOpen { viewModel.openApps() }
-                    .padding(horizontal = LauncherSpace.gutter, vertical = LauncherSpace.md),
-                horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                QuietAction("All apps", onClick = { viewModel.openApps() })
-                QuietAction("Edit pages", onClick = { viewModel.enterPageEdit() })
-                QuietAction("Settings", onClick = { viewModel.openSettings(Screen.HOME) })
+            } else {
+                val pillShape = RoundedCornerShape(999.dp)
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = LauncherSpace.gutter)
+                        .height(LauncherSpace.touchTarget)
+                        .clip(pillShape)
+                        .border(LauncherSpace.hairline, palette.separator, pillShape)
+                        .clickable(role = Role.Button) { viewModel.openApps(autoFocusSearch = true) },
+                ) {
+                    Text("Search apps", style = LauncherType.action, color = palette.secondary)
+                }
+                Spacer(Modifier.height(LauncherSpace.sm))
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .swipeUpToOpen { viewModel.openApps() }
+                        .padding(horizontal = LauncherSpace.gutter, vertical = LauncherSpace.md),
+                    horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    QuietAction("All apps", onClick = { viewModel.openApps() })
+                    if (state.settings.homeMode == HomeMode.QUIET) {
+                        QuietAction("Calendar", onClick = { viewModel.openCalendar() })
+                        QuietAction("Usage", onClick = { viewModel.openUsage() })
+                    } else {
+                        QuietAction("Edit pages", onClick = { viewModel.enterPageEdit() })
+                    }
+                    QuietAction("Settings", onClick = { viewModel.openSettings(Screen.HOME) })
+                }
             }
         }
     }
@@ -264,7 +278,170 @@ private fun PageBody(page: HomePage, viewModel: LauncherViewModel, state: UiStat
         PageType.APPS -> LaunchPage(page, viewModel, state)
         PageType.PLAN -> PlanPage(viewModel, state)
         PageType.NOTES -> NotePage(viewModel, state)
-        PageType.WIDGET -> WidgetPage(page)
+        PageType.WIDGET -> UsagePage(viewModel, state)
+    }
+}
+
+// ---- Quiet Home (Option 1 default) -------------------------------------------------
+
+/**
+ * The default ultra-clean Home experience: clock, date, calm calendar glance, optional
+ * screen-time whisper, and clean pinned apps with no trailing Unpin noise.
+ */
+@Composable
+private fun QuietHomePage(
+    viewModel: LauncherViewModel,
+    state: UiState,
+    modifier: Modifier = Modifier,
+) {
+    val palette = LauncherColors.current
+    val centered = state.settings.homeAlignment == HomeAlignment.CENTER
+    val lowercase = state.settings.labelCase == LabelCase.LOWERCASE
+    val windowInfo = LocalWindowInfo.current
+    val density = LocalDensity.current
+    val heightDp = with(density) { windowInfo.containerSize.height.toDp() }
+    val widthDp = with(density) { windowInfo.containerSize.width.toDp().value }
+    val topGap = (heightDp * 0.05f).coerceIn(LauncherSpace.md, LauncherSpace.xl)
+
+    val appsPage = state.settings.home.pages.firstOrNull { it.type == PageType.APPS }
+    val byKey = remember(state.visibleApps) { state.visibleApps.associateBy { it.key } }
+    val targets = remember(appsPage, byKey) {
+        appsPage?.config?.itemKeys?.mapNotNull { byKey[it] }.orEmpty()
+    }
+
+    Column(
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = LauncherSpace.gutter),
+    ) {
+        Spacer(Modifier.height(topGap))
+        Clock(widthDp)
+        Spacer(Modifier.height(LauncherSpace.xs))
+        Text(
+            text = LocalDate.now().format(DateTimeFormatter.ofPattern("EEEE, d MMMM", currentLocale())),
+            style = LauncherType.date,
+            color = palette.secondary,
+            textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+        )
+
+        if (state.settings.showCalendarGlance) {
+            Spacer(Modifier.height(LauncherSpace.md))
+            CalendarGlanceBlock(
+                state = state,
+                centered = centered,
+                onClick = { viewModel.openCalendar() },
+            )
+        }
+
+        if (state.settings.showUsageOnHome && state.usageAccess && state.dailyUsage.totalForegroundMillis > 0L) {
+            Spacer(Modifier.height(LauncherSpace.xs))
+            val totalText = UsageCalculator.formatDuration(state.dailyUsage.totalForegroundMillis)
+            val whisper = if (lowercase) "screen time · $totalText" else "Screen time · $totalText"
+            Text(
+                text = whisper,
+                style = LauncherType.secondary,
+                color = palette.secondary,
+                textAlign = if (centered) TextAlign.Center else TextAlign.Start,
+                modifier = Modifier.clickable(role = Role.Button) { viewModel.openUsage() },
+            )
+        }
+
+        Spacer(Modifier.height(LauncherSpace.lg))
+
+        if (targets.isEmpty()) {
+            EmptyNote(
+                text = "No apps on Home yet. Open All apps and pin the essentials.",
+                modifier = Modifier.fillMaxWidth(),
+            )
+            QuietAction("Open All apps", onClick = { viewModel.openApps() })
+        } else {
+            targets.forEachIndexed { index, target ->
+                val usageWhisper = if (state.settings.showUsageOnHome && state.usageAccess) {
+                    state.dailyUsage.byPackage[target.packageName]
+                        ?.takeIf { it.foregroundMillis >= 60_000L }
+                        ?.let { UsageCalculator.formatDuration(it.foregroundMillis) }
+                } else {
+                    null
+                }
+                AppRow(
+                    viewModel = viewModel,
+                    target = target,
+                    isFavourite = true,
+                    onClick = { viewModel.launch(target) },
+                    onToggleFavourite = { viewModel.toggleFavourite(target.key) },
+                    onToggleHidden = { viewModel.toggleHidden(target.key) },
+                    showPinAction = false,
+                    showFavouriteDot = false,
+                    lowercaseLabel = lowercase,
+                    centered = centered,
+                    usageWhisper = usageWhisper,
+                    isGated = target.key in state.settings.distract,
+                    onToggleGate = {
+                        if (!state.settings.pauseEnabled) viewModel.setPauseEnabled(true)
+                        viewModel.toggleDistract(target.key)
+                    },
+                    onMoveUp = if (index > 0) ({ viewModel.reorderPinnedOnHome(target.key, -1) }) else null,
+                    onMoveDown = if (index < targets.lastIndex) ({ viewModel.reorderPinnedOnHome(target.key, 1) }) else null,
+                    longPressMenu = true,
+                )
+            }
+        }
+        Spacer(Modifier.height(LauncherSpace.xl))
+    }
+}
+
+@Composable
+private fun CalendarGlanceBlock(
+    state: UiState,
+    centered: Boolean,
+    onClick: () -> Unit,
+) {
+    val palette = LauncherColors.current
+    val align = if (centered) TextAlign.Center else TextAlign.Start
+    Column(
+        horizontalAlignment = if (centered) Alignment.CenterHorizontally else Alignment.Start,
+        modifier = Modifier
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = LauncherSpace.xs),
+    ) {
+        when {
+            !state.calendarPermission -> {
+                Text(
+                    text = "Tap to connect Google Calendar",
+                    style = LauncherType.secondary,
+                    color = palette.secondary,
+                    textAlign = align,
+                )
+            }
+            state.settings.shownCalendarIds.isEmpty() -> {
+                Text(
+                    text = "Tap to select Google Calendar",
+                    style = LauncherType.secondary,
+                    color = palette.secondary,
+                    textAlign = align,
+                )
+            }
+            else -> {
+                val summary = remember(state.calendarEvents) {
+                    CalendarGlance.summarize(state.calendarEvents, System.currentTimeMillis())
+                }
+                Text(
+                    text = summary.headline,
+                    style = LauncherType.body,
+                    color = palette.primary,
+                    textAlign = align,
+                )
+                summary.subline?.let {
+                    Text(
+                        text = it,
+                        style = LauncherType.secondary,
+                        color = palette.secondary,
+                        textAlign = align,
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -354,6 +531,16 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
             .padding(horizontal = LauncherSpace.gutter),
     ) {
         Spacer(Modifier.height(LauncherSpace.xl))
+        if (state.settings.showCalendarGlance) {
+            CalendarGlanceBlock(
+                state = state,
+                centered = false,
+                onClick = { viewModel.openCalendar() },
+            )
+            Spacer(Modifier.height(LauncherSpace.md))
+            Hairline()
+            Spacer(Modifier.height(LauncherSpace.md))
+        }
         // The page's own name, as every page had before: one quiet label, then the list.
         SectionHeading(page.config.heading ?: page.name)
         Spacer(Modifier.height(LauncherSpace.sm))
@@ -361,8 +548,16 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
             EmptyNote("No apps on this page yet. Open All apps and pin the ones you want.")
             QuietAction("Open All apps", onClick = { viewModel.openApps() })
         } else {
+            val lowercase = state.settings.labelCase == LabelCase.LOWERCASE
             targets.forEachIndexed { index, target ->
                 if (index > 0) Hairline()
+                val usageWhisper = if (state.settings.showUsageOnHome && state.usageAccess) {
+                    state.dailyUsage.byPackage[target.packageName]
+                        ?.takeIf { it.foregroundMillis >= 60_000L }
+                        ?.let { UsageCalculator.formatDuration(it.foregroundMillis) }
+                } else {
+                    null
+                }
                 Row(
                     Modifier
                         .fillMaxWidth()
@@ -387,9 +582,6 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
                                     val step = rowHeightPx
                                     if (step <= 0f) return@detectDragGesturesAfterLongPress
                                     accumulated += dragAmount.y
-                                    // One slot per row height travelled. The index is looked
-                                    // up by key each time, because the row's position has
-                                    // moved by then.
                                     while (accumulated >= step) {
                                         viewModel.moveItemBy(page.id, target.key, 1)
                                         accumulated -= step
@@ -410,7 +602,10 @@ private fun LaunchPage(page: HomePage, viewModel: LauncherViewModel, state: UiSt
                         onToggleFavourite = { viewModel.toggleFavourite(target.key) },
                         onToggleHidden = { viewModel.toggleHidden(target.key) },
                         longPressMenu = false,
-                        showPinAction = true,
+                        showPinAction = false,
+                        showFavouriteDot = false,
+                        lowercaseLabel = lowercase,
+                        usageWhisper = usageWhisper,
                     )
                 }
             }
@@ -469,29 +664,6 @@ private fun NotePage(viewModel: LauncherViewModel, state: UiState) {
         // here as a second switch; this is the route to where its controls live.
         QuietAction("Wellbeing settings", onClick = { viewModel.openSettings(Screen.HOME) })
 
-        Spacer(Modifier.height(LauncherSpace.xl))
-    }
-}
-
-// ---- Widget ------------------------------------------------------------------------
-
-/**
- * Recognised and stored, not built. The type exists so the serializer round-trips it and a
- * page can be re-typed without losing its config; nothing creates one. The page says what
- * it is rather than drawing an empty rectangle.
- */
-@Composable
-private fun WidgetPage(page: HomePage) {
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = LauncherSpace.gutter),
-    ) {
-        Spacer(Modifier.height(LauncherSpace.xl))
-        SectionHeading(page.config.heading ?: "Widget")
-        Spacer(Modifier.height(LauncherSpace.sm))
-        EmptyNote("A widget page is not built yet. No widget is hosted here.")
         Spacer(Modifier.height(LauncherSpace.xl))
     }
 }
@@ -708,5 +880,5 @@ private fun PageType.label(): String = when (this) {
     PageType.APPS -> "Apps"
     PageType.PLAN -> "Plan"
     PageType.NOTES -> "Note"
-    PageType.WIDGET -> "Widget"
+    PageType.WIDGET -> "Usage"
 }

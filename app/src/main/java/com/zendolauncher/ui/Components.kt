@@ -7,10 +7,11 @@ import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -99,27 +100,7 @@ fun QuietAction(text: String, modifier: Modifier = Modifier, onClick: () -> Unit
 }
 
 /**
- * One app line. Tap launches; long press opens the pin/hide menu. Rows are tall
- * enough to hit comfortably without looking like buttons.
- *
- * Favourite state is reported through `stateDescription` so TalkBack can announce it —
- * the dot is the only visual cue and it is invisible to a screen reader.
- *
- * The hide item names the unpin it also performs. Hiding a pinned app drops it from
- * Home in the same tap, and a menu that said only "Hide app" would let the user
- * lose an ordered entry without being told.
- *
- * `showPinAction` is what makes pinning reachable without knowing the long press, so the
- * app list turns it on. Home leaves it off: every row there is already pinned, and an
- * "Unpin" on each one would be a row of noise for a state the dot already reports.
- *
- * `longPressMenu` is off on the Home apps page, where the long press is taken by
- * drag-to-reorder. Both cannot own the same gesture, and reordering is the one the Home
- * page needs; a row there still reaches pin and hide through the drawer, and the pin
- * action it already shows.
- *
- * Text only. Nothing here reserves space for an icon: the launcher stopped drawing app
- * artwork, so a row is a label, a state dot and, in the drawer, one text action.
+ * One app line. Tap launches; long press opens the action menu (pin/hide/gate/reorder).
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -132,22 +113,32 @@ fun AppRow(
     onToggleHidden: () -> Unit,
     modifier: Modifier = Modifier,
     showPinAction: Boolean = false,
-    menuAlignment: Alignment.Horizontal = Alignment.End,
+    showFavouriteDot: Boolean = true,
+    lowercaseLabel: Boolean = false,
+    centered: Boolean = false,
+    usageWhisper: String? = null,
+    isGated: Boolean = false,
+    onToggleGate: (() -> Unit)? = null,
+    onMoveUp: (() -> Unit)? = null,
+    onMoveDown: (() -> Unit)? = null,
+    menuAlignment: Alignment.Horizontal = if (centered) Alignment.CenterHorizontally else Alignment.End,
     longPressMenu: Boolean = true,
 ) {
     val palette = LauncherColors.current
     var menuOpen by remember { mutableStateOf(false) }
+    val displayLabel = if (lowercaseLabel) target.label.lowercase() else target.label
 
     Box(modifier.fillMaxWidth()) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (centered) Arrangement.Center else Arrangement.Start,
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(
                     onClick = onClick,
                     onLongClick = if (longPressMenu) ({ menuOpen = true }) else null,
                     onLongClickLabel = if (longPressMenu) {
-                        if (isFavourite) "Remove from Home" else "Add to Home"
+                        if (isFavourite) "App options" else "Add to Home"
                     } else {
                         null
                     },
@@ -159,45 +150,99 @@ fun AppRow(
                 .defaultMinSize(minHeight = LauncherSpace.touchTarget)
                 .padding(vertical = LauncherSpace.sm),
         ) {
-            Text(
-                text = target.label,
-                style = LauncherType.appLabel,
-                color = palette.primary,
-                modifier = Modifier.weight(1f),
-            )
-            if (isFavourite) {
-                Box(
-                    Modifier
-                        .size(6.dp)
-                        .clip(CircleShape)
-                        .background(palette.secondary),
+            if (centered) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(LauncherSpace.sm),
+                ) {
+                    Text(
+                        text = displayLabel,
+                        style = LauncherType.appLabel,
+                        color = palette.primary,
+                    )
+                    usageWhisper?.let {
+                        Text(
+                            text = it,
+                            style = LauncherType.secondary,
+                            color = palette.secondary,
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = displayLabel,
+                    style = LauncherType.appLabel,
+                    color = palette.primary,
+                    modifier = Modifier.weight(1f),
                 )
-            }
-            // The label above keeps `weight(1f)`, so the action can never push it off the
-            // row; a long app name wraps instead. Each action names its own app, because
-            // one repeated word down a list is otherwise indistinguishable to a reader.
-            if (showPinAction) {
-                Spacer(Modifier.width(LauncherSpace.md))
-                QuietAction(
-                    text = if (isFavourite) "Unpin" else "Pin",
-                    onClick = onToggleFavourite,
-                    modifier = Modifier.semantics {
-                        contentDescription = if (isFavourite) "Unpin ${target.label}" else "Pin ${target.label}"
-                    },
-                )
+                usageWhisper?.let {
+                    Spacer(Modifier.width(LauncherSpace.sm))
+                    Text(
+                        text = it,
+                        style = LauncherType.secondary,
+                        color = palette.secondary,
+                    )
+                }
+                if (isFavourite && showFavouriteDot) {
+                    Spacer(Modifier.width(LauncherSpace.sm))
+                    Box(
+                        Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(palette.secondary),
+                    )
+                }
+                if (showPinAction) {
+                    Spacer(Modifier.width(LauncherSpace.md))
+                    QuietAction(
+                        text = if (isFavourite) "Unpin" else "Pin",
+                        onClick = onToggleFavourite,
+                        modifier = Modifier.semantics {
+                            contentDescription = if (isFavourite) "Unpin ${target.label}" else "Pin ${target.label}"
+                        },
+                    )
+                }
             }
         }
 
-        // Anchored to the row's trailing edge by default, so the menu opens under the
-        // finger that summoned it rather than at the row's top-left corner. Not composed
-        // at all when the long press belongs to something else, so no menu can open from
-        // a gesture this row never claimed.
         if (longPressMenu) {
             DropdownMenu(
                 expanded = menuOpen,
                 onDismissRequest = { menuOpen = false },
                 modifier = Modifier.align(menuAlignment + Alignment.Top),
             ) {
+                onMoveUp?.let { moveUp ->
+                    DropdownMenuItem(
+                        text = { Text("Move up", style = LauncherType.body) },
+                        onClick = {
+                            menuOpen = false
+                            moveUp()
+                        },
+                    )
+                }
+                onMoveDown?.let { moveDown ->
+                    DropdownMenuItem(
+                        text = { Text("Move down", style = LauncherType.body) },
+                        onClick = {
+                            menuOpen = false
+                            moveDown()
+                        },
+                    )
+                }
+                onToggleGate?.let { toggleGate ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (isGated) "Remove Mindful Gate" else "Gate with Mindful Pause",
+                                style = LauncherType.body,
+                            )
+                        },
+                        onClick = {
+                            menuOpen = false
+                            toggleGate()
+                        },
+                    )
+                }
                 DropdownMenuItem(
                     text = {
                         Text(
@@ -222,13 +267,8 @@ fun AppRow(
     }
 }
 
-
 /**
- * A quiet boolean. The whole row is the target and the state is legible without colour:
- * the trailing word, its weight and its tone all change together. The word is used
- * rather than a tick glyph because the default font family does not cover U+2713 and
- * would depend on a system fallback that some builds drop, rendering a tofu box.
- * A Material pill switch would be the loudest control in a text-first launcher.
+ * A quiet boolean. The whole row is the target and the state is legible without colour.
  */
 @Composable
 fun ToggleRow(
@@ -261,10 +301,9 @@ fun ToggleRow(
 }
 
 /**
- * One line of mutually exclusive options. The selected option differs by a hairline
- * marker and a weight change as well as by colour, so selection survives low vision and
- * colour blindness. No container: a row of text is the default unit.
+ * One line of mutually exclusive options, wrapping cleanly when more than two options exist.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun <T> ChoiceRow(
     label: String,
@@ -277,7 +316,10 @@ fun <T> ChoiceRow(
     Column(modifier) {
         Text(label, style = LauncherType.body, color = palette.primary)
         Spacer(Modifier.height(LauncherSpace.xs))
-        Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg),
+            verticalArrangement = Arrangement.spacedBy(LauncherSpace.xs),
+        ) {
             options.forEach { (value, text) ->
                 val isSelected = value == selected
                 Column(
@@ -290,7 +332,7 @@ fun <T> ChoiceRow(
                         )
                         .defaultMinSize(minHeight = LauncherSpace.touchTarget),
                 ) {
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.height(LauncherSpace.sm))
                     Text(
                         text = text,
                         style = LauncherType.action,
@@ -304,25 +346,13 @@ fun <T> ChoiceRow(
                             .height(LauncherSpace.hairline)
                             .background(if (isSelected) palette.primary else Color.Transparent),
                     )
-                    Spacer(Modifier.weight(1f))
+                    Spacer(Modifier.height(LauncherSpace.sm))
                 }
             }
         }
     }
 }
 
-/**
- * A numeric value adjusted in place, one step per tap. The value between the two actions
- * is the control's readout and its accessible value at once.
- *
- * Deliberately not a text field and not a Material time picker: typing needs a keyboard
- * and validation for what is a 24-hour range, and a picker dialog is the loudest surface
- * this app would own. Two words either side of a number say the same thing in the visual
- * language the rest of Settings already uses.
- *
- * The action labels are passed in rather than generated, because they can run past the
- * row at a raised font scale; when that happens the caller supplies the short form.
- */
 @Composable
 fun StepperRow(
     label: String,
@@ -355,8 +385,6 @@ fun StepperRow(
             text = valueText,
             style = LauncherType.action,
             color = palette.primary,
-            // The readout is not itself clickable, so a screen reader would otherwise
-            // reach the two actions without ever being told what they are changing.
             modifier = Modifier
                 .padding(horizontal = LauncherSpace.md)
                 .semantics { contentDescription = "$label $valueText" },
@@ -389,38 +417,6 @@ fun SecondaryText(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/**
- * The intentional pause: a calm monochrome dialog over the current list. Continue
- * launches once; Cancel returns. No timer, no journaling. The message is the
- * user's own reminder when they wrote one.
- */
-@Composable
-fun PauseDialog(label: String, message: String, onContinue: () -> Unit, onCancel: () -> Unit) {
-    Dialog(onDismissRequest = onCancel) {
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .background(LauncherColors.current.background)
-                .padding(LauncherSpace.lg),
-        ) {
-            Text(text = label, style = LauncherType.body, color = LauncherColors.current.primary)
-            Spacer(Modifier.height(LauncherSpace.sm))
-            SecondaryText(message)
-            Spacer(Modifier.height(LauncherSpace.md))
-            Row(horizontalArrangement = Arrangement.spacedBy(LauncherSpace.lg)) {
-                QuietAction("Continue", onClick = onContinue)
-                QuietAction("Cancel", onClick = onCancel)
-            }
-        }
-    }
-}
-
-/**
- * What happened, and the one action that reverses it. No container, background or
- * border: it is a line of the page, so it costs the screen nothing when it is absent
- * and reads as a remark rather than as an alert. The weight spacer is what keeps the
- * action on the trailing edge whatever the note says.
- */
 @Composable
 fun UndoNote(text: String, actionLabel: String, onAction: () -> Unit, modifier: Modifier = Modifier) {
     Row(
@@ -433,13 +429,6 @@ fun UndoNote(text: String, actionLabel: String, onAction: () -> Unit, modifier: 
     }
 }
 
-/**
- * The page-type picker: the only way a second Home page comes into being.
- *
- * A fresh install has exactly one page — the apps you pinned — so every other page is a
- * deliberate act. The four types are offered as words rather than as a menu of icons,
- * and the one type with no implementation (Widget) is not offered at all.
- */
 @Composable
 fun AddPageDialog(onPick: (PageType) -> Unit, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
@@ -479,10 +468,10 @@ fun AddPageDialog(onPick: (PageType) -> Unit, onDismiss: () -> Unit) {
     }
 }
 
-/** Page types this build can actually render, in the order they are offered. */
 private val ADD_PAGE_CHOICES = listOf(
     Triple(PageType.APPS, "Apps", "Another list of pinned apps."),
     Triple(PageType.TODAY, "Today", "Clock, today's action, highlights and tasks."),
     Triple(PageType.PLAN, "Plan", "Your calendar agenda, day by day."),
+    Triple(PageType.WIDGET, "Usage", "Screen usage summary and next calendar event."),
     Triple(PageType.NOTES, "Note", "One line for what this session is for."),
 )

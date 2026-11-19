@@ -27,11 +27,12 @@ import com.zendolauncher.ui.HighlightEditorScreen
 import com.zendolauncher.ui.HistoryScreen
 import com.zendolauncher.ui.HomeScreen
 import com.zendolauncher.ui.LauncherViewModel
+import com.zendolauncher.ui.MindfulGateOverlay
 import com.zendolauncher.ui.OnboardingScreen
-import com.zendolauncher.ui.PauseDialog
 import com.zendolauncher.ui.Screen
 import com.zendolauncher.ui.SettingsScreen
 import com.zendolauncher.ui.TaskEditorScreen
+import com.zendolauncher.ui.UsageScreen
 import com.zendolauncher.ui.theme.LauncherColors
 import com.zendolauncher.ui.theme.LauncherTheme
 
@@ -119,7 +120,7 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
         viewModel.goHome()
     }
     BackHandler(
-        enabled = state.screen == Screen.CALENDAR || state.screen == Screen.HISTORY,
+        enabled = state.screen == Screen.CALENDAR || state.screen == Screen.HISTORY || state.screen == Screen.USAGE,
     ) {
         viewModel.goHome()
     }
@@ -175,17 +176,24 @@ private fun LauncherRoot(viewModel: LauncherViewModel, state: com.zendolauncher.
             Screen.SETTINGS -> SettingsScreen(viewModel, state)
             Screen.CALENDAR -> CalendarScreen(viewModel, state)
             Screen.HISTORY -> HistoryScreen(viewModel, state)
+            Screen.USAGE -> UsageScreen(viewModel, state)
             Screen.HIGHLIGHT_EDITOR -> HighlightEditorScreen(viewModel, state)
             Screen.TASK_EDITOR -> TaskEditorScreen(viewModel, state)
         }
-        // Launcher-level pre-launch only: the dialog interposes here, over whichever
+        // Launcher-level pre-launch only: the Mindful Gate interposes here, over whichever
         // list the tap came from, and Home underneath is untouched.
         state.pendingPause?.let {
-            PauseDialog(
+            MindfulGateOverlay(
                 label = it.label,
-                message = state.settings.pauseMessage,
-                onContinue = { viewModel.confirmPause() },
+                settings = state.settings,
+                usageSummary = state.dailyUsage.byPackage[it.packageName],
+                usageAccess = state.usageAccess,
+                hasNotificationPermission = state.hasNotificationPermission,
+                customWallpaperBitmap = state.customWallpaperBitmap,
+                onConfirm = { mins, intention -> viewModel.confirmPause(mins, intention) },
                 onCancel = { viewModel.cancelPause() },
+                onOpenCalendar = { viewModel.openCalendar() },
+                onOpenUsage = { viewModel.openUsage() },
             )
         }
         // The restore preview and the one destructive confirmation. Rendered at the
